@@ -11,8 +11,11 @@ import {
   DRAWER_FRONT_H,
   type HingeSide,
   type ModuleKind,
+  type OpeningKind,
+  OPENING_KIND_LABEL,
   type PlacedModule,
   type RowId,
+  type WallOpening,
   MODULES,
   doorLayout,
   mm,
@@ -377,6 +380,35 @@ export function dropIndex(
     if (i < others.length) slot += others[i].width;
   }
   return best;
+}
+
+/* ------------------------------------------------------------------ */
+/* Отвори в стената                                                     */
+/* ------------------------------------------------------------------ */
+
+export interface OpeningBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  kind: OpeningKind;
+  /** Надпис в средата на отвора: „Врата 900". */
+  label: string;
+  /** Горният ръб на парапета, когато има такъв. */
+  sillY: number | null;
+}
+
+/** Отворът, нарисуван по фронталния изглед. */
+export function openingBox(view: ViewBox, o: WallOpening): OpeningBox {
+  return {
+    x: o.x,
+    y: toSvgY(view, o.bottom + o.height),
+    width: o.width,
+    height: o.height,
+    kind: o.kind,
+    label: `${OPENING_KIND_LABEL[o.kind]} ${formatMm(o.width)}`,
+    sillY: o.bottom > 0 ? toSvgY(view, o.bottom) : null,
+  };
 }
 
 /* ------------------------------------------------------------------ */

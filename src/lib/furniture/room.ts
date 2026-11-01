@@ -15,7 +15,7 @@
  * Всички размери са в милиметри.
  */
 
-import type { FurnitureSystem, PlacedModule } from './system';
+import type { FurnitureSystem, PlacedModule, WallOpening } from './system';
 import { geometryOf } from './system';
 
 export type WallSide = 'top' | 'right' | 'bottom' | 'left';
@@ -129,6 +129,12 @@ export interface PlanModule<Kind extends string = string, Row extends string = s
   rect: Rect;
 }
 
+export interface PlanOpening {
+  opening: WallOpening;
+  /** Отсечката на отвора по стената, в координати на стаята. */
+  segment: Segment;
+}
+
 export interface PlanWall<Kind extends string = string, Row extends string = string> {
   side: WallSide;
   length: number;
@@ -137,12 +143,28 @@ export interface PlanWall<Kind extends string = string, Row extends string = str
   tooLong: boolean;
   /** По ред: най-отдолу първо, както е `rowOrder` на системата. */
   modules: Record<Row, PlanModule<Kind, Row>[]>;
+  openings: PlanOpening[];
 }
 
 export interface PlanWallInput<Kind extends string = string, Row extends string = string> {
   side: WallSide;
   length: number;
   placed: Record<Row, PlacedModule<Kind, Row>[]>;
+  openings?: WallOpening[];
+}
+
+/** Точка на `x` милиметра от началото на стената. */
+export function pointAlong(room: Room, side: WallSide, x: number): { x: number; y: number } {
+  switch (side) {
+    case 'top':
+      return { x, y: 0 };
+    case 'right':
+      return { x: room.width, y: x };
+    case 'bottom':
+      return { x: room.width - x, y: room.depth };
+    case 'left':
+      return { x: 0, y: room.depth - x };
+  }
 }
 
 /** Планът на цялата стая: стените и какво стои по тях. */
@@ -165,6 +187,11 @@ export function planGeometry<K extends string, R extends string>(
       run: wallRun(room, wall.side, wall.length),
       tooLong: wall.length > sideLength(room, wall.side),
       modules,
+      openings: (wall.openings ?? []).map((o) => {
+        const from = pointAlong(room, wall.side, o.x);
+        const to = pointAlong(room, wall.side, o.x + o.width);
+        return { opening: o, segment: { x1: from.x, y1: from.y, x2: to.x, y2: to.y } };
+      }),
     };
   });
 }

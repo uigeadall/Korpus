@@ -13,8 +13,12 @@ import {
   MODULES,
   type Materials,
   type ModuleKind,
+  OPENING_DEFAULT,
+  clampOpening,
+  type OpeningKind,
   type Room,
   type RowId,
+  type WallOpening,
   RULES_VERSION,
   type Wall,
   type WallSide,
@@ -40,6 +44,9 @@ export type Action =
   | { type: 'moveToRow'; id: string; toIndex: number }
   | { type: 'addWall'; side?: WallSide }
   | { type: 'removeWall'; wallId: string }
+  | { type: 'addOpening'; wallId: string; kind: OpeningKind }
+  | { type: 'opening'; id: string; value: Partial<Omit<WallOpening, 'id' | 'kind'>> }
+  | { type: 'removeOpening'; id: string }
   | { type: 'room'; value: Partial<Room> }
   | { type: 'materials'; value: Partial<Materials> }
   | { type: 'load'; value: Kitchen }
@@ -55,6 +62,13 @@ export function wallId(): string {
   counter += 1;
   return `wall-${Date.now().toString(36)}-${counter}`;
 }
+
+export function openingId(kind: OpeningKind): string {
+  counter += 1;
+  return `${kind}-${Date.now().toString(36)}-${counter}`;
+}
+
+export { OPENING_LIMITS } from '@/lib/cabinet-rules';
 
 export { clampWallLength as clampWall } from '@/lib/cabinet-rules';
 
@@ -222,6 +236,56 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
       if (kitchen.walls.length <= 1) return kitchen;
       const walls = kitchen.walls.filter((w) => w.id !== action.wallId);
       return walls.length === kitchen.walls.length ? kitchen : { ...kitchen, walls };
+    }
+
+    case 'addOpening': {
+      const index = kitchen.walls.findIndex((w) => w.id === action.wallId);
+      if (index < 0) return kitchen;
+      const wall = kitchen.walls[index];
+      const spec = OPENING_DEFAULT[action.kind];
+      const used = wall.openings ?? [];
+      // Новият отвор застава след последния, за да не се застъпват.
+      const x = used.length ? Math.max(...used.map((o) => o.x + o.width)) + 100 : 0;
+      const walls = [...kitchen.walls];
+      walls[index] = {
+        ...wall,
+        openings: [
+          ...used,
+          {
+            id: openingId(action.kind),
+            kind: action.kind,
+            x: Math.max(0, Math.min(x, Math.max(0, wall.length - spec.width))),
+            ...spec,
+          },
+        ],
+      };
+      return { ...kitchen, walls };
+    }
+
+    case 'opening': {
+      const index = kitchen.walls.findIndex((w) => w.openings?.some((o) => o.id === action.id));
+      if (index < 0) return kitchen;
+      const wall = kitchen.walls[index];
+      const walls = [...kitchen.walls];
+      walls[index] = {
+        ...wall,
+        openings: (wall.openings ?? []).map((o) =>
+          o.id === action.id ? clampOpening({ ...o, ...action.value }, wall.length) : o,
+        ),
+      };
+      return { ...kitchen, walls };
+    }
+
+    case 'removeOpening': {
+      const index = kitchen.walls.findIndex((w) => w.openings?.some((o) => o.id === action.id));
+      if (index < 0) return kitchen;
+      const wall = kitchen.walls[index];
+      const walls = [...kitchen.walls];
+      walls[index] = {
+        ...wall,
+        openings: (wall.openings ?? []).filter((o) => o.id !== action.id),
+      };
+      return { ...kitchen, walls };
     }
 
     case 'room': {

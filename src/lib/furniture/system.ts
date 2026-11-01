@@ -88,6 +88,40 @@ export interface Interval {
   width: number;
 }
 
+export type OpeningKind = 'door' | 'window';
+
+/**
+ * Отвор в стената. Мебелта го заобикаля — но само редът, чиято
+ * височина го пресича: шкаф над прозорец с висок парапет е възможен,
+ * шкаф в самата врата — не.
+ */
+export interface WallOpening {
+  id: string;
+  kind: OpeningKind;
+  /** Отстояние на левия ръб от началото на стената */
+  x: number;
+  width: number;
+  /** Долен ръб над пода. Врата: 0. Прозорец: парапетът. */
+  bottom: number;
+  height: number;
+}
+
+/** Пресичат ли се два отсечени интервала по височина. */
+function overlapsRow(opening: WallOpening, row: SystemRow): boolean {
+  return opening.bottom < row.bottom + row.height && row.bottom < opening.bottom + opening.height;
+}
+
+/** Отворите, които пречат на този ред, като заети участъци. */
+export function openingBlocks<K extends string, R extends string>(
+  system: FurnitureSystem<K, R>,
+  row: R,
+  openings: WallOpening[] = [],
+): Interval[] {
+  return openings
+    .filter((o) => overlapsRow(o, system.rows[row]))
+    .map((o) => ({ x: o.x, width: o.width }));
+}
+
 /** Най-близката допустима ширина за даден модул. */
 export function nearestWidth<K extends string, R extends string>(
   system: FurnitureSystem<K, R>,
@@ -136,31 +170,52 @@ export function rowStatus(used: number, available: number): RowStatus {
   return { used, available, state: 'over', diff: -diff };
 }
 
+/** Какво заема място в един ред, освен самите му модули. */
+export function rowBlocks<K extends string, R extends string>(
+  system: FurnitureSystem<K, R>,
+  row: R,
+  floorRow: SystemModuleInstance<K>[],
+  openings: WallOpening[] = [],
+): Interval[] {
+  const blocks = openingBlocks(system, row, openings);
+
+  // Модул с `fullHeight` (кухненската колона) заема цялата височина,
+  // затова реже редовете над себе си, но не и своя собствен.
+  if (row !== system.rowOrder[0]) {
+    let x = 0;
+    for (const m of floorRow) {
+      if (system.modules[m.kind].fullHeight) blocks.push({ x, width: m.width });
+      x += m.width;
+    }
+  }
+
+  return blocks.sort((a, b) => a.x - b.x);
+}
+
+/** Участъците, които остават свободни след заетите. */
+export function freeAround(blocks: Interval[], totalLength: number): Interval[] {
+  const intervals: Interval[] = [];
+  let cursor = 0;
+  for (const b of [...blocks].sort((a, c) => a.x - c.x)) {
+    if (b.x > cursor) intervals.push({ x: cursor, width: b.x - cursor });
+    cursor = Math.max(cursor, b.x + b.width);
+  }
+  if (totalLength > cursor) intervals.push({ x: cursor, width: totalLength - cursor });
+  return intervals;
+}
+
 /**
- * Свободните участъци в ред над блокиращите модули. Модул с
- * `fullHeight` (кухненската колона) заема цялата височина, затова
- * горните редове се нареждат само в празнините около него.
+ * Свободните участъци в ред: около отворите в стената и около
+ * модулите, които заемат цялата височина.
  */
 export function freeIntervals<K extends string, R extends string>(
   system: FurnitureSystem<K, R>,
   floorRow: SystemModuleInstance<K>[],
   totalLength: number,
+  openings: WallOpening[] = [],
+  row: R = system.rowOrder[system.rowOrder.length - 1],
 ): Interval[] {
-  const blocks: Interval[] = [];
-  let x = 0;
-  for (const m of floorRow) {
-    if (system.modules[m.kind].fullHeight) blocks.push({ x, width: m.width });
-    x += m.width;
-  }
-
-  const intervals: Interval[] = [];
-  let cursor = 0;
-  for (const b of blocks) {
-    if (b.x > cursor) intervals.push({ x: cursor, width: b.x - cursor });
-    cursor = b.x + b.width;
-  }
-  if (totalLength > cursor) intervals.push({ x: cursor, width: totalLength - cursor });
-  return intervals;
+  return freeAround(rowBlocks(system, row, floorRow, openings), totalLength);
 }
 
 /**
@@ -204,14 +259,13 @@ export function placeWall<K extends string, R extends string>(
   length: number,
   rows: Record<R, SystemModuleInstance<K>[]>,
   counters: Record<string, number> = {},
+  openings: WallOpening[] = [],
 ): Record<R, PlacedModule<K, R>[]> {
-  const floorRowId = system.rowOrder[0];
-  const floorRow = rows[floorRowId] ?? [];
+  const floorRow = rows[system.rowOrder[0]] ?? [];
   const out = {} as Record<R, PlacedModule<K, R>[]>;
 
   for (const row of system.rowOrder) {
-    const intervals =
-      row === floorRowId ? [{ x: 0, width: length }] : freeIntervals(system, floorRow, length);
+    const intervals = freeAround(rowBlocks(system, row, floorRow, openings), length);
     out[row] = placeRow(system, rows[row] ?? [], row, intervals, counters);
   }
 
@@ -223,17 +277,17 @@ export function wallStatus<K extends string, R extends string>(
   system: FurnitureSystem<K, R>,
   length: number,
   rows: Record<R, SystemModuleInstance<K>[]>,
+  openings: WallOpening[] = [],
 ): Record<R, RowStatus> {
-  const floorRowId = system.rowOrder[0];
-  const floorRow = rows[floorRowId] ?? [];
+  const floorRow = rows[system.rowOrder[0]] ?? [];
   const out = {} as Record<R, RowStatus>;
 
   for (const row of system.rowOrder) {
     const used = (rows[row] ?? []).reduce((s, m) => s + m.width, 0);
-    const available =
-      row === floorRowId
-        ? length
-        : freeIntervals(system, floorRow, length).reduce((s, i) => s + i.width, 0);
+    const available = freeAround(rowBlocks(system, row, floorRow, openings), length).reduce(
+      (s, i) => s + i.width,
+      0,
+    );
     out[row] = rowStatus(used, available);
   }
 

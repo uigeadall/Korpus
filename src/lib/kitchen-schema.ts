@@ -23,6 +23,9 @@ import {
   WALL_SIDES,
   type WorktopType,
   WORKTOP_THICKNESS,
+  type WallOpening,
+  OPENING_DEFAULT,
+  clampOpening,
   clampRoom,
   clampWallLength,
   roomForWalls,
@@ -33,6 +36,7 @@ export const LIMITS = {
   /** Правоъгълна стая — по една стена на страна. */
   walls: 4,
   modulesPerRow: 40,
+  openingsPerWall: 6,
   colorLength: 60,
 } as const;
 
@@ -109,7 +113,49 @@ function parseWall(raw: unknown, index: number): Wall | string {
     }
   }
 
-  return { id, side, length: clampWallLength(length), base: rows.base, upper: rows.upper };
+  const openings: WallOpening[] = [];
+  if (raw.openings !== undefined) {
+    if (!Array.isArray(raw.openings)) return `стена ${index + 1}: отворите не са списък`;
+    if (raw.openings.length > LIMITS.openingsPerWall) {
+      return `стена ${index + 1}: повече от ${LIMITS.openingsPerWall} отвора`;
+    }
+    for (const [i, item] of raw.openings.entries()) {
+      const parsed = parseOpening(item, i, clampWallLength(length));
+      if (typeof parsed === 'string') return `стена ${index + 1}, ${parsed}`;
+      openings.push(parsed);
+    }
+  }
+
+  return {
+    id,
+    side,
+    length: clampWallLength(length),
+    base: rows.base,
+    upper: rows.upper,
+    openings,
+  };
+}
+
+/** Врата или прозорец. Размерите се вкарват в стената, не се отказват. */
+function parseOpening(raw: unknown, index: number, wallLength: number): WallOpening | string {
+  if (!isRecord(raw)) return `отвор ${index + 1}: не е обект`;
+  const kind = raw.kind === 'window' ? 'window' : raw.kind === 'door' ? 'door' : null;
+  if (!kind) return `отвор ${index + 1}: непознат вид „${String(raw.kind)}"`;
+
+  const spec = OPENING_DEFAULT[kind];
+  const num = (v: unknown, fallback: number) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
+
+  return clampOpening(
+    {
+      id: typeof raw.id === 'string' && raw.id.length <= 64 ? raw.id : `${kind}-${index + 1}`,
+      kind,
+      x: num(raw.x, 0),
+      width: num(raw.width, spec.width),
+      bottom: num(raw.bottom, spec.bottom),
+      height: num(raw.height, spec.height),
+    },
+    wallLength,
+  );
 }
 
 /** Стаята е по избор; подадена, минава през същите граници като в интерфейса. */

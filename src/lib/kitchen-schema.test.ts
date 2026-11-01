@@ -107,6 +107,32 @@ describe('стая и страни', () => {
     ).toContain('една и съща страна');
   });
 
+  it('чете отворите и ги вкарва в стената', () => {
+    const k = ok({
+      walls: [
+        {
+          length: 3600,
+          base: [],
+          openings: [
+            { kind: 'window', x: 600, width: 1200, bottom: 900, height: 1400 },
+            { kind: 'door', x: 99_999, width: 900 },
+          ],
+        },
+      ],
+    });
+    expect(k.walls[0].openings![0]).toMatchObject({ kind: 'window', x: 600, width: 1200 });
+    // Втората е избутана вътре в стената и взема височина по подразбиране.
+    expect(k.walls[0].openings![1]).toMatchObject({ kind: 'door', x: 2700, height: 2000 });
+  });
+
+  it('отказва непознат отвор и прекалено много отвори', () => {
+    expect(err({ walls: [{ length: 3600, openings: [{ kind: 'люк' }] }] })).toContain(
+      'непознат вид',
+    );
+    const many = Array.from({ length: LIMITS.openingsPerWall + 1 }, () => ({ kind: 'door' }));
+    expect(err({ walls: [{ length: 3600, openings: many }] })).toContain('отвора');
+  });
+
   it('непозната страна пада на реда по часовника', () => {
     const k = ok({
       walls: [

@@ -28,6 +28,7 @@ import {
 import { offerFileName } from '@/lib/pdf/names';
 import { KitchenDrawing } from './KitchenDrawing';
 import { MaterialsPanel } from './MaterialsPanel';
+import { OpeningsPanel } from './OpeningsPanel';
 import { ResultTabs } from './ResultTabs';
 import { RoomPlan } from './RoomPlan';
 import { RowEditor } from './RowEditor';
@@ -324,6 +325,13 @@ export function Configurator() {
               </span>
             </label>
           </section>
+
+          <OpeningsPanel
+            wallId={wall.id}
+            wallLength={wall.length}
+            openings={wall.openings ?? []}
+            dispatch={dispatch}
+          />
 
           <RowEditor
             row="base"

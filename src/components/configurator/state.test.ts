@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { DIM, computeKitchen, emptyKitchen } from '@/lib/cabinet-rules';
-import { type Action, clampWall, defaultWidth, migrate, reducer, sampleKitchen } from './state';
+import {
+  type Action,
+  OPENING_LIMITS,
+  clampWall,
+  defaultWidth,
+  migrate,
+  reducer,
+  sampleKitchen,
+} from './state';
 
 /** Действие без посочена стена отива в първата — спестява шум в тестовете. */
 type LooseAction =
@@ -274,6 +282,60 @@ describe('стените на стаята', () => {
     const one = reducer(k, { type: 'removeWall', wallId: second });
     expect(one.walls).toHaveLength(1);
     expect(reducer(one, { type: 'removeWall', wallId: one.walls[0].id! }).walls).toHaveLength(1);
+  });
+});
+
+describe('врати и прозорци', () => {
+  const withDoor = () => {
+    const k = run([]);
+    const id = k.walls[0].id!;
+    return reducer(k, { type: 'addOpening', wallId: id, kind: 'door' });
+  };
+
+  it('вратата влиза със стандартните си размери', () => {
+    const o = withDoor().walls[0].openings![0];
+    expect(o).toMatchObject({ kind: 'door', x: 0, width: 900, bottom: 0, height: 2000 });
+  });
+
+  it('вторият отвор застава след първия, не върху него', () => {
+    const k = withDoor();
+    const after = reducer(k, { type: 'addOpening', wallId: k.walls[0].id!, kind: 'window' });
+    const [first, second] = after.walls[0].openings!;
+    expect(second.x).toBeGreaterThanOrEqual(first.x + first.width);
+    expect(second).toMatchObject({ kind: 'window', bottom: 900 });
+  });
+
+  it('размерите се вкарват в стената', () => {
+    const k = withDoor();
+    const id = k.walls[0].openings![0].id;
+    const wide = reducer(k, { type: 'opening', id, value: { width: 99_999 } });
+    expect(wide.walls[0].openings![0].width).toBe(k.walls[0].length);
+
+    const far = reducer(k, { type: 'opening', id, value: { x: 99_999 } });
+    expect(far.walls[0].openings![0].x).toBe(k.walls[0].length - 900);
+
+    const tall = reducer(k, { type: 'opening', id, value: { height: 99_999 } });
+    expect(tall.walls[0].openings![0].height).toBe(OPENING_LIMITS.maxHeight);
+  });
+
+  it('отворът се маха по свой идентификатор, без да се казва коя стена', () => {
+    const k = withDoor();
+    const id = k.walls[0].openings![0].id;
+    expect(reducer(k, { type: 'removeOpening', id }).walls[0].openings).toEqual([]);
+  });
+
+  it('горният ред заобикаля прозореца', () => {
+    let k = run([
+      { type: 'add', row: 'upper', kind: 'upper' },
+      { type: 'add', row: 'upper', kind: 'upper' },
+    ]);
+    k = reducer(k, { type: 'addOpening', wallId: k.walls[0].id!, kind: 'window' });
+    const id = k.walls[0].openings![0].id;
+    k = reducer(k, { type: 'opening', id, value: { x: 600 } });
+
+    const placed = computeKitchen(k).placed[0].upper;
+    // Първият се събира преди прозореца, вторият минава след него.
+    expect(placed.map((m) => m.x)).toEqual([0, 1800]);
   });
 });
 

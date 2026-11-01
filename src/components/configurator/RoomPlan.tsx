@@ -159,6 +159,31 @@ export function RoomPlan({ room, walls, plan, activeWallId, onSelect }: Props) {
                 />
               ))}
 
+              {/* отворите прекъсват линията на стената */}
+              {pw.openings.map(({ opening, segment }) => (
+                <g key={opening.id}>
+                  <line
+                    x1={segment.x1}
+                    y1={segment.y1}
+                    x2={segment.x2}
+                    y2={segment.y2}
+                    stroke="var(--background)"
+                    strokeWidth={active ? 5 : 3.5}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <line
+                    x1={segment.x1}
+                    y1={segment.y1}
+                    x2={segment.x2}
+                    y2={segment.y2}
+                    stroke="var(--muted)"
+                    strokeWidth="1"
+                    strokeDasharray={opening.kind === 'window' ? undefined : '24 18'}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </g>
+              ))}
+
               {pw.modules.upper.map(({ module, rect }) => (
                 <rect
                   key={module.id}

@@ -13,6 +13,7 @@ import {
   heightMarks,
   ROW_SPLIT,
   moduleBox,
+  openingBox,
   rowAtHeight,
   swingTriangle,
   toSvgY,
@@ -271,5 +272,37 @@ describe('мащаб на текста', () => {
     // надписът стои на floorY + FLOOR_T + 330, плюс височината на шрифта
     const baseline = view.floorY + 90 + 330 + MAX_FONT_MM;
     expect(baseline).toBeLessThan(view.y + view.height);
+  });
+});
+
+describe('отвори в стената', () => {
+  const view = viewBoxFor(3600);
+
+  it('вратата стъпва на пода и стига до височината си', () => {
+    const box = openingBox(view, {
+      id: 'o1',
+      kind: 'door',
+      x: 1200,
+      width: 900,
+      bottom: 0,
+      height: 2000,
+    });
+    expect(box).toMatchObject({ x: 1200, width: 900, height: 2000, sillY: null });
+    expect(box.y).toBe(toSvgY(view, 2000));
+    expect(box.label).toBe('Врата 900');
+  });
+
+  it('прозорецът има парапет и надпис със своята ширина', () => {
+    const box = openingBox(view, {
+      id: 'o2',
+      kind: 'window',
+      x: 600,
+      width: 1200,
+      bottom: 900,
+      height: 1400,
+    });
+    expect(box.y).toBe(toSvgY(view, 2300));
+    expect(box.sillY).toBe(toSvgY(view, 900));
+    expect(box.label).toBe('Прозорец 1200');
   });
 });

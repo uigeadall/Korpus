@@ -69,8 +69,10 @@ import {
   type Interval,
   type PlacedModule as GenericPlaced,
   type RowStatus,
+  type OpeningKind,
   type SystemModule,
   type SystemModuleInstance,
+  type WallOpening,
   clampLength,
   freeIntervals,
   geometryOf,
@@ -95,7 +97,9 @@ export {
   numberParts,
   rowStatus,
   sideLength,
+  type OpeningKind,
   type PlanWall,
+  type WallOpening,
   type Room,
   type WallSide,
   type DoorLayout,
@@ -422,6 +426,41 @@ export interface Wall {
   length: number;
   base: KitchenModule[];
   upper: KitchenModule[];
+  /** Врати и прозорци в стената. Мебелта ги заобикаля. */
+  openings?: WallOpening[];
+}
+
+/** Стандартни отвори, докато не се измери на място. */ // ПРОВЕРИ
+export const OPENING_DEFAULT: Record<OpeningKind, { width: number; bottom: number; height: number }> =
+  {
+    door: { width: 900, bottom: 0, height: 2000 },
+    window: { width: 1200, bottom: 900, height: 1400 },
+  };
+
+export const OPENING_KIND_LABEL: Record<OpeningKind, string> = {
+  door: 'Врата',
+  window: 'Прозорец',
+};
+
+export const OPENING_LIMITS = {
+  minWidth: 300,
+  minHeight: 300,
+  /** Над тавана няма смисъл — чертежът свършва там. */
+  maxHeight: 2320,
+} as const;
+
+/** Вкарва отвора в стената: размерите са в граници, а той е вътре в нея. */
+export function clampOpening(o: WallOpening, wallLength: number): WallOpening {
+  const width = Math.max(OPENING_LIMITS.minWidth, Math.min(o.width, wallLength));
+  const height = Math.max(OPENING_LIMITS.minHeight, Math.min(o.height, OPENING_LIMITS.maxHeight));
+  const bottom = Math.max(0, Math.min(o.bottom, OPENING_LIMITS.maxHeight - height));
+  return {
+    ...o,
+    width,
+    height,
+    bottom,
+    x: Math.max(0, Math.min(o.x, wallLength - width)),
+  };
 }
 
 export interface Kitchen {
@@ -550,7 +589,12 @@ export interface KitchenResult {
  * само в празнините между (и около) колоните.
  */
 export function freeUpperIntervals(wall: Wall): Interval[] {
-  return freeIntervals(KITCHEN, wall.base, wall.length);
+  return freeIntervals(KITCHEN, wall.base, wall.length, wall.openings, 'upper');
+}
+
+/** Свободните участъци в долния ред — между вратите и прозорците до пода. */
+export function freeBaseIntervals(wall: Wall): Interval[] {
+  return freeIntervals(KITCHEN, wall.base, wall.length, wall.openings, 'base');
 }
 
 /** Номерира и позиционира модулите на една стена. */
@@ -558,11 +602,11 @@ export function placeWall(
   wall: Wall,
   counters: Record<string, number> = {},
 ): { base: PlacedModule[]; upper: PlacedModule[] } {
-  return placeWallIn(KITCHEN, wall.length, rowsOf(wall), counters);
+  return placeWallIn(KITCHEN, wall.length, rowsOf(wall), counters, wall.openings);
 }
 
 export function wallStatus(wall: Wall): { base: RowStatus; upper: RowStatus } {
-  return wallStatusIn(KITCHEN, wall.length, rowsOf(wall));
+  return wallStatusIn(KITCHEN, wall.length, rowsOf(wall), wall.openings);
 }
 
 /** Вертикалната геометрия на модул — за чертежа. */
@@ -582,6 +626,7 @@ export function kitchenPlan(
       side: wallSide(wall, i),
       length: wall.length,
       placed: result.placed[i],
+      openings: wall.openings,
     })),
   );
 }

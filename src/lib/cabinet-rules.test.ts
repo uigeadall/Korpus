@@ -11,6 +11,7 @@ import {
   doorLayout,
   drawerBoxParts,
   facadeParts,
+  freeBaseIntervals,
   freeUpperIntervals,
   hingeCount,
   MODULES,
@@ -377,6 +378,82 @@ describe('Ред и статус', () => {
     };
     const placed = placeWall(wall);
     expect(placed.upper.map((u) => u.x)).toEqual([0, 1200]);
+  });
+});
+
+describe('Врати и прозорци в стената', () => {
+  const door = { id: 'o1', kind: 'door' as const, x: 1200, width: 900, bottom: 0, height: 2000 };
+  const window = {
+    id: 'o2',
+    kind: 'window' as const,
+    x: 1200,
+    width: 1200,
+    bottom: 900,
+    height: 1400,
+  };
+
+  it('вратата реже и двата реда', () => {
+    const wall = { length: 3600, base: [], upper: [], openings: [door] };
+    expect(freeBaseIntervals(wall)).toEqual([
+      { x: 0, width: 1200 },
+      { x: 2100, width: 1500 },
+    ]);
+    expect(freeUpperIntervals(wall)).toEqual([
+      { x: 0, width: 1200 },
+      { x: 2100, width: 1500 },
+    ]);
+  });
+
+  it('прозорецът с парапет 900 оставя долния ред цял', () => {
+    const wall = { length: 3600, base: [], upper: [], openings: [window] };
+    expect(freeBaseIntervals(wall)).toEqual([{ x: 0, width: 3600 }]);
+    expect(freeUpperIntervals(wall)).toEqual([
+      { x: 0, width: 1200 },
+      { x: 2400, width: 1200 },
+    ]);
+  });
+
+  it('горните шкафове заобикалят прозореца сами', () => {
+    const wall = {
+      length: 3600,
+      base: [],
+      upper: [mod('upper', 600), mod('upper', 600), mod('upper', 600)],
+      openings: [window],
+    };
+    const placed = placeWall(wall);
+    // Два се събират преди прозореца, третият минава след него.
+    expect(placed.upper.map((u) => u.x)).toEqual([0, 600, 2400]);
+  });
+
+  it('заетостта се мери срещу стената без отвора', () => {
+    const wall = {
+      length: 3600,
+      base: [mod('door', 600)],
+      upper: [],
+      openings: [door],
+    };
+    expect(wallStatus(wall).base).toMatchObject({ available: 2700, state: 'left', diff: 2100 });
+  });
+
+  it('плотът и цокълът не минават през вратата', () => {
+    const kitchen = {
+      walls: [
+        {
+          length: 3600,
+          base: [mod('door', 600), mod('door', 600), mod('sink', 600)],
+          upper: [],
+          openings: [door],
+        },
+      ],
+      materials: { ...DEFAULT_MATERIALS },
+      rulesVersion: '1.0.0',
+    };
+    const r = computeKitchen(kitchen);
+    const placed = r.placed[0].base;
+    // Първите два се събират преди вратата, третият минава след нея.
+    expect(placed.map((m) => m.x)).toEqual([0, 600, 2100]);
+    const hw = (n: string) => r.hardware.find((h) => h.name === n)?.qty ?? 0;
+    expect(hw('Плот')).toBe(1800);
   });
 });
 

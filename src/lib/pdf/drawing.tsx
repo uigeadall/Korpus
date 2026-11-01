@@ -24,6 +24,7 @@ import {
   hatchLines,
   heightMarks,
   moduleBox,
+  openingBox,
   toSvgY,
   viewBoxFor,
 } from '@/lib/drawing';
@@ -123,6 +124,42 @@ export function PdfDrawing({ wall, placed, worktop, maxWidthPt, maxHeightPt }: P
           />
         </G>
       ))}
+
+      {/* врати и прозорци */}
+      {(wall.openings ?? []).map((o) => {
+        const box = openingBox(view, o);
+        return (
+          <G key={o.id}>
+            <Rect
+              x={box.x}
+              y={box.y}
+              width={box.width}
+              height={box.height}
+              fill="none"
+              stroke={MUTED}
+              strokeWidth={w(0.6)}
+              strokeDasharray={`${w(4)} ${w(2.5)}`}
+            />
+            {box.sillY !== null && (
+              <Line
+                x1={box.x}
+                y1={box.sillY}
+                x2={box.x + box.width}
+                y2={box.sillY}
+                stroke={MUTED}
+                strokeWidth={w(0.8)}
+              />
+            )}
+            <Text
+              x={box.x + box.width / 2}
+              y={box.y + box.height / 2 + fs(3)}
+              style={{ fontSize: fs(7), fill: MUTED, textAnchor: 'middle' }}
+            >
+              {box.label}
+            </Text>
+          </G>
+        );
+      })}
 
       {/* цокъл */}
       {runs((m) => m.kind === 'lgap').map((r) => (

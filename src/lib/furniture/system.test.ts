@@ -9,8 +9,10 @@ import { describe, expect, it } from 'vitest';
 import {
   type FurnitureSystem,
   clampLength,
+  freeAround,
   freeIntervals,
   geometryOf,
+  openingBlocks,
   moduleCounterpart,
   nearestWidth,
   placeWall,
@@ -134,6 +136,45 @@ describe('нареждане и номериране', () => {
     const second = placeWall(RACK, 1000, { lower: [mod('low', 600)], upper: [] }, counters);
     expect(first.lower[0].code).toBe('Н1');
     expect(second.lower[0].code).toBe('Н2');
+  });
+});
+
+describe('отвори в стената', () => {
+  // Долният ред е 0–900, горният 1000–1600.
+  const door = { id: 'd', kind: 'door' as const, x: 600, width: 900, bottom: 0, height: 2000 };
+  const window = { id: 'w', kind: 'window' as const, x: 600, width: 900, bottom: 950, height: 600 };
+
+  it('вратата реже и двата реда', () => {
+    expect(openingBlocks(RACK, 'lower', [door])).toEqual([{ x: 600, width: 900 }]);
+    expect(openingBlocks(RACK, 'upper', [door])).toEqual([{ x: 600, width: 900 }]);
+  });
+
+  it('висок прозорец реже само реда, който пресича', () => {
+    expect(openingBlocks(RACK, 'lower', [window])).toEqual([]);
+    expect(openingBlocks(RACK, 'upper', [window])).toEqual([{ x: 600, width: 900 }]);
+  });
+
+  it('модулите се нареждат около отвора, без да им се казва', () => {
+    const placed = placeWall(
+      RACK,
+      3000,
+      { lower: [mod('low', 400), mod('low', 600)], upper: [] },
+      {},
+      [door],
+    );
+    // Първият се събира преди вратата, вторият минава след нея.
+    expect(placed.lower.map((m) => m.x)).toEqual([0, 1500]);
+  });
+
+  it('заетостта се мери срещу стената без отворите', () => {
+    const status = wallStatus(RACK, 3000, { lower: [mod('low', 400)], upper: [] }, [door]);
+    expect(status.lower.available).toBe(2100);
+  });
+
+  it('застъпени отвори не се броят двойно', () => {
+    expect(freeAround([{ x: 0, width: 800 }, { x: 400, width: 600 }], 2000)).toEqual([
+      { x: 1000, width: 1000 },
+    ]);
   });
 });
 

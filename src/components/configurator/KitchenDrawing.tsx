@@ -35,6 +35,8 @@ import {
   formatMm,
   heightMarks,
   moduleBox,
+  type OpeningBox,
+  openingBox,
   toSvgY,
   viewBoxFor,
 } from '@/lib/drawing';
@@ -331,6 +333,11 @@ export function KitchenDrawing({
           onKeyDown={onWallKeyDown}
         />
 
+        {/* врати и прозорци — зад мебелта, за да личи, че тя ги заобикаля */}
+        {(wall.openings ?? []).map((o) => (
+          <Opening key={o.id} box={openingBox(view, o)} fs={fs} />
+        ))}
+
         {/* цокъл */}
         {plinthRuns.map((r) => (
           <rect
@@ -565,6 +572,47 @@ function Wall({
           )}
         </g>
       )}
+    </g>
+  );
+}
+
+/** Врата или прозорец: отвор в зида, с парапет при прозореца. */
+function Opening({ box, fs }: { box: OpeningBox; fs: (px: number) => number }) {
+  return (
+    <g>
+      <rect
+        x={box.x}
+        y={box.y}
+        width={box.width}
+        height={box.height}
+        fill="var(--background)"
+        stroke="var(--muted)"
+        strokeWidth="1.5"
+        strokeDasharray="40 24"
+        vectorEffect="non-scaling-stroke"
+      />
+      {box.sillY !== null && (
+        <line
+          x1={box.x}
+          y1={box.sillY}
+          x2={box.x + box.width}
+          y2={box.sillY}
+          stroke="var(--muted)"
+          strokeWidth="2"
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
+      {/* надписът е в средата на отвора — горе се бие с размерната верига */}
+      <text
+        x={box.x + box.width / 2}
+        y={box.y + box.height / 2 + fs(4)}
+        textAnchor="middle"
+        fontSize={fs(10)}
+        fill="var(--muted)"
+        className="font-mono"
+      >
+        {box.label}
+      </text>
     </g>
   );
 }
