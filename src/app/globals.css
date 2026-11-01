@@ -1,0 +1,122 @@
+@import "tailwindcss";
+
+/**
+ * Стил на чертожно бюро: светъл „каменен" фон, графитен текст,
+ * месингов акцент за размерите, милиметрова мрежа зад чертежите.
+ * Стойностите са по описанието в SPEC раздел 10 и подлежат на сверяване
+ * с прототипа, когато стане достъпен.
+ */
+
+:root {
+  --stone-50: #f7f6f3;
+  --stone-100: #efede8;
+  --stone-200: #e2dfd7;
+  --stone-300: #cfcabd;
+
+  --graphite-900: #1c1d1f;
+  --graphite-700: #3a3c40;
+  --graphite-500: #6b6e74;
+  --graphite-300: #a3a6ac;
+
+  --brass-600: #9a7636;
+  --brass-500: #b48c45;
+  --brass-400: #c9a55c;
+
+  --background: var(--stone-50);
+  --surface: #ffffff;
+  --surface-sunken: var(--stone-100);
+  --foreground: var(--graphite-900);
+  --muted: var(--graphite-500);
+  --border: var(--stone-200);
+  --accent: var(--brass-600);
+  --accent-contrast: #ffffff;
+  --danger: #a8372a;
+  --ok: #3f6b48;
+
+  /* Милиметрова хартия */
+  --grid-line: rgba(28, 29, 31, 0.06);
+  --grid-line-strong: rgba(28, 29, 31, 0.12);
+
+  --radius: 2px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #151618;
+    --surface: #1c1d20;
+    --surface-sunken: #121315;
+    --foreground: #ece9e2;
+    --muted: #9b9ea4;
+    --border: #2d2f33;
+    --accent: #cda45f;
+    --accent-contrast: #151618;
+    --danger: #d4766a;
+    --ok: #7fa98a;
+    --grid-line: rgba(236, 233, 226, 0.06);
+    --grid-line-strong: rgba(236, 233, 226, 0.12);
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
+
+  --font-display: var(--font-geologica);
+  --font-sans: var(--font-onest);
+  --font-mono: var(--font-jetbrains);
+
+  --radius-sheet: var(--radius);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+/** Милиметрова мрежа — фон под чертежи и hero. */
+.paper-grid {
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to right, var(--grid-line-strong) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line-strong) 1px, transparent 1px);
+  background-size:
+    8px 8px,
+    8px 8px,
+    40px 40px,
+    40px 40px;
+}
+
+/** Размери и номера — винаги моноспейс. */
+.dim {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
