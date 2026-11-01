@@ -115,6 +115,7 @@ export function Configurator() {
               selectedId={selectedId}
               onSelect={setSelectedId}
               onReorder={(id, toIndex) => dispatch({ type: 'reorder', id, toIndex })}
+              onWallLength={(value) => dispatch({ type: 'wallLength', value })}
             />
           </div>
 

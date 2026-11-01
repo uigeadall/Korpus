@@ -287,6 +287,12 @@ export interface Kitchen {
   rulesVersion: string;
 }
 
+/** Дължина на стената в допустимия диапазон, закръглена на стъпката. */
+export function clampWallLength(value: number): number {
+  const stepped = Math.round(value / DIM.WALL_STEP) * DIM.WALL_STEP;
+  return Math.min(DIM.WALL_MAX, Math.max(DIM.WALL_MIN, stepped));
+}
+
 export function emptyKitchen(length = 3600): Kitchen {
   return {
     walls: [{ length, base: [], upper: [] }],

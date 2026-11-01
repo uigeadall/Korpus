@@ -3,7 +3,7 @@
  */
 
 import {
-  DIM,
+  clampWallLength,
   type HingeSide,
   type Kitchen,
   type KitchenModule,
@@ -33,10 +33,7 @@ export function moduleId(kind: ModuleKind): string {
   return `${kind}-${Date.now().toString(36)}-${counter}`;
 }
 
-export function clampWall(value: number): number {
-  const stepped = Math.round(value / DIM.WALL_STEP) * DIM.WALL_STEP;
-  return Math.min(DIM.WALL_MAX, Math.max(DIM.WALL_MIN, stepped));
-}
+export { clampWallLength as clampWall } from '@/lib/cabinet-rules';
 
 /** Ширина по подразбиране: средната от каталога, за да не е винаги най-малката. */
 export function defaultWidth(kind: ModuleKind): number {
@@ -69,7 +66,7 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
       const wall = kitchen.walls[0];
       return {
         ...kitchen,
-        walls: [{ ...wall, length: clampWall(action.value) }, ...kitchen.walls.slice(1)],
+        walls: [{ ...wall, length: clampWallLength(action.value) }, ...kitchen.walls.slice(1)],
       };
     }
 

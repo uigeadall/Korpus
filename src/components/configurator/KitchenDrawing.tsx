@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   DIM,
+  clampWallLength,
   type PlacedModule,
   type RowId,
   type RowStatus,
@@ -20,6 +21,7 @@ import {
 } from '@/lib/cabinet-rules';
 import {
   type ChainSegment,
+  type ViewBox,
   DRAW_H,
   FLOOR_T,
   WALL_T,
@@ -43,19 +45,36 @@ interface Props {
   onSelect?: (id: string) => void;
   /** Преподреждане чрез влачене или стрелки. Без него чертежът е само за гледане. */
   onReorder?: (id: string, toIndex: number) => void;
+  /** Опъване на стената от чертежа. */
+  onWallLength?: (value: number) => void;
 }
 
-/** Модулът, който се влачи в момента. */
-interface Drag {
-  id: string;
-  row: RowId;
-  /** Разстояние от показалеца до левия ръб на модула, мм */
-  grab: number;
-  /** Текущ ляв ръб под показалеца, мм */
-  x: number;
-  /** Влачено ли е достатъчно, за да не брои за клик */
-  moved: boolean;
-}
+/** Какво се влачи в момента. */
+type Drag =
+  | {
+      kind: 'module';
+      id: string;
+      row: RowId;
+      /** Разстояние от показалеца до левия ръб на модула, мм */
+      grab: number;
+      /** Текущ ляв ръб под показалеца, мм */
+      x: number;
+      /** Влачено ли е достатъчно, за да не брои за клик */
+      moved: boolean;
+    }
+  | {
+      kind: 'wall';
+      /** Екранно X в началото на влаченето */
+      startClientX: number;
+      /** Дължината на стената в началото */
+      startLength: number;
+      /**
+       * Милиметри на пиксел, заснети в началото. Чертежът се побира по
+       * ширина, така че докато стената расте, мащабът се мени; ако смятаме
+       * от текущия мащаб, стената избягва до максимума от едно движение.
+       */
+      mmPerPx: number;
+    };
 
 /** Колко мм трябва да се помръдне, преди да се смята за влачене, а не клик. */
 const DRAG_THRESHOLD = 15;
@@ -92,6 +111,7 @@ export function KitchenDrawing({
   selectedId,
   onSelect,
   onReorder,
+  onWallLength,
 }: Props) {
   const { ref, width: pxWidth } = useWidth<HTMLDivElement>();
   const svgRef = useRef<SVGSVGElement>(null);
@@ -140,11 +160,31 @@ export function KitchenDrawing({
     if (!onReorder || !svgRef.current) return;
     const x = toMm(svgRef.current, e.clientX, e.clientY);
     svgRef.current.setPointerCapture(e.pointerId);
-    setDrag({ id: m.id, row, grab: x - m.x, x: m.x, moved: false });
+    setDrag({ kind: 'module', id: m.id, row, grab: x - m.x, x: m.x, moved: false });
+  };
+
+  const startWallDrag = (e: React.PointerEvent) => {
+    if (!onWallLength || !svgRef.current) return;
+    const ctm = svgRef.current.getScreenCTM();
+    if (!ctm?.a) return;
+    svgRef.current.setPointerCapture(e.pointerId);
+    setDrag({
+      kind: 'wall',
+      startClientX: e.clientX,
+      startLength: wall.length,
+      mmPerPx: 1 / ctm.a,
+    });
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
     if (!drag || !svgRef.current) return;
+    if (drag.kind === 'wall') {
+      e.preventDefault();
+      const delta = (e.clientX - drag.startClientX) * drag.mmPerPx;
+      onWallLength?.(clampWallLength(drag.startLength + delta));
+      return;
+    }
+
     const left = toMm(svgRef.current, e.clientX, e.clientY) - drag.grab;
     const row = placed[drag.row];
     const dragged = row.find((m) => m.id === drag.id);
@@ -159,6 +199,18 @@ export function KitchenDrawing({
     window.getSelection()?.removeAllRanges();
     const to = dropIndex(row, drag.id, left);
     if (to !== row.indexOf(dragged)) onReorder?.(drag.id, to);
+  };
+
+  /** Стрелки върху дръжката на стената: 10 мм, с Shift — 100 мм. */
+  const onWallKeyDown = (e: React.KeyboardEvent) => {
+    const step = e.shiftKey ? 100 : DIM.WALL_STEP;
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      onWallLength?.(clampWallLength(wall.length - step));
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      onWallLength?.(clampWallLength(wall.length + step));
+    }
   };
 
   const endDrag = () => setDrag(null);
@@ -178,7 +230,9 @@ export function KitchenDrawing({
     }
   };
 
-  const dragged = drag ? placed[drag.row].find((m) => m.id === drag.id) : undefined;
+  const moduleDrag = drag?.kind === 'module' ? drag : undefined;
+  const dragged = moduleDrag ? placed[moduleDrag.row].find((m) => m.id === moduleDrag.id) : undefined;
+  const resizing = drag?.kind === 'wall';
 
   return (
     <div ref={ref} className="w-full overflow-hidden">
@@ -187,7 +241,7 @@ export function KitchenDrawing({
         viewBox={view.value}
         // touch-action важи само за самия <svg>, не за групите вътре в него
         className={`block w-full h-auto select-none [touch-action:pan-y] [-webkit-tap-highlight-color:transparent] ${
-          drag?.moved ? 'cursor-grabbing' : ''
+          moduleDrag?.moved ? 'cursor-grabbing' : resizing ? 'cursor-ew-resize' : ''
         }`}
         // без нативното влачене на SVG като картинка — Safari оцветява целия чертеж
         onDragStart={(e) => e.preventDefault()}
@@ -256,29 +310,18 @@ export function KitchenDrawing({
           />
         </g>
 
-        {/* стени в разрез */}
-        {[-WALL_T, wall.length].map((x) => (
-          <g key={x}>
-            <rect
-              x={x}
-              y={toSvgY(view, DRAW_H)}
-              width={WALL_T}
-              height={DRAW_H}
-              fill="url(#hatch)"
-              opacity="0.7"
-            />
-            <rect
-              x={x}
-              y={toSvgY(view, DRAW_H)}
-              width={WALL_T}
-              height={DRAW_H}
-              fill="none"
-              stroke="var(--foreground)"
-              strokeWidth="1"
-              vectorEffect="non-scaling-stroke"
-            />
-          </g>
-        ))}
+        {/* стени в разрез; дясната се хваща и опъва */}
+        <Wall x={-WALL_T} view={view} />
+        <Wall
+          x={wall.length}
+          view={view}
+          resizable={Boolean(onWallLength)}
+          resizing={resizing}
+          length={wall.length}
+          fs={fs}
+          onGrab={startWallDrag}
+          onKeyDown={onWallKeyDown}
+        />
 
         {/* цокъл */}
         {plinthRuns.map((r) => (
@@ -316,7 +359,7 @@ export function KitchenDrawing({
             // Модулът се вади от реда чак когато наистина се влачи: ако го
             // заменим още на pointerdown, DOM възелът се сменя между
             // натискане и пускане и кликът за избор не се случва.
-            m.id === drag?.id && drag.moved ? null : (
+            m.id === moduleDrag?.id && moduleDrag.moved ? null : (
               <Module
                 key={m.id}
                 view={view}
@@ -334,7 +377,7 @@ export function KitchenDrawing({
         )}
 
         {/* влаченият модул: мястото му и самият той, нарисуван отгоре */}
-        {drag?.moved && dragged && (
+        {moduleDrag?.moved && dragged && (
           <>
             <rect
               x={dragged.x}
@@ -352,13 +395,13 @@ export function KitchenDrawing({
               m={dragged}
               fs={fs}
               selected
-              over={overflow[drag.row] && dragged.x + dragged.width > wall.length}
+              over={overflow[moduleDrag.row] && dragged.x + dragged.width > wall.length}
               draggable
               dragging
-              offsetX={drag.moved ? drag.x - dragged.x : 0}
+              offsetX={moduleDrag.x - dragged.x}
               onSelect={onSelect}
-              onGrab={(e) => startDrag(dragged, drag.row, e)}
-              onKeyDown={(e) => onModuleKeyDown(dragged, drag.row, e)}
+              onGrab={(e) => startDrag(dragged, moduleDrag.row, e)}
+              onKeyDown={(e) => onModuleKeyDown(dragged, moduleDrag.row, e)}
             />
           </>
         )}
@@ -431,6 +474,92 @@ export function KitchenDrawing({
 }
 
 /* ------------------------------------------------------------------ */
+
+/**
+ * Стена в разрез. Дясната носи дръжка — хваща се и се опъва, за да се
+ * смени дължината на стената направо от чертежа.
+ */
+function Wall({
+  x,
+  view,
+  resizable = false,
+  resizing = false,
+  length,
+  fs,
+  onGrab,
+  onKeyDown,
+}: {
+  x: number;
+  view: ViewBox;
+  resizable?: boolean;
+  resizing?: boolean;
+  length?: number;
+  fs?: (px: number) => number;
+  onGrab?: (e: React.PointerEvent) => void;
+  onKeyDown?: (e: React.KeyboardEvent) => void;
+}) {
+  const top = toSvgY(view, DRAW_H);
+  const gripY = toSvgY(view, DRAW_H / 2);
+  const color = resizing ? 'var(--accent)' : 'var(--foreground)';
+
+  return (
+    <g
+      onPointerDown={resizable ? onGrab : undefined}
+      onKeyDown={resizable ? onKeyDown : undefined}
+      tabIndex={resizable ? 0 : undefined}
+      className={resizable ? 'cursor-ew-resize' : undefined}
+      role={resizable ? 'slider' : undefined}
+      aria-label={resizable ? 'Дължина на стената, стрелките я променят' : undefined}
+      aria-valuenow={resizable ? length : undefined}
+      aria-valuemin={resizable ? DIM.WALL_MIN : undefined}
+      aria-valuemax={resizable ? DIM.WALL_MAX : undefined}
+      aria-valuetext={resizable && length ? `${formatMm(length)} мм` : undefined}
+    >
+      <rect x={x} y={top} width={WALL_T} height={DRAW_H} fill="url(#hatch)" opacity="0.7" />
+      <rect
+        x={x}
+        y={top}
+        width={WALL_T}
+        height={DRAW_H}
+        fill={resizing ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'none'}
+        stroke={color}
+        strokeWidth={resizing ? 2 : 1}
+        vectorEffect="non-scaling-stroke"
+      />
+
+      {resizable && (
+        <g pointerEvents="none">
+          {/* рифел по средата на стената */}
+          {[-18, 0, 18].map((d) => (
+            <line
+              key={d}
+              x1={x + WALL_T / 2 + d}
+              y1={gripY - 130}
+              x2={x + WALL_T / 2 + d}
+              y2={gripY + 130}
+              stroke="var(--accent)"
+              strokeWidth="1.5"
+              vectorEffect="non-scaling-stroke"
+              opacity={resizing ? 1 : 0.8}
+            />
+          ))}
+          {fs && (
+            <text
+              x={x + WALL_T / 2}
+              y={gripY - 180}
+              textAnchor="middle"
+              fontSize={fs(10)}
+              fill="var(--accent)"
+              className="font-mono"
+            >
+              ↔
+            </text>
+          )}
+        </g>
+      )}
+    </g>
+  );
+}
 
 function Module({
   view,
