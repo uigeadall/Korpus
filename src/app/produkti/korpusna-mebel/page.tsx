@@ -1,6 +1,9 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { Card, Cta, PageHeader, Placeholder, Section, Shell } from '@/components/site/ui';
+import { ProjectCard } from '@/components/site/portfolio';
 import { MAIN_LINE } from '@/content/products';
+import { publishedProjects } from '@/content/portfolio';
 import { DIM } from '@/lib/cabinet-rules';
 
 export const metadata: Metadata = {
@@ -23,6 +26,8 @@ const MATERIALS = [
 ];
 
 export default function MainLinePage() {
+  const projects = publishedProjects();
+
   return (
     <Shell>
       <PageHeader eyebrow="Основна линия" title={MAIN_LINE.title} lead={MAIN_LINE.lead} />
@@ -65,14 +70,26 @@ export default function MainLinePage() {
       </Section>
 
       <Section caption="Реализирани проекти">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Placeholder label="Снимка от обект — предстои" />
-          <Placeholder label="Снимка от обект — предстои" />
-          <Placeholder label="Снимка от обект — предстои" />
-        </div>
+        {projects.length > 0 ? (
+          <div className="grid gap-6 sm:grid-cols-3">
+            {projects.slice(0, 3).map((project) => (
+              <ProjectCard key={project.slug} project={project} />
+            ))}
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Placeholder label="Снимка от обект — предстои" />
+            <Placeholder label="Снимка от обект — предстои" />
+            <Placeholder label="Снимка от обект — предстои" />
+          </div>
+        )}
         <p className="mt-4 text-xs text-muted">
           Показваме само наши обекти. Докато нямаме снимки от завършени проекти, тук стоят
-          празни места вместо чужди кадри.
+          празни места вместо чужди кадри.{' '}
+          <Link href="/portfolio" className="text-accent underline underline-offset-4">
+            Портфолио
+          </Link>
+          .
         </p>
       </Section>
 

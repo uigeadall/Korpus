@@ -1,5 +1,8 @@
 import type { Metadata } from 'next';
-import { Cta, PageHeader, Placeholder, Section, Shell } from '@/components/site/ui';
+import Link from 'next/link';
+import { Cta, PageHeader, Section, Shell } from '@/components/site/ui';
+import { ProjectCard } from '@/components/site/portfolio';
+import { EXAMPLE_PROJECT, SCOPE_LABELS, publishedProjects } from '@/content/portfolio';
 
 export const metadata: Metadata = {
   title: 'Портфолио',
@@ -7,6 +10,8 @@ export const metadata: Metadata = {
 };
 
 export default function PortfolioPage() {
+  const projects = publishedProjects();
+
   return (
     <Shell>
       <PageHeader
@@ -16,21 +21,53 @@ export default function PortfolioPage() {
       />
 
       <Section>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {['Кухня', 'Гардероб', 'Цяло жилище'].map((label) => (
-            <Placeholder key={label} label={`${label} — предстои`} />
-          ))}
-        </div>
+        {projects.length > 0 ? (
+          <>
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {projects.map((project) => (
+                <ProjectCard key={project.slug} project={project} />
+              ))}
+            </div>
+            <p className="mt-8 text-xs text-muted">
+              {projects.length} проекта. Всеки отваря страница с параметрите и материалите.
+            </p>
+          </>
+        ) : (
+          <div className="max-w-2xl space-y-4 text-sm leading-relaxed text-muted">
+            <p>
+              Галерията още е празна. Пълни се от админския панел, когато първите обекти са готови и
+              заснети.
+            </p>
+            <p>
+              Няма да я напълним със стокови снимки на чужди кухни. Докато нямаме свои, предпочитаме
+              да си личи, че мястото е празно.
+            </p>
+            <p className="text-foreground">
+              Как ще изглежда един проект се вижда на{' '}
+              <Link
+                href={`/portfolio/${EXAMPLE_PROJECT.slug}`}
+                className="text-accent underline underline-offset-4"
+              >
+                примерната страница
+              </Link>
+              .
+            </p>
+          </div>
+        )}
+      </Section>
 
-        <div className="mt-8 max-w-2xl space-y-3 text-sm leading-relaxed text-muted">
-          <p>
-            Галерията се пълни от админския панел, когато първите обекти са готови и заснети.
-          </p>
-          <p>
-            Няма да я напълним със стокови снимки на чужди кухни. Докато нямаме свои,
-            предпочитаме да си личи, че мястото е празно.
-          </p>
-        </div>
+      <Section caption="Какво ще показваме">
+        <ul className="grid gap-4 text-sm text-muted sm:grid-cols-2 lg:grid-cols-3">
+          {Object.values(SCOPE_LABELS).map((label) => (
+            <li key={label} className="border-t border-border pt-3">
+              {label}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-6 max-w-2xl text-xs leading-relaxed text-muted">
+          За всеки обект: няколко кадъра, габаритите, плотът, фасадите и механизмите. Без име и
+          адрес на клиента.
+        </p>
       </Section>
 
       <section className="py-12">
