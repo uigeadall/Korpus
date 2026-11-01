@@ -16,6 +16,14 @@ import {
 } from '@/lib/cabinet-rules';
 import { formatMm } from '@/lib/drawing';
 import {
+  type Point,
+  calibrate,
+  clampOpacity,
+  fitUnderlay,
+  moveUnderlay,
+  scaleUnderlay,
+} from '@/lib/furniture/underlay';
+import {
   CABINET_COLUMNS,
   EXPORT_COLUMNS,
   type ExportView,
@@ -29,8 +37,9 @@ import { offerFileName } from '@/lib/pdf/names';
 import { KitchenDrawing } from './KitchenDrawing';
 import { MaterialsPanel } from './MaterialsPanel';
 import { OpeningsPanel } from './OpeningsPanel';
+import { UnderlayPanel, type UnderlayState } from './UnderlayPanel';
 import { ResultTabs } from './ResultTabs';
-import { RoomPlan } from './RoomPlan';
+import { RoomPlan, type PlanMode } from './RoomPlan';
 import { RowEditor } from './RowEditor';
 import { WallTabs } from './WallTabs';
 import { type Action, clampWall, loadLocal, reducer, sampleKitchen, saveLocal } from './state';
@@ -91,6 +100,41 @@ export function Configurator() {
   const wall = kitchen.walls[activeIndex];
   const placed = result.placed[activeIndex];
   const status = result.rowStatus[activeIndex];
+
+  // Планът на жилището живее само в този екран: файлът не се качва
+  // никъде и не се записва, затова не е част от конфигурацията.
+  const [underlay, setUnderlay] = useState<UnderlayState | null>(null);
+  const [planMode, setPlanMode] = useState<PlanMode>('select');
+  const [points, setPoints] = useState<Point[]>([]);
+  const [realMm, setRealMm] = useState('1000');
+
+  const pickUnderlay = (file: File) => {
+    const src = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
+      setUnderlay({ src, name: file.name, aspect, rect: fitUnderlay(room, aspect), opacity: 0.45 });
+      setPlanMode('select');
+      setPoints([]);
+    };
+    img.onerror = () => URL.revokeObjectURL(src);
+    img.src = src;
+  };
+
+  const removeUnderlay = () => {
+    if (underlay) URL.revokeObjectURL(underlay.src);
+    setUnderlay(null);
+    setPlanMode('select');
+    setPoints([]);
+  };
+
+  const applyCalibration = () => {
+    const mm = Number(realMm);
+    if (!underlay || points.length !== 2 || !Number.isFinite(mm) || mm <= 0) return;
+    setUnderlay({ ...underlay, rect: calibrate(underlay.rect, points[0], points[1], mm) });
+    setPoints([]);
+    setPlanMode('select');
+  };
 
   // Нова стена става активната — иначе бутонът изглежда, че не прави нищо.
   const wallCount = useRef(kitchen.walls.length);
@@ -186,6 +230,13 @@ export function Configurator() {
                 setActiveWallId(id);
                 setSelectedId(null);
               }}
+              underlay={underlay}
+              mode={planMode}
+              points={points}
+              onPickPoint={(p) => setPoints((prev) => (prev.length >= 2 ? [p] : [...prev, p]))}
+              onMoveUnderlay={(dx, dy) =>
+                setUnderlay((u) => (u ? { ...u, rect: moveUnderlay(u.rect, dx, dy) } : u))
+              }
             />
             <div className="mt-3 border-t border-border pt-3">
               <WallTabs
@@ -325,6 +376,35 @@ export function Configurator() {
               </span>
             </label>
           </section>
+
+          <UnderlayPanel
+            underlay={underlay}
+            mode={planMode}
+            points={points}
+            realMm={realMm}
+            onPick={pickUnderlay}
+            onRemove={removeUnderlay}
+            onMode={setPlanMode}
+            onOpacity={(value) =>
+              setUnderlay((u) => (u ? { ...u, opacity: clampOpacity(value) } : u))
+            }
+            onScale={(factor) =>
+              setUnderlay((u) =>
+                u
+                  ? {
+                      ...u,
+                      rect: scaleUnderlay(u.rect, factor, {
+                        x: u.rect.x + u.rect.width / 2,
+                        y: u.rect.y + u.rect.height / 2,
+                      }),
+                    }
+                  : u,
+              )
+            }
+            onRealMm={setRealMm}
+            onApplyCalibration={applyCalibration}
+            onResetPoints={() => setPoints([])}
+          />
 
           <OpeningsPanel
             wallId={wall.id}

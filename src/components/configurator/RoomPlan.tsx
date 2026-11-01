@@ -11,8 +11,10 @@
  * Всичко е в милиметри в SVG координати, както и фронталният чертеж.
  */
 
+import { useRef, useState } from 'react';
 import type { ModuleKind, PlanWall, Room, RowId, Wall } from '@/lib/cabinet-rules';
 import { WALL_SIDE_LABEL, cornerClashes, sideLength } from '@/lib/cabinet-rules';
+import type { Point, UnderlayRect } from '@/lib/furniture/underlay';
 import { formatMm } from '@/lib/drawing';
 import { useElementWidth } from './useElementWidth';
 
@@ -20,28 +22,98 @@ import { useElementWidth } from './useElementWidth';
 const WALL_T = 120;
 const MARGIN = 700;
 
+export type PlanMode = 'select' | 'calibrate' | 'move';
+
+export interface PlanUnderlay {
+  src: string;
+  rect: UnderlayRect;
+  opacity: number;
+}
+
 interface Props {
   room: Room;
   walls: Wall[];
   plan: PlanWall<ModuleKind, RowId>[];
   activeWallId?: string;
   onSelect: (wallId: string) => void;
+  /** Подложка с план на жилището, ако клиентът е качил такъв. */
+  underlay?: PlanUnderlay | null;
+  mode?: PlanMode;
+  /** Точките, посочени при калибриране. */
+  points?: Point[];
+  onPickPoint?: (p: Point) => void;
+  onMoveUnderlay?: (dx: number, dy: number) => void;
 }
 
-export function RoomPlan({ room, walls, plan, activeWallId, onSelect }: Props) {
+/** Екранна точка → милиметри в координатите на плана. */
+function toPoint(svg: SVGSVGElement, clientX: number, clientY: number): Point {
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return { x: 0, y: 0 };
+  const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+  return { x: p.x, y: p.y };
+}
+
+export function RoomPlan({
+  room,
+  walls,
+  plan,
+  activeWallId,
+  onSelect,
+  underlay = null,
+  mode = 'select',
+  points = [],
+  onPickPoint,
+  onMoveUnderlay,
+}: Props) {
   const { ref, width: pxWidth } = useElementWidth<HTMLDivElement>();
+  const svgRef = useRef<SVGSVGElement>(null);
+  const dragFrom = useRef<Point | null>(null);
+  const [dragging, setDragging] = useState(false);
   const clashes = cornerClashes(plan);
   const viewW = room.width + 2 * MARGIN;
   const viewH = room.depth + 2 * MARGIN;
   const fs = (px: number) => (pxWidth ? (px * viewW) / pxWidth : px * 3);
 
+  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!svgRef.current) return;
+    const p = toPoint(svgRef.current, e.clientX, e.clientY);
+    if (mode === 'calibrate') {
+      onPickPoint?.(p);
+      return;
+    }
+    if (mode === 'move' && underlay) {
+      svgRef.current.setPointerCapture(e.pointerId);
+      dragFrom.current = p;
+      setDragging(true);
+    }
+  };
+
+  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!dragFrom.current || !svgRef.current) return;
+    const p = toPoint(svgRef.current, e.clientX, e.clientY);
+    onMoveUnderlay?.(p.x - dragFrom.current.x, p.y - dragFrom.current.y);
+    dragFrom.current = p;
+  };
+
+  const endDrag = () => {
+    dragFrom.current = null;
+    setDragging(false);
+  };
+
   return (
     <div ref={ref} className="w-full overflow-hidden">
       <svg
+        ref={svgRef}
         viewBox={`${-MARGIN} ${-MARGIN} ${viewW} ${viewH}`}
-        className="block h-auto w-full select-none"
+        className={`block h-auto w-full select-none ${
+          mode === 'calibrate' ? 'cursor-crosshair' : mode === 'move' ? 'cursor-grab' : ''
+        } ${dragging ? '[touch-action:none]' : ''}`}
         role="group"
         aria-label={`План на стаята ${formatMm(room.width)} на ${formatMm(room.depth)} мм`}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
       >
         <defs>
           <pattern id="planHatch" width="40" height="40" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -76,6 +148,21 @@ export function RoomPlan({ room, walls, plan, activeWallId, onSelect }: Props) {
           strokeWidth="1.5"
           vectorEffect="non-scaling-stroke"
         />
+
+        {/* планът на жилището — върху пода, под мебелта. Файлът стои
+            само в браузъра и не се качва никъде. */}
+        {underlay && (
+          <image
+            href={underlay.src}
+            x={underlay.rect.x}
+            y={underlay.rect.y}
+            width={underlay.rect.width}
+            height={underlay.rect.height}
+            opacity={underlay.opacity}
+            preserveAspectRatio="none"
+            style={{ pointerEvents: 'none' }}
+          />
+        )}
 
         {/* размерите на стаята */}
         <text
@@ -118,6 +205,8 @@ export function RoomPlan({ room, walls, plan, activeWallId, onSelect }: Props) {
               aria-label={label}
               aria-pressed={active}
               className="cursor-pointer"
+              // При калибриране и местене кликът е за подложката, не за стената.
+              style={mode === 'select' ? undefined : { pointerEvents: 'none' }}
               onClick={() => wall.id && onSelect(wall.id)}
               onKeyDown={(e) => {
                 if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -204,6 +293,26 @@ export function RoomPlan({ room, walls, plan, activeWallId, onSelect }: Props) {
             </g>
           );
         })}
+        {/* точките за калибриране и отсечката между тях */}
+        {points.length === 2 && (
+          <line
+            x1={points[0].x}
+            y1={points[0].y}
+            x2={points[1].x}
+            y2={points[1].y}
+            stroke="var(--accent)"
+            strokeWidth="2"
+            strokeDasharray="30 20"
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
+        {points.map((p, i) => (
+          <g key={`${p.x}-${p.y}-${i}`} style={{ pointerEvents: 'none' }}>
+            <circle cx={p.x} cy={p.y} r={60} fill="none" stroke="var(--accent)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+            <line x1={p.x - 100} y1={p.y} x2={p.x + 100} y2={p.y} stroke="var(--accent)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+            <line x1={p.x} y1={p.y - 100} x2={p.x} y2={p.y + 100} stroke="var(--accent)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+          </g>
+        ))}
       </svg>
 
       {plan.some((p) => p.tooLong) && (
