@@ -1,5 +1,15 @@
 /**
- * cabinet-rules.ts — всички размери, формули и правила за корпусна мебел.
+ * cabinet-rules.ts — правилата за **кухня**: размерите, модулите и
+ * формулите, по които се смята корпусната мебел на една стена.
+ *
+ * Общото за всяка корпусна система е извадено отделно:
+ *   - `furniture/system.ts` — какво е система: редове, модули, нареждане;
+ *   - `furniture/carcass.ts` — кутия, рафт, врати, панти, чекмеджета;
+ *   - `furniture/parts.ts`  — номериране, обединяване, плочи и кант.
+ *
+ * Тук остава само това, което е кухня: височини, каталог на модулите,
+ * плот, цокъл, аспиратор. Гардеробът (план 7.2) ще е втори файл до този,
+ * а не преписване на същото.
  *
  * Чист TypeScript без UI. Всяка запазена конфигурация пази `RULES_VERSION`,
  * с която е сметната, за да може стара конфигурация да се прочете коректно.
@@ -9,6 +19,73 @@
  *
  * Всички размери са в милиметри, освен ако името не казва друго.
  */
+
+import {
+  type CarpentryDims,
+  type DoorLayout,
+  type DrawerGeometry,
+  type DrawerSystem,
+  type HingeSide,
+  backPanel,
+  betweenSidesBox,
+  doorLayout as doorLayoutIn,
+  drawerBoxParts as drawerBoxPartsIn,
+  hingeCount,
+  onBottomBox,
+  shelf,
+} from './furniture/carcass';
+import {
+  type EdgeUsage,
+  type MaterialUsage,
+  type MergedPart,
+  type Part as GenericPart,
+  type PartMaterial,
+  type RawPart,
+  type SheetMaterial,
+  type SheetSpec,
+  MATERIAL_LABEL,
+  edgeUsage,
+  facadeArea,
+  materialUsage,
+  mergeParts,
+  mm,
+  numberParts,
+} from './furniture/parts';
+import {
+  type FurnitureSystem,
+  type Interval,
+  type PlacedModule as GenericPlaced,
+  type RowStatus,
+  type SystemModule,
+  type SystemModuleInstance,
+  clampLength,
+  freeIntervals,
+  geometryOf,
+  moduleCounterpart,
+  nearestWidth as nearestWidthIn,
+  placeWall as placeWallIn,
+  rowStatus,
+  wallStatus as wallStatusIn,
+} from './furniture/system';
+
+export {
+  MATERIAL_LABEL,
+  hingeCount,
+  mergeParts,
+  mm,
+  numberParts,
+  rowStatus,
+  type DoorLayout,
+  type DrawerSystem,
+  type EdgeUsage,
+  type HingeSide,
+  type MaterialUsage,
+  type MergedPart,
+  type PartMaterial,
+  type RawPart,
+  type RowStatus,
+  type SheetMaterial,
+};
 
 export const RULES_VERSION = '1.0.0';
 
@@ -83,8 +160,34 @@ export const DRAWER_BACK_H = [84, 167, 167] as const;
 /** Височина на кутията при сферични водачи, отгоре надолу */ // ПРОВЕРИ
 export const DRAWER_BOX_H = [90, 200, 200] as const;
 
+/** Дебелините и кантовете, с които се реже кухнята. */
+const CARPENTRY: CarpentryDims = {
+  T: DIM.T,
+  BACK: DIM.BACK,
+  EDGE_CORPUS: DIM.EDGE_CORPUS,
+};
+
+const DRAWERS: DrawerGeometry = {
+  nominalLength: DIM.NL,
+  backHeights: DRAWER_BACK_H,
+  boxHeights: DRAWER_BOX_H,
+};
+
+const SHEET: SheetSpec = {
+  length: DIM.SHEET_L,
+  width: DIM.SHEET_W,
+  waste: DIM.SHEET_WASTE,
+};
+
+const DOOR_GAPS = {
+  edge: DIM.GAP_EDGE,
+  between: DIM.GAP_BETWEEN,
+  /** До 600 мм модулът е с една врата, над това — с две. */
+  maxSingle: 600,
+};
+
 /* ------------------------------------------------------------------ */
-/* 2. Типове                                                           */
+/* 2. Кухнята като система                                             */
 /* ------------------------------------------------------------------ */
 
 export type ModuleKind =
@@ -100,20 +203,8 @@ export type ModuleKind =
   | 'ugap';
 
 export type RowId = 'base' | 'upper';
-export type HingeSide = 'left' | 'right';
 
-export interface ModuleSpec {
-  kind: ModuleKind;
-  row: RowId;
-  label: string;
-  /** Префикс при номерирането. null = не се номерира (ниши и празни места). */
-  code: 'Д' | 'К' | 'Г' | null;
-  widths: readonly number[];
-  /** Има ли корпус (ПДЧ детайли). */
-  hasCarcass: boolean;
-  /** Заема и долния, и горния ред. */
-  fullHeight?: boolean;
-}
+export type ModuleSpec = SystemModule<ModuleKind, RowId>;
 
 export const MODULES: Record<ModuleKind, ModuleSpec> = {
   column: {
@@ -124,6 +215,7 @@ export const MODULES: Record<ModuleKind, ModuleSpec> = {
     widths: [600],
     hasCarcass: true,
     fullHeight: true,
+    geometry: { y: DIM.LEG, height: DIM.COLUMN_H, depth: DIM.BASE_D },
   },
   door: {
     kind: 'door',
@@ -188,6 +280,11 @@ export const MODULES: Record<ModuleKind, ModuleSpec> = {
     code: 'Г',
     widths: [600, 900],
     hasCarcass: true,
+    geometry: {
+      y: DIM.UPPER_BOTTOM + DIM.UPPER_H - DIM.HOOD_H,
+      height: DIM.HOOD_H,
+      depth: DIM.UPPER_D,
+    },
   },
   ugap: {
     kind: 'ugap',
@@ -199,15 +296,44 @@ export const MODULES: Record<ModuleKind, ModuleSpec> = {
   },
 };
 
-/* --- Материали ---------------------------------------------------- */
+/**
+ * В какво се превръща модулът, ако се премести в другия ред.
+ * Липсващите остават в своя ред: мивката, фурната и съдомиялнята са
+ * вързани за ВиК, уреда и плота, аспираторът — за комина, а колоната
+ * заема и двата реда.
+ */
+export const ROW_COUNTERPART: Partial<Record<ModuleKind, ModuleKind>> = {
+  door: 'upper',
+  drawers: 'upper',
+  lgap: 'ugap',
+  upper: 'door',
+  ugap: 'lgap',
+};
 
-export type SheetMaterial = 'pdch18' | 'pdch16' | 'hdf3';
-export type PartMaterial = SheetMaterial | 'facade';
+/** Кухнята: два реда на една стена, долният носи плота и цокъла. */
+export const KITCHEN: FurnitureSystem<ModuleKind, RowId> = {
+  id: 'kitchen',
+  label: 'Кухня',
+  rowOrder: ['base', 'upper'],
+  rows: {
+    base: { label: 'Долен ред', bottom: DIM.LEG, height: DIM.BASE_H, depth: DIM.BASE_D },
+    upper: {
+      label: 'Горен ред',
+      bottom: DIM.UPPER_BOTTOM,
+      height: DIM.UPPER_H,
+      depth: DIM.UPPER_D,
+    },
+  },
+  modules: MODULES,
+  counterpart: ROW_COUNTERPART,
+  wall: { min: DIM.WALL_MIN, max: DIM.WALL_MAX, step: DIM.WALL_STEP },
+};
+
+/* --- Материали ---------------------------------------------------- */
 
 export type FacadeType = 'mdf-painted' | 'mdf-milled' | 'pdch-decor';
 export type WorktopType = 'laminate38' | 'quartz20' | 'sintered12' | 'granite30';
 export type OpeningType = 'handles' | 'push' | 'alu-profile';
-export type DrawerSystem = 'metal-box' | 'ball-bearing';
 
 export const WORKTOP_THICKNESS: Record<WorktopType, number> = {
   laminate38: 38,
@@ -240,13 +366,6 @@ export const DRAWER_SYSTEM_LABEL: Record<DrawerSystem, string> = {
   'ball-bearing': 'сферични водачи',
 };
 
-export const MATERIAL_LABEL: Record<PartMaterial, string> = {
-  pdch18: 'ПДЧ 18',
-  pdch16: 'ПДЧ 16',
-  hdf3: 'HDF 3',
-  facade: 'Фасада',
-};
-
 export interface Materials {
   /** Цвят / декор на корпуса */
   carcassColor: string;
@@ -266,13 +385,7 @@ export const DEFAULT_MATERIALS: Materials = {
 
 /* --- Конфигурация ------------------------------------------------- */
 
-export interface KitchenModule {
-  id: string;
-  kind: ModuleKind;
-  width: number;
-  /** Страна на пантите при единична врата. */
-  hingeSide?: HingeSide;
-}
+export type KitchenModule = SystemModuleInstance<ModuleKind>;
 
 export interface Wall {
   /** Дължина на стената */
@@ -287,39 +400,24 @@ export interface Kitchen {
   rulesVersion: string;
 }
 
-/**
- * В какво се превръща модулът, ако се премести в другия ред.
- * Липсващите остават в своя ред: мивката, фурната и съдомиялнята са
- * вързани за ВиК, уреда и плота, аспираторът — за комина, а колоната
- * заема и двата реда.
- */
-export const ROW_COUNTERPART: Partial<Record<ModuleKind, ModuleKind>> = {
-  door: 'upper',
-  drawers: 'upper',
-  lgap: 'ugap',
-  upper: 'door',
-  ugap: 'lgap',
-};
+/** Редовете на стената във вида, който системата разбира. */
+function rowsOf(wall: Wall): Record<RowId, KitchenModule[]> {
+  return { base: wall.base, upper: wall.upper };
+}
 
 /** Най-близката допустима ширина за даден модул. */
 export function nearestWidth(kind: ModuleKind, width: number): number {
-  const widths = MODULES[kind].widths;
-  return widths.reduce((best, w) =>
-    Math.abs(w - width) < Math.abs(best - width) ? w : best,
-  );
+  return nearestWidthIn(KITCHEN, kind, width);
 }
 
 /** Модулът, преместен в другия ред, или null, ако не може. */
 export function toOtherRow(m: KitchenModule): KitchenModule | null {
-  const kind = ROW_COUNTERPART[m.kind];
-  if (!kind) return null;
-  return { ...m, kind, width: nearestWidth(kind, m.width) };
+  return moduleCounterpart(KITCHEN, m);
 }
 
 /** Дължина на стената в допустимия диапазон, закръглена на стъпката. */
 export function clampWallLength(value: number): number {
-  const stepped = Math.round(value / DIM.WALL_STEP) * DIM.WALL_STEP;
-  return Math.min(DIM.WALL_MAX, Math.max(DIM.WALL_MIN, stepped));
+  return clampLength(KITCHEN, value);
 }
 
 export function emptyKitchen(length = 3600): Kitchen {
@@ -332,64 +430,14 @@ export function emptyKitchen(length = 3600): Kitchen {
 
 /* --- Резултат ----------------------------------------------------- */
 
-export interface Part {
-  /** Напр. Д2-03 */
-  no: string;
-  /** Код на шкафа, напр. Д2 */
-  cabinet: string;
-  cabinetKind: ModuleKind;
-  name: string;
-  material: PartMaterial;
-  length: number;
-  width: number;
-  qty: number;
-  /** Брой кантирани страни по дължината */
-  edgeL: 0 | 1 | 2;
-  /** Брой кантирани страни по ширината */
-  edgeW: 0 | 1 | 2;
-  /** Дебелина на канта, мм (0 = без кант) */
-  edgeThickness: number;
-  /** Обща дължина кант за реда, мм */
-  edgeMm: number;
-  note?: string;
-}
-
-export interface PlacedModule extends KitchenModule {
-  /** Код на шкафа (Д1, К1, Г1) или null при ниша/празно */
-  code: string | null;
-  /** Отстояние на левия ръб от левия край на стената */
-  x: number;
-  row: RowId;
-  spec: ModuleSpec;
-}
-
-export interface RowStatus {
-  used: number;
-  available: number;
-  /** 'exact' | 'left' (остават) | 'over' (надвишава) */
-  state: 'exact' | 'left' | 'over';
-  diff: number;
-}
+export type Part = GenericPart<ModuleKind>;
+export type PlacedModule = GenericPlaced<ModuleKind, RowId>;
 
 export interface HardwareLine {
   name: string;
   qty: number;
   unit: 'бр.' | 'мм' | 'компл.';
   note?: string;
-}
-
-export interface MaterialUsage {
-  material: SheetMaterial;
-  areaM2: number;
-  /** Площ + фира */
-  areaWithWasteM2: number;
-  sheets: number;
-}
-
-export interface EdgeUsage {
-  thickness: number;
-  label: string;
-  meters: number;
 }
 
 export interface Summary {
@@ -405,21 +453,6 @@ export interface Summary {
   worktopDepth: number;
   worktopHeight: number;
   plinthLength: number;
-}
-
-export interface MergedPart {
-  name: string;
-  material: PartMaterial;
-  length: number;
-  width: number;
-  qty: number;
-  edgeL: 0 | 1 | 2;
-  edgeW: 0 | 1 | 2;
-  edgeThickness: number;
-  edgeMm: number;
-  /** Номерата на обединените детайли */
-  numbers: string[];
-  note?: string;
 }
 
 export interface CabinetResult {
@@ -442,48 +475,7 @@ export interface KitchenResult {
 }
 
 /* ------------------------------------------------------------------ */
-/* 3. Помощни                                                          */
-/* ------------------------------------------------------------------ */
-
-/** Закръгля до 0.5 мм, за да не се трупат дълги дроби от /2. */
-export function mm(value: number): number {
-  return Math.round(value * 2) / 2;
-}
-
-function pad(n: number): string {
-  return String(n).padStart(2, '0');
-}
-
-function edgeLength(p: Omit<Part, 'no' | 'cabinet' | 'cabinetKind' | 'edgeMm'>): number {
-  if (!p.edgeThickness) return 0;
-  return (p.edgeL * p.length + p.edgeW * p.width) * p.qty;
-}
-
-/** Детайл преди номериране. */
-export interface RawPart {
-  name: string;
-  material: PartMaterial;
-  length: number;
-  width: number;
-  qty?: number;
-  edgeL?: 0 | 1 | 2;
-  edgeW?: 0 | 1 | 2;
-  edgeThickness?: number;
-  note?: string;
-}
-
-/** ПДЧ детайл: кант 0,8 по видимия преден ръб („1 по дължина"). */
-function corpus(p: RawPart): RawPart {
-  return { edgeL: 1, edgeW: 0, edgeThickness: DIM.EDGE_CORPUS, ...p };
-}
-
-/** HDF гръб: без кант. */
-function back(p: RawPart): RawPart {
-  return { edgeL: 0, edgeW: 0, edgeThickness: 0, ...p };
-}
-
-/* ------------------------------------------------------------------ */
-/* 4. Разположение на модулите                                         */
+/* 3. Разположение на модулите                                         */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -491,89 +483,25 @@ function back(p: RawPart): RawPart {
  * Колоната заема цялата височина, затова горните шкафове се нареждат
  * само в празнините между (и около) колоните.
  */
-export function freeUpperIntervals(wall: Wall): { x: number; width: number }[] {
-  const columns: { x: number; width: number }[] = [];
-  let x = 0;
-  for (const m of wall.base) {
-    if (m.kind === 'column') columns.push({ x, width: m.width });
-    x += m.width;
-  }
-
-  const intervals: { x: number; width: number }[] = [];
-  let cursor = 0;
-  for (const c of columns) {
-    if (c.x > cursor) intervals.push({ x: cursor, width: c.x - cursor });
-    cursor = c.x + c.width;
-  }
-  if (wall.length > cursor) intervals.push({ x: cursor, width: wall.length - cursor });
-  return intervals;
+export function freeUpperIntervals(wall: Wall): Interval[] {
+  return freeIntervals(KITCHEN, wall.base, wall.length);
 }
 
 /** Номерира и позиционира модулите на една стена. */
 export function placeWall(
   wall: Wall,
-  counters: { base: number; column: number; upper: number } = { base: 0, column: 0, upper: 0 },
+  counters: Record<string, number> = {},
 ): { base: PlacedModule[]; upper: PlacedModule[] } {
-  const base: PlacedModule[] = [];
-  let x = 0;
-  for (const m of wall.base) {
-    const spec = MODULES[m.kind];
-    let code: string | null = null;
-    if (spec.code === 'К') code = `К${++counters.column}`;
-    else if (spec.code === 'Д') code = `Д${++counters.base}`;
-    base.push({ ...m, code, x, row: 'base', spec });
-    x += m.width;
-  }
-
-  // Горните се нареждат последователно в свободните интервали между колоните.
-  const intervals = freeUpperIntervals(wall);
-  const upper: PlacedModule[] = [];
-  let ii = 0;
-  let ix = intervals[0]?.x ?? 0;
-  let remaining = intervals[0]?.width ?? wall.length;
-  for (const m of wall.upper) {
-    const spec = MODULES[m.kind];
-    if (remaining < m.width && ii + 1 < intervals.length) {
-      ii += 1;
-      ix = intervals[ii].x;
-      remaining = intervals[ii].width;
-    }
-    const code = spec.code === 'Г' ? `Г${++counters.upper}` : null;
-    upper.push({ ...m, code, x: ix, row: 'upper', spec });
-    ix += m.width;
-    remaining -= m.width;
-  }
-
-  return { base, upper };
-}
-
-export function rowStatus(used: number, available: number): RowStatus {
-  const diff = mm(available - used);
-  if (diff === 0) return { used, available, state: 'exact', diff: 0 };
-  if (diff > 0) return { used, available, state: 'left', diff };
-  return { used, available, state: 'over', diff: -diff };
+  return placeWallIn(KITCHEN, wall.length, rowsOf(wall), counters);
 }
 
 export function wallStatus(wall: Wall): { base: RowStatus; upper: RowStatus } {
-  const baseUsed = wall.base.reduce((s, m) => s + m.width, 0);
-  const upperUsed = wall.upper.reduce((s, m) => s + m.width, 0);
-  const upperAvailable = freeUpperIntervals(wall).reduce((s, i) => s + i.width, 0);
-  return {
-    base: rowStatus(baseUsed, wall.length),
-    upper: rowStatus(upperUsed, upperAvailable),
-  };
+  return wallStatusIn(KITCHEN, wall.length, rowsOf(wall));
 }
 
 /** Вертикалната геометрия на модул — за чертежа. */
 export function moduleGeometry(kind: ModuleKind): { y: number; height: number; depth: number } {
-  const spec = MODULES[kind];
-  if (kind === 'column') return { y: DIM.LEG, height: DIM.COLUMN_H, depth: DIM.BASE_D };
-  if (kind === 'hood') {
-    const top = DIM.UPPER_BOTTOM + DIM.UPPER_H;
-    return { y: top - DIM.HOOD_H, height: DIM.HOOD_H, depth: DIM.UPPER_D };
-  }
-  if (spec.row === 'upper') return { y: DIM.UPPER_BOTTOM, height: DIM.UPPER_H, depth: DIM.UPPER_D };
-  return { y: DIM.LEG, height: DIM.BASE_H, depth: DIM.BASE_D };
+  return geometryOf(KITCHEN, kind);
 }
 
 /** Горният ръб на долния ред, без плота. */
@@ -582,115 +510,102 @@ export function worktopHeight(worktop: WorktopType): number {
 }
 
 /* ------------------------------------------------------------------ */
-/* 5. Корпуси                                                          */
+/* 4. Корпуси                                                          */
 /* ------------------------------------------------------------------ */
 
-const T = DIM.T;
-
-/** Детайли на корпуса за един модул. */
+/** Детайли на корпуса за един кухненски модул. */
 export function carcassParts(kind: ModuleKind, W: number): RawPart[] {
-  const parts: RawPart[] = [];
-
   if (kind === 'column') {
-    // Дъното и таванът са между страниците.
-    parts.push(corpus({ name: 'Страница', material: 'pdch18', length: DIM.COLUMN_H, width: DIM.BASE_D, qty: 2 }));
-    parts.push(corpus({ name: 'Дъно', material: 'pdch18', length: W - 2 * T, width: DIM.BASE_D }));
-    parts.push(corpus({ name: 'Таван', material: 'pdch18', length: W - 2 * T, width: DIM.BASE_D }));
+    // Дъното и таванът са между страниците; рафтът над нишата е фиксиран.
+    const parts = betweenSidesBox(CARPENTRY, {
+      width: W,
+      height: DIM.COLUMN_H,
+      depth: DIM.BASE_D,
+      back: false,
+    });
     parts.push(
-      corpus({
+      shelf(CARPENTRY, {
         name: 'Рафт над нишата',
-        material: 'pdch18',
-        length: W - 2 * T,
-        width: DIM.BASE_D - 20,
+        width: W,
+        depth: DIM.BASE_D,
+        inset: 20,
+        fixed: true,
         note: `фиксиран, ниша ${DIM.COLUMN_NICHE}`,
       }),
     );
-    parts.push(back({ name: 'Гръб', material: 'hdf3', length: DIM.COLUMN_H - DIM.BACK, width: W - DIM.BACK }));
+    parts.push(backPanel(CARPENTRY, DIM.COLUMN_H, W));
     return parts;
   }
 
   if (kind === 'upper' || kind === 'hood') {
     const h = kind === 'hood' ? DIM.HOOD_H : DIM.UPPER_H;
-    const D = DIM.UPPER_D;
-    parts.push(corpus({ name: 'Страница', material: 'pdch18', length: h, width: D, qty: 2 }));
-    parts.push(
-      corpus({
-        name: 'Дъно',
-        material: 'pdch18',
-        length: W - 2 * T,
-        width: D,
-        note: kind === 'hood' ? 'изрез по каталога на аспиратора' : undefined,
-      }),
-    );
-    parts.push(corpus({ name: 'Таван', material: 'pdch18', length: W - 2 * T, width: D }));
+    const parts = betweenSidesBox(CARPENTRY, {
+      width: W,
+      height: h,
+      depth: DIM.UPPER_D,
+      back: false,
+      bottomNote: kind === 'hood' ? 'изрез по каталога на аспиратора' : undefined,
+    });
     if (kind === 'upper') {
-      parts.push(corpus({ name: 'Рафт', material: 'pdch18', length: W - 2 * T - 2, width: D - 20 }));
+      parts.push(shelf(CARPENTRY, { width: W, depth: DIM.UPPER_D, inset: 20 }));
     }
-    parts.push(back({ name: 'Гръб', material: 'hdf3', length: h - DIM.BACK, width: W - DIM.BACK }));
+    parts.push(backPanel(CARPENTRY, h, W));
     return parts;
   }
 
   // Долен корпус: страниците стъпват върху дъното, отгоре има два трегера.
   if (kind === 'door' || kind === 'drawers' || kind === 'sink' || kind === 'oven') {
-    const D = DIM.BASE_D;
-    parts.push(corpus({ name: 'Страница', material: 'pdch18', length: DIM.BASE_H - T, width: D, qty: 2 }));
-    parts.push(corpus({ name: 'Дъно', material: 'pdch18', length: W, width: D }));
-    parts.push(corpus({ name: 'Трегер', material: 'pdch18', length: W - 2 * T, width: DIM.LEG, qty: 2 }));
+    const parts = onBottomBox(CARPENTRY, {
+      width: W,
+      height: DIM.BASE_H,
+      depth: DIM.BASE_D,
+      railWidth: DIM.LEG,
+      back: false,
+    });
 
     if (kind === 'door') {
-      parts.push(corpus({ name: 'Рафт', material: 'pdch18', length: W - 2 * T - 2, width: D - 30 }));
+      parts.push(shelf(CARPENTRY, { width: W, depth: DIM.BASE_D, inset: 30 }));
     }
     if (kind === 'oven') {
       parts.push(
-        corpus({
+        shelf(CARPENTRY, {
           name: 'Фиксиран рафт под фурната',
-          material: 'pdch18',
-          length: W - 2 * T,
-          width: D - 20,
+          width: W,
+          depth: DIM.BASE_D,
+          inset: 20,
+          fixed: true,
           note: `ниша за фурна ${DIM.OVEN_NICHE}`,
         }),
       );
     }
     // Мивката и фурната са без гръб.
     if (kind === 'door' || kind === 'drawers') {
-      parts.push(back({ name: 'Гръб', material: 'hdf3', length: DIM.BASE_H - DIM.BACK, width: W - DIM.BACK }));
+      parts.push(backPanel(CARPENTRY, DIM.BASE_H, W));
     }
     return parts;
   }
 
   // dw, lgap, ugap — без корпус.
-  return parts;
+  return [];
 }
 
 /* ------------------------------------------------------------------ */
-/* 6. Фасади                                                           */
+/* 5. Фасади                                                           */
 /* ------------------------------------------------------------------ */
-
-export interface DoorLayout {
-  width: number;
-  count: 1 | 2;
-  sides: HingeSide[];
-}
 
 /**
  * Фуга 2 мм към края на модула от всяка страна, 3 мм между фасадите.
  * При W ≤ 600 една врата, при W > 600 две.
  */
 export function doorLayout(W: number, hingeSide: HingeSide = 'right'): DoorLayout {
-  const net = W - 2 * DIM.GAP_EDGE;
-  if (W <= 600) return { width: mm(net), count: 1, sides: [hingeSide] };
-  return { width: mm((net - DIM.GAP_BETWEEN) / 2), count: 2, sides: ['left', 'right'] };
+  return doorLayoutIn(W, hingeSide, DOOR_GAPS);
 }
 
-/** Панти с плавно затваряне според височината на вратата. */
-export function hingeCount(doorHeight: number): number {
-  if (doorHeight <= 1000) return 2;
-  if (doorHeight <= 1500) return 3;
-  if (doorHeight <= 2000) return 4;
-  return 5;
-}
-
-function facadeEdging(type: FacadeType): { edgeL: 0 | 1 | 2; edgeW: 0 | 1 | 2; edgeThickness: number } {
+function facadeEdging(type: FacadeType): {
+  edgeL: 0 | 1 | 2;
+  edgeW: 0 | 1 | 2;
+  edgeThickness: number;
+} {
   // Боядисаният МДФ е без кант. ПДЧ декор е с кант 2 мм по 4-те страни.
   if (type === 'pdch-decor') return { edgeL: 2, edgeW: 2, edgeThickness: DIM.EDGE_DECOR };
   return { edgeL: 0, edgeW: 0, edgeThickness: 0 };
@@ -804,83 +719,19 @@ export function facadeParts(m: KitchenModule, materials: Materials): RawPart[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* 7. Чекмеджета                                                       */
+/* 6. Чекмеджета                                                       */
 /* ------------------------------------------------------------------ */
 
 /**
- * Кутии на чекмеджетата. Вътрешна ширина LW = W − 2Т.
- * Всички стойности тук са `// ПРОВЕРИ` по каталога на механизма.
+ * Кутии на чекмеджетата по каталога на механизма.
+ * Всички стойности в `DRAWERS` са `// ПРОВЕРИ`.
  */
 export function drawerBoxParts(W: number, system: DrawerSystem): RawPart[] {
-  const LW = W - 2 * T;
-  const out: RawPart[] = [];
-
-  if (system === 'metal-box') {
-    out.push({
-      name: 'Дъно чекмедже',
-      material: 'pdch16',
-      length: LW - 75,
-      width: DIM.NL - 10,
-      qty: 3,
-      edgeL: 0,
-      edgeW: 0,
-      edgeThickness: 0,
-      note: 'метален борд',
-    });
-    DRAWER_BACK_H.forEach((h) => {
-      out.push({
-        name: 'Гръб чекмедже',
-        material: 'pdch16',
-        length: LW - 87,
-        width: h,
-        qty: 1,
-        edgeL: 1,
-        edgeW: 0,
-        edgeThickness: DIM.EDGE_CORPUS,
-        note: 'кант по горния ръб',
-      });
-    });
-    return out;
-  }
-
-  // Сферични водачи: кутия от ПДЧ 16 + HDF дъно.
-  DRAWER_BOX_H.forEach((hb) => {
-    out.push({
-      name: 'Страница кутия',
-      material: 'pdch16',
-      length: DIM.NL,
-      width: hb,
-      qty: 2,
-      edgeL: 1,
-      edgeW: 0,
-      edgeThickness: DIM.EDGE_CORPUS,
-    });
-    out.push({
-      name: 'Чело/гръб кутия',
-      material: 'pdch16',
-      length: LW - 26 - 32,
-      width: hb,
-      qty: 2,
-      edgeL: 1,
-      edgeW: 0,
-      edgeThickness: DIM.EDGE_CORPUS,
-    });
-  });
-  out.push({
-    name: 'Дъно кутия',
-    material: 'hdf3',
-    length: LW - 26,
-    width: DIM.NL,
-    qty: 3,
-    edgeL: 0,
-    edgeW: 0,
-    edgeThickness: 0,
-  });
-  return out;
+  return drawerBoxPartsIn(CARPENTRY, W, system, DRAWERS);
 }
 
 /* ------------------------------------------------------------------ */
-/* 8. Всички детайли на един модул                                     */
+/* 7. Всички детайли на един модул                                     */
 /* ------------------------------------------------------------------ */
 
 export function modulePartsRaw(m: KitchenModule, materials: Materials): RawPart[] {
@@ -889,33 +740,8 @@ export function modulePartsRaw(m: KitchenModule, materials: Materials): RawPart[
   return raw;
 }
 
-/** Номерира детайлите: <код>-<NN>, например Д2-03. */
-export function numberParts(code: string, kind: ModuleKind, raw: RawPart[]): Part[] {
-  let n = 0;
-  return raw.map((p) => {
-    const qty = p.qty ?? 1;
-    const part: Part = {
-      no: `${code}-${pad(++n)}`,
-      cabinet: code,
-      cabinetKind: kind,
-      name: p.name,
-      material: p.material,
-      length: mm(p.length),
-      width: mm(p.width),
-      qty,
-      edgeL: p.edgeL ?? 0,
-      edgeW: p.edgeW ?? 0,
-      edgeThickness: p.edgeThickness ?? 0,
-      edgeMm: 0,
-      note: p.note,
-    };
-    part.edgeMm = mm(edgeLength(part));
-    return part;
-  });
-}
-
 /* ------------------------------------------------------------------ */
-/* 9. Обков                                                            */
+/* 8. Обков                                                            */
 /* ------------------------------------------------------------------ */
 
 export function hardware(kitchen: Kitchen): HardwareLine[] {
@@ -969,12 +795,22 @@ export function hardware(kitchen: Kitchen): HardwareLine[] {
 
   const out: HardwareLine[] = [
     { name: 'Панти с плавно затваряне', qty: hinges, unit: 'бр.' },
-    { name: 'Механизъм за чекмедже', qty: drawerSets, unit: 'компл.', note: materials.drawers === 'metal-box' ? 'метален борд' : 'сферични водачи' },
+    {
+      name: 'Механизъм за чекмедже',
+      qty: drawerSets,
+      unit: 'компл.',
+      note: DRAWER_SYSTEM_LABEL[materials.drawers],
+    },
     { name: 'Подемен механизъм', qty: lifts, unit: 'бр.' },
     { name: 'Крака', qty: legs, unit: 'бр.' },
     { name: 'Окачвачи', qty: hangers, unit: 'бр.' },
     { name: 'Цокъл', qty: plinth, unit: 'мм' },
-    { name: 'Плот', qty: worktopLen, unit: 'мм', note: `${WORKTOP_LABEL[materials.worktop]}, дълбочина ${DIM.WORKTOP_D}` },
+    {
+      name: 'Плот',
+      qty: worktopLen,
+      unit: 'мм',
+      note: `${WORKTOP_LABEL[materials.worktop]}, дълбочина ${DIM.WORKTOP_D}`,
+    },
   ];
 
   if (materials.opening === 'handles') out.push({ name: 'Дръжки', qty: handles, unit: 'бр.' });
@@ -988,79 +824,16 @@ export function hardware(kitchen: Kitchen): HardwareLine[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* 10. Обединяване и обобщение                                         */
+/* 9. Обобщение                                                        */
 /* ------------------------------------------------------------------ */
 
-/** Обединява еднаквите детайли и изрежда номерата им. */
-export function mergeParts(parts: Part[]): MergedPart[] {
-  const map = new Map<string, MergedPart>();
-  for (const p of parts) {
-    const key = [p.name, p.material, p.length, p.width, p.edgeL, p.edgeW, p.edgeThickness, p.note ?? ''].join('|');
-    const found = map.get(key);
-    if (found) {
-      found.qty += p.qty;
-      found.edgeMm = mm(found.edgeMm + p.edgeMm);
-      found.numbers.push(p.no);
-    } else {
-      map.set(key, {
-        name: p.name,
-        material: p.material,
-        length: p.length,
-        width: p.width,
-        qty: p.qty,
-        edgeL: p.edgeL,
-        edgeW: p.edgeW,
-        edgeThickness: p.edgeThickness,
-        edgeMm: p.edgeMm,
-        numbers: [p.no],
-        note: p.note,
-      });
-    }
-  }
-  return [...map.values()].sort(
-    (a, b) => a.material.localeCompare(b.material) || b.length - a.length || b.width - a.width,
-  );
+function edgeLabel(thickness: number): string {
+  return thickness === DIM.EDGE_CORPUS
+    ? `Кант ${thickness} мм (корпус)`
+    : `Кант ${thickness} мм (фасади)`;
 }
 
-const SHEET_AREA_M2 = (DIM.SHEET_L / 1000) * (DIM.SHEET_W / 1000);
-
 export function summarize(kitchen: Kitchen, cabinets: CabinetResult[], parts: Part[]): Summary {
-  const areaByMaterial = new Map<SheetMaterial, number>();
-  let paintArea = 0;
-
-  for (const p of parts) {
-    const areaM2 = (p.length * p.width * p.qty) / 1_000_000;
-    if (p.material === 'facade') paintArea += areaM2;
-    else areaByMaterial.set(p.material, (areaByMaterial.get(p.material) ?? 0) + areaM2);
-  }
-
-  const order: SheetMaterial[] = ['pdch18', 'pdch16', 'hdf3'];
-  const materials: MaterialUsage[] = order
-    .filter((m) => areaByMaterial.has(m))
-    .map((m) => {
-      const areaM2 = areaByMaterial.get(m) ?? 0;
-      const areaWithWasteM2 = areaM2 * (1 + DIM.SHEET_WASTE);
-      return {
-        material: m,
-        areaM2: round2(areaM2),
-        areaWithWasteM2: round2(areaWithWasteM2),
-        sheets: Math.ceil(areaWithWasteM2 / SHEET_AREA_M2),
-      };
-    });
-
-  const edgeByThickness = new Map<number, number>();
-  for (const p of parts) {
-    if (!p.edgeThickness || !p.edgeMm) continue;
-    edgeByThickness.set(p.edgeThickness, (edgeByThickness.get(p.edgeThickness) ?? 0) + p.edgeMm);
-  }
-  const edges: EdgeUsage[] = [...edgeByThickness.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([thickness, totalMm]) => ({
-      thickness,
-      label: thickness === DIM.EDGE_CORPUS ? `Кант ${thickness} мм (корпус)` : `Кант ${thickness} мм (фасади)`,
-      meters: round2(totalMm / 1000),
-    }));
-
   const hw = hardware(kitchen);
   const plinthLength = hw.find((l) => l.name === 'Цокъл')?.qty ?? 0;
   const worktopLength = hw.find((l) => l.name === 'Плот')?.qty ?? 0;
@@ -1069,9 +842,9 @@ export function summarize(kitchen: Kitchen, cabinets: CabinetResult[], parts: Pa
     cabinets: cabinets.length,
     parts: parts.length,
     partPieces: parts.reduce((s, p) => s + p.qty, 0),
-    materials,
-    edges,
-    paintAreaM2: round2(paintArea),
+    materials: materialUsage(parts, SHEET),
+    edges: edgeUsage(parts, edgeLabel),
+    paintAreaM2: facadeArea(parts),
     worktopLength,
     worktopDepth: DIM.WORKTOP_D,
     worktopHeight: worktopHeight(kitchen.materials.worktop),
@@ -1079,16 +852,12 @@ export function summarize(kitchen: Kitchen, cabinets: CabinetResult[], parts: Pa
   };
 }
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
 /* ------------------------------------------------------------------ */
-/* 11. Входна точка                                                    */
+/* 10. Входна точка                                                    */
 /* ------------------------------------------------------------------ */
 
 export function computeKitchen(kitchen: Kitchen): KitchenResult {
-  const counters = { base: 0, column: 0, upper: 0 };
+  const counters: Record<string, number> = {};
   const placed: { base: PlacedModule[]; upper: PlacedModule[] }[] = [];
   const statuses: { base: RowStatus; upper: RowStatus }[] = [];
   const cabinets: CabinetResult[] = [];
