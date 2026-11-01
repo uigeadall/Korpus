@@ -135,6 +135,42 @@ describe('преподреждане', () => {
   });
 });
 
+describe('преместване между редовете', () => {
+  const start = run([
+    { type: 'add', row: 'base', kind: 'door' },
+    { type: 'add', row: 'base', kind: 'sink' },
+    { type: 'add', row: 'upper', kind: 'upper' },
+  ]);
+  const baseIds = base(start).map((m) => m.id);
+
+  it('долният шкаф се качва горе и сменя вида си', () => {
+    const k = reducer(start, { type: 'moveToRow', id: baseIds[0], toIndex: 0 });
+    expect(base(k)).toHaveLength(1);
+    expect(upper(k).map((m) => m.kind)).toEqual(['upper', 'upper']);
+    expect(upper(k)[0].id).toBe(baseIds[0]);
+  });
+
+  it('горният слиза долу', () => {
+    const upperId = upper(start)[0].id;
+    const k = reducer(start, { type: 'moveToRow', id: upperId, toIndex: 1 });
+    expect(upper(k)).toHaveLength(0);
+    expect(base(k).map((m) => m.kind)).toEqual(['door', 'door', 'sink']);
+    expect(base(k)[1].id).toBe(upperId);
+  });
+
+  it('мивката остава на мястото си', () => {
+    const k = reducer(start, { type: 'moveToRow', id: baseIds[1], toIndex: 0 });
+    expect(base(k).map((m) => m.id)).toEqual(baseIds);
+    expect(upper(k)).toHaveLength(1);
+  });
+
+  it('индексът се ограничава в целевия ред', () => {
+    const k = reducer(start, { type: 'moveToRow', id: baseIds[0], toIndex: 99 });
+    expect(upper(k)).toHaveLength(2);
+    expect(upper(k)[1].id).toBe(baseIds[0]);
+  });
+});
+
 describe('материали', () => {
   it('се сливат частично', () => {
     const k = run([{ type: 'materials', value: { worktop: 'quartz20' } }]);

@@ -13,6 +13,7 @@ import {
   type RowId,
   RULES_VERSION,
   emptyKitchen,
+  toOtherRow,
 } from '@/lib/cabinet-rules';
 
 export type Action =
@@ -23,6 +24,7 @@ export type Action =
   | { type: 'hinge'; id: string; value: HingeSide }
   | { type: 'move'; id: string; dir: -1 | 1 }
   | { type: 'reorder'; id: string; toIndex: number }
+  | { type: 'moveToRow'; id: string; toIndex: number }
   | { type: 'materials'; value: Partial<Materials> }
   | { type: 'load'; value: Kitchen }
   | { type: 'reset' };
@@ -130,6 +132,21 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
         if (from < 0 || from === to) return;
         const [moved] = list.splice(from, 1);
         list.splice(to, 0, moved);
+      });
+    }
+
+    case 'moveToRow': {
+      const row = findRow(kitchen, action.id);
+      if (!row) return kitchen;
+      return withWall(kitchen, (base, upper) => {
+        const from = row === 'base' ? base : upper;
+        const to = row === 'base' ? upper : base;
+        const i = from.findIndex((m) => m.id === action.id);
+        if (i < 0) return;
+        const converted = toOtherRow(from[i]);
+        if (!converted) return;
+        from.splice(i, 1);
+        to.splice(Math.min(to.length, Math.max(0, action.toIndex)), 0, converted);
       });
     }
 

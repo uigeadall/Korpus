@@ -287,6 +287,35 @@ export interface Kitchen {
   rulesVersion: string;
 }
 
+/**
+ * В какво се превръща модулът, ако се премести в другия ред.
+ * Липсващите остават в своя ред: мивката, фурната и съдомиялнята са
+ * вързани за ВиК, уреда и плота, аспираторът — за комина, а колоната
+ * заема и двата реда.
+ */
+export const ROW_COUNTERPART: Partial<Record<ModuleKind, ModuleKind>> = {
+  door: 'upper',
+  drawers: 'upper',
+  lgap: 'ugap',
+  upper: 'door',
+  ugap: 'lgap',
+};
+
+/** Най-близката допустима ширина за даден модул. */
+export function nearestWidth(kind: ModuleKind, width: number): number {
+  const widths = MODULES[kind].widths;
+  return widths.reduce((best, w) =>
+    Math.abs(w - width) < Math.abs(best - width) ? w : best,
+  );
+}
+
+/** Модулът, преместен в другия ред, или null, ако не може. */
+export function toOtherRow(m: KitchenModule): KitchenModule | null {
+  const kind = ROW_COUNTERPART[m.kind];
+  if (!kind) return null;
+  return { ...m, kind, width: nearestWidth(kind, m.width) };
+}
+
 /** Дължина на стената в допустимия диапазон, закръглена на стъпката. */
 export function clampWallLength(value: number): number {
   const stepped = Math.round(value / DIM.WALL_STEP) * DIM.WALL_STEP;

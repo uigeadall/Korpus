@@ -13,8 +13,11 @@ import {
   facadeParts,
   freeUpperIntervals,
   hingeCount,
+  MODULES,
   mergeParts,
   modulePartsRaw,
+  nearestWidth,
+  toOtherRow,
   placeWall,
   wallStatus,
   worktopHeight,
@@ -426,6 +429,41 @@ describe('Обединяване на еднакви детайли', () => {
     const sides = r.byMaterial.find((p) => p.name === 'Страница' && p.length === 702)!;
     expect(sides.qty).toBe(4);
     expect(sides.numbers).toEqual(['Д1-01', 'Д2-01']);
+  });
+});
+
+describe('Преместване между редовете', () => {
+  it('долен с врата става горен шкаф и обратно', () => {
+    const door = toOtherRow(mod('door', 600))!;
+    expect(door.kind).toBe('upper');
+    expect(door.width).toBe(600);
+    expect(toOtherRow(door)!.kind).toBe('door');
+  });
+
+  it('нишата става празно място и обратно', () => {
+    expect(toOtherRow(mod('lgap', 600))!.kind).toBe('ugap');
+    expect(toOtherRow(mod('ugap', 600))!.kind).toBe('lgap');
+  });
+
+  it('чекмеджетата се качват като горен шкаф', () => {
+    expect(toOtherRow(mod('drawers', 450))!.kind).toBe('upper');
+  });
+
+  it('вързаните за място модули не се местят', () => {
+    for (const kind of ['sink', 'oven', 'dw', 'column', 'hood'] as const) {
+      expect(toOtherRow(mod(kind, MODULES[kind].widths[0])), kind).toBeNull();
+    }
+  });
+
+  it('ширината се приближава до най-близката допустима', () => {
+    // 1200 го има при празното горе, но не и при долната ниша
+    expect(toOtherRow(mod('ugap', 1200))!.width).toBe(900);
+    expect(nearestWidth('door', 460)).toBe(450);
+    expect(nearestWidth('oven', 100)).toBe(600);
+  });
+
+  it('страната на пантите се запазва', () => {
+    expect(toOtherRow(mod('door', 500, 'left'))!.hingeSide).toBe('left');
   });
 });
 

@@ -13,6 +13,7 @@ import {
   DIM,
   clampWallLength,
   type PlacedModule,
+  toOtherRow,
   type RowId,
   type RowStatus,
   WORKTOP_THICKNESS,
@@ -28,6 +29,7 @@ import {
   chainForModules,
   dropIndex,
   facadeRects,
+  rowAtHeight,
   fontSizeMm,
   formatMm,
   heightMarks,
@@ -47,6 +49,8 @@ interface Props {
   onReorder?: (id: string, toIndex: number) => void;
   /** Опъване на стената от чертежа. */
   onWallLength?: (value: number) => void;
+  /** Преместване в другия ред. */
+  onMoveToRow?: (id: string, toIndex: number) => void;
 }
 
 /** Какво се влачи в момента. */
@@ -79,11 +83,12 @@ type Drag =
 /** Колко мм трябва да се помръдне, преди да се смята за влачене, а не клик. */
 const DRAG_THRESHOLD = 15;
 
-/** Клиентски X → милиметри в координатите на чертежа. */
-function toMm(svg: SVGSVGElement, clientX: number, clientY: number): number {
+/** Клиентска точка → милиметри в координатите на чертежа. */
+function toPoint(svg: SVGSVGElement, clientX: number, clientY: number): { x: number; y: number } {
   const ctm = svg.getScreenCTM();
-  if (!ctm) return 0;
-  return new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse()).x;
+  if (!ctm) return { x: 0, y: 0 };
+  const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+  return { x: p.x, y: p.y };
 }
 
 /** Ширината на контейнера в пиксели — за мащаба на шрифта. */
@@ -112,6 +117,7 @@ export function KitchenDrawing({
   onSelect,
   onReorder,
   onWallLength,
+  onMoveToRow,
 }: Props) {
   const { ref, width: pxWidth } = useWidth<HTMLDivElement>();
   const svgRef = useRef<SVGSVGElement>(null);
@@ -158,7 +164,7 @@ export function KitchenDrawing({
     // <svg> пренасочва клика към него и групата не го получава.
     onSelect?.(m.id);
     if (!onReorder || !svgRef.current) return;
-    const x = toMm(svgRef.current, e.clientX, e.clientY);
+    const { x } = toPoint(svgRef.current, e.clientX, e.clientY);
     svgRef.current.setPointerCapture(e.pointerId);
     setDrag({ kind: 'module', id: m.id, row, grab: x - m.x, x: m.x, moved: false });
   };
@@ -185,7 +191,8 @@ export function KitchenDrawing({
       return;
     }
 
-    const left = toMm(svgRef.current, e.clientX, e.clientY) - drag.grab;
+    const point = toPoint(svgRef.current, e.clientX, e.clientY);
+    const left = point.x - drag.grab;
     const row = placed[drag.row];
     const dragged = row.find((m) => m.id === drag.id);
     if (!dragged) return;
@@ -197,6 +204,16 @@ export function KitchenDrawing({
     // Спира маркирането, което в Safari боядисва целия чертеж.
     e.preventDefault();
     window.getSelection()?.removeAllRanges();
+
+    // Пуснато в другия ред? Ако модулът има аналог там, минава в него.
+    const targetRow = rowAtHeight(view.floorY - point.y);
+    if (targetRow !== drag.row && onMoveToRow && toOtherRow(dragged)) {
+      const to = dropIndex(placed[targetRow], drag.id, left);
+      onMoveToRow(drag.id, to);
+      setDrag({ ...drag, row: targetRow, x: left, moved: true });
+      return;
+    }
+
     const to = dropIndex(row, drag.id, left);
     if (to !== row.indexOf(dragged)) onReorder?.(drag.id, to);
   };
@@ -224,6 +241,11 @@ export function KitchenDrawing({
     } else if (e.key === 'ArrowRight' && index < placed[row].length - 1) {
       e.preventDefault();
       onReorder?.(m.id, index + 1);
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const wantsUpper = e.key === 'ArrowUp';
+      if (wantsUpper === (row === 'upper') || !toOtherRow(m)) return;
+      e.preventDefault();
+      onMoveToRow?.(m.id, index);
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       onSelect?.(m.id);

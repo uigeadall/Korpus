@@ -10,7 +10,9 @@ import {
   fontSizeMm,
   formatMm,
   heightMarks,
+  ROW_SPLIT,
   moduleBox,
+  rowAtHeight,
   swingTriangle,
   toSvgY,
   viewBoxFor,
@@ -229,6 +231,24 @@ describe('преподреждане с влачене', () => {
   it('далеч извън реда се ограничава до краищата', () => {
     expect(at(row[0].id, -5000)).toBe(0);
     expect(at(row[0].id, 99_000)).toBe(2);
+  });
+});
+
+describe('кой ред е под показалеца', () => {
+  it('долният корпус и под него са долен ред', () => {
+    expect(rowAtHeight(0)).toBe('base');
+    expect(rowAtHeight(820)).toBe('base');
+  });
+
+  it('горният корпус е горен ред', () => {
+    expect(rowAtHeight(1410)).toBe('upper');
+    expect(rowAtHeight(2130)).toBe('upper');
+  });
+
+  it('границата е по средата между двата реда', () => {
+    expect(ROW_SPLIT).toBe(1115);
+    expect(rowAtHeight(ROW_SPLIT - 1)).toBe('base');
+    expect(rowAtHeight(ROW_SPLIT)).toBe('upper');
   });
 });
 

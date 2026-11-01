@@ -12,6 +12,7 @@ import {
   type HingeSide,
   type ModuleKind,
   type PlacedModule,
+  type RowId,
   MODULES,
   doorLayout,
   mm,
@@ -337,6 +338,15 @@ export function facadeRects(view: ViewBox, m: PlacedModule): FacadeRect[] {
 /* ------------------------------------------------------------------ */
 /* Преподреждане с влачене                                             */
 /* ------------------------------------------------------------------ */
+
+/** Границата между двата реда — по средата между горния ръб на долния
+ * корпус и долния ръб на горния. */
+export const ROW_SPLIT = (DIM.LEG + DIM.BASE_H + DIM.UPPER_BOTTOM) / 2;
+
+/** В кой ред попада дадена височина над пода. */
+export function rowAtHeight(heightAboveFloor: number): RowId {
+  return heightAboveFloor >= ROW_SPLIT ? 'upper' : 'base';
+}
 
 /**
  * Къде да влезе влаченият модул в реда си.
