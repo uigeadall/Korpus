@@ -168,9 +168,38 @@ describe('заявка по шкафове', () => {
   it('излиза като CSV със собствени колони', () => {
     const csv = toCsv(rows, CABINET_COLUMNS, { bom: false });
     expect(csv.split('\r\n')[0]).toBe(
-      'Шкаф;Тип;Корпус;Ширина;Височина;Дълбочина;Рафтове;Чела;Отваряне;Механизми;Бележка',
+      'Шкаф;Стена;Тип;Корпус;Ширина;Височина;Дълбочина;Рафтове;Чела;Отваряне;Механизми;Бележка',
     );
     expect(csv.split('\r\n')[1]).toContain('ПДЧ 18, Бял');
+  });
+
+  it('казва на коя стена отива всеки шкаф', () => {
+    const twoWalls: Kitchen = {
+      room: { width: 4000, depth: 3000 },
+      walls: [
+        {
+          id: 'w1',
+          side: 'top',
+          length: 1200,
+          base: [{ id: 'a', kind: 'door', width: 600 }],
+          upper: [],
+        },
+        {
+          id: 'w2',
+          side: 'left',
+          length: 1200,
+          base: [{ id: 'b', kind: 'drawers', width: 600 }],
+          upper: [],
+        },
+      ],
+      materials: { ...DEFAULT_MATERIALS },
+      rulesVersion: '1.0.0',
+    };
+    const two = toCabinetRows(computeKitchen(twoWalls), twoWalls.materials);
+    expect(two.map((r) => [r.cabinet, r.wall])).toEqual([
+      ['Д1', 'Горна'],
+      ['Д2', 'Лява'],
+    ]);
   });
 });
 

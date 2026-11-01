@@ -1,30 +1,46 @@
 /**
  * Състоянието на конфигуратора — редуктор без React, за да е тестваем.
+ *
+ * Кухнята е в стая с няколко стени. Действията, които пипат модул, го
+ * намират по негов идентификатор — той е уникален през всички стени.
+ * Само добавянето и дължината трябва да им се каже коя стена.
  */
 
 import {
-  clampWallLength,
   type HingeSide,
   type Kitchen,
   type KitchenModule,
   MODULES,
   type Materials,
   type ModuleKind,
+  type Room,
   type RowId,
   RULES_VERSION,
+  type Wall,
+  type WallSide,
+  WALL_SIDES,
+  clampRoom,
+  clampWallLength,
   emptyKitchen,
+  freeSides,
+  kitchenRoom,
+  sideLength,
   toOtherRow,
+  wallSide,
 } from '@/lib/cabinet-rules';
 
 export type Action =
-  | { type: 'wallLength'; value: number }
-  | { type: 'add'; row: RowId; kind: ModuleKind }
+  | { type: 'wallLength'; wallId: string; value: number }
+  | { type: 'add'; wallId: string; row: RowId; kind: ModuleKind }
   | { type: 'remove'; id: string }
   | { type: 'width'; id: string; value: number }
   | { type: 'hinge'; id: string; value: HingeSide }
   | { type: 'move'; id: string; dir: -1 | 1 }
   | { type: 'reorder'; id: string; toIndex: number }
   | { type: 'moveToRow'; id: string; toIndex: number }
+  | { type: 'addWall'; side?: WallSide }
+  | { type: 'removeWall'; wallId: string }
+  | { type: 'room'; value: Partial<Room> }
   | { type: 'materials'; value: Partial<Materials> }
   | { type: 'load'; value: Kitchen }
   | { type: 'reset' };
@@ -33,6 +49,11 @@ let counter = 0;
 export function moduleId(kind: ModuleKind): string {
   counter += 1;
   return `${kind}-${Date.now().toString(36)}-${counter}`;
+}
+
+export function wallId(): string {
+  counter += 1;
+  return `wall-${Date.now().toString(36)}-${counter}`;
 }
 
 export { clampWallLength as clampWall } from '@/lib/cabinet-rules';
@@ -47,29 +68,53 @@ function rowOf(kind: ModuleKind): RowId {
   return MODULES[kind].row;
 }
 
-function withWall(kitchen: Kitchen, fn: (base: KitchenModule[], upper: KitchenModule[]) => void): Kitchen {
-  const wall = kitchen.walls[0];
+/** Стената, в чийто ред стои модулът с този идентификатор. */
+export function wallOfModule(kitchen: Kitchen, id: string): Wall | undefined {
+  return kitchen.walls.find(
+    (w) => w.base.some((m) => m.id === id) || w.upper.some((m) => m.id === id),
+  );
+}
+
+/** Прилага промяна върху редовете на една стена и връща нова кухня. */
+function withWall(
+  kitchen: Kitchen,
+  id: string | undefined,
+  fn: (base: KitchenModule[], upper: KitchenModule[]) => void,
+): Kitchen {
+  const index = kitchen.walls.findIndex((w) => w.id === id);
+  if (index < 0) return kitchen;
+  const wall = kitchen.walls[index];
   const base = [...wall.base];
   const upper = [...wall.upper];
   fn(base, upper);
-  return { ...kitchen, walls: [{ ...wall, base, upper }, ...kitchen.walls.slice(1)] };
+  const walls = [...kitchen.walls];
+  walls[index] = { ...wall, base, upper };
+  return { ...kitchen, walls };
 }
 
-function findRow(kitchen: Kitchen, id: string): RowId | null {
-  const wall = kitchen.walls[0];
-  if (wall.base.some((m) => m.id === id)) return 'base';
-  if (wall.upper.some((m) => m.id === id)) return 'upper';
-  return null;
+/** Същото, но стената се намира по модула, който се пипа. */
+function withWallOf(
+  kitchen: Kitchen,
+  moduleId: string,
+  fn: (base: KitchenModule[], upper: KitchenModule[]) => void,
+): Kitchen {
+  return withWall(kitchen, wallOfModule(kitchen, moduleId)?.id, fn);
+}
+
+function rowOfModule(kitchen: Kitchen, id: string): RowId | null {
+  const wall = wallOfModule(kitchen, id);
+  if (!wall) return null;
+  return wall.base.some((m) => m.id === id) ? 'base' : 'upper';
 }
 
 export function reducer(kitchen: Kitchen, action: Action): Kitchen {
   switch (action.type) {
     case 'wallLength': {
-      const wall = kitchen.walls[0];
-      return {
-        ...kitchen,
-        walls: [{ ...wall, length: clampWallLength(action.value) }, ...kitchen.walls.slice(1)],
-      };
+      const index = kitchen.walls.findIndex((w) => w.id === action.wallId);
+      if (index < 0) return kitchen;
+      const walls = [...kitchen.walls];
+      walls[index] = { ...walls[index], length: clampWallLength(action.value) };
+      return { ...kitchen, walls };
     }
 
     case 'add': {
@@ -81,13 +126,13 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
         width: defaultWidth(kind),
         hingeSide: spec.hasCarcass || kind === 'dw' ? 'right' : undefined,
       };
-      return withWall(kitchen, (base, upper) => {
+      return withWall(kitchen, action.wallId, (base, upper) => {
         (rowOf(kind) === 'base' ? base : upper).push(m);
       });
     }
 
     case 'remove':
-      return withWall(kitchen, (base, upper) => {
+      return withWallOf(kitchen, action.id, (base, upper) => {
         for (const list of [base, upper]) {
           const i = list.findIndex((m) => m.id === action.id);
           if (i >= 0) list.splice(i, 1);
@@ -95,7 +140,7 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
       });
 
     case 'width':
-      return withWall(kitchen, (base, upper) => {
+      return withWallOf(kitchen, action.id, (base, upper) => {
         for (const list of [base, upper]) {
           const i = list.findIndex((m) => m.id === action.id);
           if (i >= 0) list[i] = { ...list[i], width: action.value };
@@ -103,7 +148,7 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
       });
 
     case 'hinge':
-      return withWall(kitchen, (base, upper) => {
+      return withWallOf(kitchen, action.id, (base, upper) => {
         for (const list of [base, upper]) {
           const i = list.findIndex((m) => m.id === action.id);
           if (i >= 0) list[i] = { ...list[i], hingeSide: action.value };
@@ -111,9 +156,9 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
       });
 
     case 'move': {
-      const row = findRow(kitchen, action.id);
+      const row = rowOfModule(kitchen, action.id);
       if (!row) return kitchen;
-      return withWall(kitchen, (base, upper) => {
+      return withWallOf(kitchen, action.id, (base, upper) => {
         const list = row === 'base' ? base : upper;
         const i = list.findIndex((m) => m.id === action.id);
         const j = i + action.dir;
@@ -123,9 +168,9 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
     }
 
     case 'reorder': {
-      const row = findRow(kitchen, action.id);
+      const row = rowOfModule(kitchen, action.id);
       if (!row) return kitchen;
-      return withWall(kitchen, (base, upper) => {
+      return withWallOf(kitchen, action.id, (base, upper) => {
         const list = row === 'base' ? base : upper;
         const from = list.findIndex((m) => m.id === action.id);
         const to = Math.min(list.length - 1, Math.max(0, action.toIndex));
@@ -136,9 +181,9 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
     }
 
     case 'moveToRow': {
-      const row = findRow(kitchen, action.id);
+      const row = rowOfModule(kitchen, action.id);
       if (!row) return kitchen;
-      return withWall(kitchen, (base, upper) => {
+      return withWallOf(kitchen, action.id, (base, upper) => {
         const from = row === 'base' ? base : upper;
         const to = row === 'base' ? upper : base;
         const i = from.findIndex((m) => m.id === action.id);
@@ -150,11 +195,51 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
       });
     }
 
+    case 'addWall': {
+      const used = kitchen.walls.map((w, i) => wallSide(w, i));
+      const free = freeSides(used);
+      const side = action.side && free.includes(action.side) ? action.side : free[0];
+      if (!side) return kitchen; // и четирите страни са заети
+      const room = kitchenRoom(kitchen);
+      return {
+        ...kitchen,
+        room,
+        walls: [
+          ...kitchen.walls,
+          {
+            id: wallId(),
+            side,
+            length: clampWallLength(sideLength(room, side)),
+            base: [],
+            upper: [],
+          },
+        ],
+      };
+    }
+
+    case 'removeWall': {
+      // Последната стена не се маха — кухнята трябва да стои някъде.
+      if (kitchen.walls.length <= 1) return kitchen;
+      const walls = kitchen.walls.filter((w) => w.id !== action.wallId);
+      return walls.length === kitchen.walls.length ? kitchen : { ...kitchen, walls };
+    }
+
+    case 'room': {
+      const current = kitchenRoom(kitchen);
+      return {
+        ...kitchen,
+        room: {
+          width: clampRoom(action.value.width ?? current.width),
+          depth: clampRoom(action.value.depth ?? current.depth),
+        },
+      };
+    }
+
     case 'materials':
       return { ...kitchen, materials: { ...kitchen.materials, ...action.value } };
 
     case 'load':
-      return { ...action.value, rulesVersion: action.value.rulesVersion || RULES_VERSION };
+      return migrate(action.value);
 
     case 'reset':
       return emptyKitchen(kitchen.walls[0].length);
@@ -162,6 +247,24 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
     default:
       return kitchen;
   }
+}
+
+/**
+ * Конфигурация отвън (стар запис в браузъра или линк) се докарва до
+ * днешния вид: всяка стена с идентификатор и страна, записана стая.
+ */
+export function migrate(kitchen: Kitchen): Kitchen {
+  const walls = kitchen.walls.map((wall, i) => ({
+    ...wall,
+    id: wall.id ?? `wall-${i + 1}`,
+    side: wallSide(wall, i),
+  }));
+  return {
+    ...kitchen,
+    room: kitchen.room ?? kitchenRoom({ ...kitchen, walls }),
+    walls,
+    rulesVersion: kitchen.rulesVersion || RULES_VERSION,
+  };
 }
 
 /* --- Запазване локално, докато няма база --------------------------- */
@@ -182,7 +285,7 @@ export function loadLocal(): Kitchen | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Kitchen;
     if (!parsed?.walls?.length) return null;
-    return parsed;
+    return migrate(parsed);
   } catch {
     return null;
   }
@@ -199,8 +302,11 @@ export function sampleKitchen(): Kitchen {
     hingeSide: 'right',
   });
   return {
+    room: { width: 4200, depth: 3200 },
     walls: [
       {
+        id: 'sample-wall-1',
+        side: WALL_SIDES[0],
         length: 3600,
         base: [
           m('column', 600),

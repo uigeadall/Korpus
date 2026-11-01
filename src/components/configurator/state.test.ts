@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { DIM, computeKitchen, emptyKitchen } from '@/lib/cabinet-rules';
-import { type Action, clampWall, defaultWidth, reducer, sampleKitchen } from './state';
+import { type Action, clampWall, defaultWidth, migrate, reducer, sampleKitchen } from './state';
 
-const run = (actions: Action[], start = emptyKitchen(3600)) =>
-  actions.reduce(reducer, start);
+/** Действие без посочена стена отива в първата — спестява шум в тестовете. */
+type LooseAction =
+  | Action
+  | Omit<Extract<Action, { type: 'add' }>, 'wallId'>
+  | Omit<Extract<Action, { type: 'wallLength' }>, 'wallId'>;
+
+const run = (actions: LooseAction[], start = emptyKitchen(3600)) =>
+  actions.reduce(
+    (k, a) => reducer(k, 'wallId' in a ? a : ({ ...a, wallId: k.walls[0].id } as Action)),
+    start,
+  );
 
 const base = (k = run([])) => k.walls[0].base;
 const upper = (k = run([])) => k.walls[0].upper;
@@ -204,5 +213,102 @@ describe('изчистване', () => {
     ]);
     expect(k.walls[0].length).toBe(2400);
     expect(base(k)).toHaveLength(0);
+  });
+});
+
+describe('стените на стаята', () => {
+  const two = () => {
+    const k = run([{ type: 'addWall' }]);
+    return { k, first: k.walls[0].id!, second: k.walls[1].id! };
+  };
+
+  it('новата стена заема следващата свободна страна и е дълга колкото нея', () => {
+    const { k } = two();
+    expect(k.walls.map((w) => w.side)).toEqual(['top', 'right']);
+    expect(k.walls[1].length).toBe(clampWall(k.room!.depth));
+  });
+
+  it('не се добавя пета стена', () => {
+    let k = run([{ type: 'addWall' }, { type: 'addWall' }, { type: 'addWall' }]);
+    expect(k.walls).toHaveLength(4);
+    k = reducer(k, { type: 'addWall' });
+    expect(k.walls).toHaveLength(4);
+  });
+
+  it('добавянето на модул пипа само посочената стена', () => {
+    const { k, second } = two();
+    const after = reducer(k, { type: 'add', wallId: second, row: 'base', kind: 'door' });
+    expect(after.walls[0].base).toHaveLength(0);
+    expect(after.walls[1].base).toHaveLength(1);
+  });
+
+  it('редакцията намира стената по модула, без да ѝ се казва', () => {
+    const { k, second } = two();
+    const added = reducer(k, { type: 'add', wallId: second, row: 'base', kind: 'door' });
+    const id = added.walls[1].base[0].id;
+    const wider = reducer(added, { type: 'width', id, value: 900 });
+    expect(wider.walls[1].base[0].width).toBe(900);
+    expect(wider.walls[0].base).toHaveLength(0);
+  });
+
+  it('номерацията тече през стените', () => {
+    const { k, first, second } = two();
+    const filled = (
+      [
+        { type: 'add', wallId: first, row: 'base', kind: 'door' },
+        { type: 'add', wallId: first, row: 'base', kind: 'sink' },
+        { type: 'add', wallId: second, row: 'base', kind: 'drawers' },
+        { type: 'add', wallId: second, row: 'upper', kind: 'upper' },
+      ] satisfies Action[]
+    ).reduce(reducer, k);
+
+    const r = computeKitchen(filled);
+    expect(r.placed[0].base.map((m) => m.code)).toEqual(['Д1', 'Д2']);
+    expect(r.placed[1].base.map((m) => m.code)).toEqual(['Д3']);
+    expect(r.placed[1].upper.map((m) => m.code)).toEqual(['Г1']);
+    expect(r.cabinets.map((c) => c.code)).toEqual(['Д1', 'Д2', 'Д3', 'Г1']);
+  });
+
+  it('премахва стена, но не и последната', () => {
+    const { k, second } = two();
+    const one = reducer(k, { type: 'removeWall', wallId: second });
+    expect(one.walls).toHaveLength(1);
+    expect(reducer(one, { type: 'removeWall', wallId: one.walls[0].id! }).walls).toHaveLength(1);
+  });
+});
+
+describe('размерите на стаята', () => {
+  it('се сменят поотделно и се закръглят на стъпката', () => {
+    const k = run([
+      { type: 'room', value: { width: 5234 } },
+      { type: 'room', value: { depth: 2777 } },
+    ]);
+    expect(k.room).toEqual({ width: 5230, depth: 2780 });
+  });
+
+  it('не излизат от границите', () => {
+    const k = run([{ type: 'room', value: { width: 99_999, depth: 10 } }]);
+    expect(k.room).toEqual({ width: 12_000, depth: 1200 });
+  });
+});
+
+describe('стара конфигурация', () => {
+  const old = {
+    walls: [{ length: 3600, base: [], upper: [] }],
+    materials: emptyKitchen().materials,
+    rulesVersion: '',
+  };
+
+  it('получава страна, идентификатор и стая, в която се събира', () => {
+    const k = migrate(old);
+    expect(k.walls[0].side).toBe('top');
+    expect(k.walls[0].id).toBe('wall-1');
+    expect(k.room!.width).toBeGreaterThanOrEqual(3600);
+    expect(k.rulesVersion).toBeTruthy();
+  });
+
+  it('минава и през „зареди", за да работят старите линкове', () => {
+    const k = reducer(emptyKitchen(), { type: 'load', value: old });
+    expect(k.walls[0].id).toBe('wall-1');
   });
 });

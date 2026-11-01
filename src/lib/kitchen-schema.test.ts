@@ -68,6 +68,56 @@ describe('приема валидна конфигурация', () => {
   });
 });
 
+describe('стая и страни', () => {
+  it('конфигурация отпреди стаите получава страна и стая, в която се събира', () => {
+    const k = ok(valid);
+    expect(k.walls[0].side).toBe('top');
+    expect(k.walls[0].id).toBe('wall-1');
+    expect(k.room?.width).toBeGreaterThanOrEqual(3600);
+  });
+
+  it('подадената стая минава през същите граници', () => {
+    expect(ok({ ...valid, room: { width: 4234, depth: 99_999 } }).room).toEqual({
+      width: 4230,
+      depth: 12_000,
+    });
+  });
+
+  it('стая без размери е отказ, а не мълчаливо подразбиране', () => {
+    expect(err({ ...valid, room: { width: 4000 } })).toContain('без размери');
+    expect(err({ ...valid, room: 'голяма' })).toContain('не е обект');
+  });
+
+  it('пази подадената страна и отказва две стени на една страна', () => {
+    const k = ok({
+      walls: [
+        { side: 'left', length: 2400, base: [] },
+        { side: 'bottom', length: 3000, base: [] },
+      ],
+    });
+    expect(k.walls.map((w) => w.side)).toEqual(['left', 'bottom']);
+
+    expect(
+      err({
+        walls: [
+          { side: 'left', length: 2400, base: [] },
+          { side: 'left', length: 3000, base: [] },
+        ],
+      }),
+    ).toContain('една и съща страна');
+  });
+
+  it('непозната страна пада на реда по часовника', () => {
+    const k = ok({
+      walls: [
+        { side: 'таванът', length: 2400, base: [] },
+        { length: 2400, base: [] },
+      ],
+    });
+    expect(k.walls.map((w) => w.side)).toEqual(['top', 'right']);
+  });
+});
+
 describe('отказва невалидна конфигурация', () => {
   it('тяло, което не е обект', () => {
     expect(err('кухня')).toContain('не е обект');

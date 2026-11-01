@@ -16,6 +16,7 @@ import {
   type MergedPart,
   OPENING_LABEL,
   type Part,
+  WALL_SIDE_LABEL,
   facadeParts,
   hingeCount,
   moduleGeometry,
@@ -118,6 +119,8 @@ export function toExportRows(result: KitchenResult, view: ExportView): ExportRow
  */
 export interface CabinetSummaryRow {
   cabinet: string;
+  /** Стената, на която стои шкафът — за монтажа и за реда на сглобяване. */
+  wall: string;
   type: string;
   carcass: string;
   width: number;
@@ -132,6 +135,7 @@ export interface CabinetSummaryRow {
 
 export const CABINET_COLUMNS: Column<CabinetSummaryRow>[] = [
   { key: 'cabinet', header: 'Шкаф' },
+  { key: 'wall', header: 'Стена' },
   { key: 'type', header: 'Тип' },
   { key: 'carcass', header: 'Корпус' },
   { key: 'width', header: 'Ширина', format: (r) => formatMm(r.width) },
@@ -180,6 +184,7 @@ export function toCabinetRows(result: KitchenResult, materials: Materials): Cabi
 
     return {
       cabinet: c.code,
+      wall: WALL_SIDE_LABEL[c.wall],
       type: c.label,
       carcass: MODULES[c.kind].hasCarcass ? `ПДЧ 18, ${materials.carcassColor}` : '—',
       width: c.width,

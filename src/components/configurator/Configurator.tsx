@@ -2,7 +2,18 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { DIM, type Kitchen, computeKitchen } from '@/lib/cabinet-rules';
+import {
+  DIM,
+  type Kitchen,
+  ROOM,
+  WALL_SIDE_LABEL,
+  type WallSide,
+  clampRoom,
+  computeKitchen,
+  kitchenPlan,
+  kitchenRoom,
+  wallSide,
+} from '@/lib/cabinet-rules';
 import { formatMm } from '@/lib/drawing';
 import {
   CABINET_COLUMNS,
@@ -18,7 +29,9 @@ import { offerFileName } from '@/lib/pdf/names';
 import { KitchenDrawing } from './KitchenDrawing';
 import { MaterialsPanel } from './MaterialsPanel';
 import { ResultTabs } from './ResultTabs';
+import { RoomPlan } from './RoomPlan';
 import { RowEditor } from './RowEditor';
+import { WallTabs } from './WallTabs';
 import { type Action, clampWall, loadLocal, reducer, sampleKitchen, saveLocal } from './state';
 
 const VIEW_LABEL: Record<ExportView, string> = {
@@ -64,9 +77,29 @@ export function Configurator() {
   }, [kitchen]);
 
   const result = useMemo(() => computeKitchen(kitchen), [kitchen]);
-  const wall = kitchen.walls[0];
-  const placed = result.placed[0];
-  const status = result.rowStatus[0];
+  const plan = useMemo(() => kitchenPlan(kitchen, result), [kitchen, result]);
+  const room = kitchenRoom(kitchen);
+
+  // Стената, която се редактира и се чертае отпред. Ако изчезне
+  // (махната стена, върната конфигурация), падаме на първата.
+  const [activeWallId, setActiveWallId] = useState<string | null>(null);
+  const activeIndex = Math.max(
+    0,
+    kitchen.walls.findIndex((w) => w.id === activeWallId),
+  );
+  const wall = kitchen.walls[activeIndex];
+  const placed = result.placed[activeIndex];
+  const status = result.rowStatus[activeIndex];
+
+  // Нова стена става активната — иначе бутонът изглежда, че не прави нищо.
+  const wallCount = useRef(kitchen.walls.length);
+  useEffect(() => {
+    if (kitchen.walls.length > wallCount.current) {
+      setActiveWallId(kitchen.walls.at(-1)?.id ?? null);
+      setSelectedId(null);
+    }
+    wallCount.current = kitchen.walls.length;
+  }, [kitchen.walls]);
 
   const save = (blob: Blob, name: string) => {
     const url = URL.createObjectURL(blob);
@@ -113,7 +146,7 @@ export function Configurator() {
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-border pb-5">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted">Конфигуратор</p>
-          <h1 className="font-display mt-1 text-2xl sm:text-3xl">Права кухня на една стена</h1>
+          <h1 className="font-display mt-1 text-2xl sm:text-3xl">Кухня в стаята</h1>
         </div>
         <p className="dim max-w-sm text-xs leading-relaxed">
           Чертежът, спецификацията и разбивката за разкрой се преизчисляват при всяка промяна.
@@ -136,19 +169,60 @@ export function Configurator() {
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-6">
-          <div className="paper-grid border border-border bg-surface p-2 sm:p-4">
-            <KitchenDrawing
-              wall={wall}
-              placed={placed}
-              status={status}
-              worktop={kitchen.materials.worktop}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              onReorder={(id, toIndex) => dispatch({ type: 'reorder', id, toIndex })}
-              onWallLength={(value) => dispatch({ type: 'wallLength', value })}
-              onMoveToRow={(id, toIndex) => dispatch({ type: 'moveToRow', id, toIndex })}
+          <section className="border border-border bg-surface px-3 py-3 sm:px-4">
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="font-display text-sm uppercase tracking-wide">Стаята отгоре</h2>
+              <p className="dim text-xs">
+                {formatMm(room.width)} × {formatMm(room.depth)} мм
+              </p>
+            </div>
+            <RoomPlan
+              room={room}
+              walls={kitchen.walls}
+              plan={plan}
+              activeWallId={wall.id}
+              onSelect={(id) => {
+                setActiveWallId(id);
+                setSelectedId(null);
+              }}
             />
-          </div>
+            <div className="mt-3 border-t border-border pt-3">
+              <WallTabs
+                walls={kitchen.walls}
+                activeWallId={wall.id}
+                onSelect={(id) => {
+                  setActiveWallId(id);
+                  setSelectedId(null);
+                }}
+                onAdd={(side: WallSide) => dispatch({ type: 'addWall', side })}
+                onRemove={(id) => dispatch({ type: 'removeWall', wallId: id })}
+              />
+            </div>
+          </section>
+
+          <section>
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="font-display text-sm uppercase tracking-wide">
+                Отпред — {WALL_SIDE_LABEL[wallSide(wall, activeIndex)].toLowerCase()} стена
+              </h2>
+              <p className="dim text-xs">{formatMm(wall.length)} мм</p>
+            </div>
+            <div className="paper-grid border border-border bg-surface p-2 sm:p-4">
+              <KitchenDrawing
+                wall={wall}
+                placed={placed}
+                status={status}
+                worktop={kitchen.materials.worktop}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                onReorder={(id, toIndex) => dispatch({ type: 'reorder', id, toIndex })}
+                onWallLength={(value) =>
+                  wall.id && dispatch({ type: 'wallLength', wallId: wall.id, value })
+                }
+                onMoveToRow={(id, toIndex) => dispatch({ type: 'moveToRow', id, toIndex })}
+              />
+            </div>
+          </section>
 
           <ResultTabs
             result={result}
@@ -160,9 +234,57 @@ export function Configurator() {
 
         <aside className="space-y-6">
           <section className="border border-border bg-surface px-4 py-4">
-            <label className="block">
+            <h2 className="font-display text-sm uppercase tracking-wide">Стая</h2>
+
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-xs uppercase tracking-[0.12em] text-muted">Ширина</span>
+                <span className="mt-1 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={ROOM.MIN}
+                    max={ROOM.MAX}
+                    step={ROOM.STEP}
+                    value={room.width}
+                    onChange={(e) =>
+                      dispatch({
+                        type: 'room',
+                        value: { width: clampRoom(Number(e.target.value)) },
+                      })
+                    }
+                    className="dim w-full border border-border bg-surface px-2 py-1 text-sm"
+                    aria-label="Ширина на стаята в милиметри"
+                  />
+                  <span className="text-xs text-muted">мм</span>
+                </span>
+              </label>
+
+              <label className="block">
+                <span className="text-xs uppercase tracking-[0.12em] text-muted">Дълбочина</span>
+                <span className="mt-1 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={ROOM.MIN}
+                    max={ROOM.MAX}
+                    step={ROOM.STEP}
+                    value={room.depth}
+                    onChange={(e) =>
+                      dispatch({
+                        type: 'room',
+                        value: { depth: clampRoom(Number(e.target.value)) },
+                      })
+                    }
+                    className="dim w-full border border-border bg-surface px-2 py-1 text-sm"
+                    aria-label="Дълбочина на стаята в милиметри"
+                  />
+                  <span className="text-xs text-muted">мм</span>
+                </span>
+              </label>
+            </div>
+
+            <label className="mt-4 block border-t border-border pt-4">
               <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Дължина на стената
+                {WALL_SIDE_LABEL[wallSide(wall, activeIndex)]} стена — дължина на участъка
               </span>
               <span className="mt-2 flex items-center gap-3">
                 <input
@@ -172,7 +294,12 @@ export function Configurator() {
                   step={DIM.WALL_STEP}
                   value={wall.length}
                   onChange={(e) =>
-                    dispatch({ type: 'wallLength', value: Number(e.target.value) })
+                    wall.id &&
+                    dispatch({
+                      type: 'wallLength',
+                      wallId: wall.id,
+                      value: Number(e.target.value),
+                    })
                   }
                   className="h-1 flex-1 accent-[var(--accent)]"
                 />
@@ -183,7 +310,12 @@ export function Configurator() {
                   step={DIM.WALL_STEP}
                   value={wall.length}
                   onChange={(e) =>
-                    dispatch({ type: 'wallLength', value: clampWall(Number(e.target.value)) })
+                    wall.id &&
+                    dispatch({
+                      type: 'wallLength',
+                      wallId: wall.id,
+                      value: clampWall(Number(e.target.value)),
+                    })
                   }
                   className="dim w-24 border border-border bg-surface px-2 py-1 text-sm"
                   aria-label="Дължина на стената в милиметри"
@@ -195,6 +327,7 @@ export function Configurator() {
 
           <RowEditor
             row="base"
+            wallId={wall.id}
             modules={placed.base}
             status={status.base}
             selectedId={selectedId}
@@ -204,6 +337,7 @@ export function Configurator() {
 
           <RowEditor
             row="upper"
+            wallId={wall.id}
             modules={placed.upper}
             status={status.upper}
             selectedId={selectedId}

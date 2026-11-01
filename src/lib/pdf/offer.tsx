@@ -20,7 +20,10 @@ import {
   MODULES,
   OPENING_LABEL,
   DRAWER_SYSTEM_LABEL,
+  WALL_SIDE_LABEL,
   WORKTOP_LABEL,
+  kitchenRoom,
+  wallSide,
 } from '@/lib/cabinet-rules';
 import { formatMm } from '@/lib/drawing';
 import { brand } from '@/config/brand';
@@ -123,24 +126,34 @@ export function OfferDocument({
   result: KitchenResult;
   date?: Date;
 }) {
-  const wall = kitchen.walls[0];
-  const placed = result.placed[0];
   const m = kitchen.materials;
   const summary = result.summary;
-  const named = [...placed.base, ...placed.upper].filter((x) => x.code);
+  const room = kitchenRoom(kitchen);
 
   return (
     <Document title={`${brand.name} — конфигурация на кухня`} author={brand.name}>
-      <Page size="A4" orientation="landscape" style={s.page}>
+      {/* Всяка стена е на отделна страница — чертежът трябва да е едър. */}
+      {kitchen.walls.map((wall, i) => {
+        const placed = result.placed[i];
+        const named = [...placed.base, ...placed.upper].filter((x) => x.code);
+        const side = WALL_SIDE_LABEL[wallSide(wall, i)].toLowerCase();
+
+        return (
+      <Page key={wall.id ?? i} size="A4" orientation="landscape" style={s.page}>
         <View style={s.header}>
           <View>
             <Text style={s.brand}>{brand.name}</Text>
             <Text style={s.tagline}>{brand.tagline}</Text>
           </View>
           <View>
-            <Text style={s.meta}>Права кухня на една стена</Text>
             <Text style={s.meta}>
-              Стена {formatMm(wall.length)} мм · {date.toLocaleDateString('bg-BG')}
+              {kitchen.walls.length > 1
+                ? `${side} стена — ${i + 1} от ${kitchen.walls.length}`
+                : 'Права кухня на една стена'}
+            </Text>
+            <Text style={s.meta}>
+              Стена {formatMm(wall.length)} мм · стая {formatMm(room.width)} ×{' '}
+              {formatMm(room.depth)} · {date.toLocaleDateString('bg-BG')}
             </Text>
             <Text style={s.meta}>Правила {result.rulesVersion}</Text>
           </View>
@@ -180,7 +193,7 @@ export function OfferDocument({
             </View>
 
             <View style={s.block}>
-              <Text style={s.caption}>Обобщение, мм</Text>
+              <Text style={s.caption}>Обобщение за цялата кухня, мм</Text>
               <Pair label="Шкафове" value={String(summary.cabinets)} />
               <Pair label="Височина до плота" value={formatMm(summary.worktopHeight)} />
               <Pair label="Дължина на плота" value={formatMm(summary.worktopLength)} />
@@ -198,6 +211,8 @@ export function OfferDocument({
           </Text>
         </View>
       </Page>
+        );
+      })}
     </Document>
   );
 }

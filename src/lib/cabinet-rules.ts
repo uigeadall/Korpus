@@ -52,6 +52,19 @@ import {
   numberParts,
 } from './furniture/parts';
 import {
+  type PlanWall,
+  type Room,
+  type WallSide,
+  ROOM,
+  WALL_SIDES,
+  WALL_SIDE_LABEL,
+  clampRoom,
+  cornerClashes,
+  freeSides,
+  planGeometry,
+  sideLength,
+} from './furniture/room';
+import {
   type FurnitureSystem,
   type Interval,
   type PlacedModule as GenericPlaced,
@@ -70,11 +83,21 @@ import {
 
 export {
   MATERIAL_LABEL,
+  ROOM,
+  WALL_SIDES,
+  WALL_SIDE_LABEL,
+  clampRoom,
+  cornerClashes,
+  freeSides,
   hingeCount,
   mergeParts,
   mm,
   numberParts,
   rowStatus,
+  sideLength,
+  type PlanWall,
+  type Room,
+  type WallSide,
   type DoorLayout,
   type DrawerSystem,
   type EdgeUsage,
@@ -388,17 +411,57 @@ export const DEFAULT_MATERIALS: Materials = {
 export type KitchenModule = SystemModuleInstance<ModuleKind>;
 
 export interface Wall {
-  /** Дължина на стената */
+  /**
+   * Коя страна на стаята е. По-старите конфигурации нямат страна —
+   * четат се като една стена отгоре (виж `wallSide`).
+   */
+  side?: WallSide;
+  /** Собствен идентификатор. Липсва в конфигурациите отпреди стаите. */
+  id?: string;
+  /** Дължината на участъка, по който се нарежда. */
   length: number;
   base: KitchenModule[];
   upper: KitchenModule[];
 }
 
 export interface Kitchen {
+  /**
+   * Стаята, в която стои кухнята. Липсва в конфигурациите отпреди
+   * плана — тогава се чете като стая по мярката на стените.
+   */
+  room?: Room;
   walls: Wall[];
   materials: Materials;
   rulesVersion: string;
 }
+
+/** Страната на стената, със стойност по подразбиране за старите конфигурации. */
+export function wallSide(wall: Wall, index = 0): WallSide {
+  return wall.side ?? WALL_SIDES[index % WALL_SIDES.length];
+}
+
+/**
+ * Стая, в която подадените стени се събират. Ползва се за
+ * конфигурации отпреди плана — те нямат записана стая.
+ */
+export function roomForWalls(walls: Wall[]): Room {
+  let width = ROOM_DEFAULT.width;
+  let depth = ROOM_DEFAULT.depth;
+  walls.forEach((wall, i) => {
+    const side = wallSide(wall, i);
+    if (side === 'top' || side === 'bottom') width = Math.max(width, wall.length);
+    else depth = Math.max(depth, wall.length);
+  });
+  return { width: clampRoom(width), depth: clampRoom(depth) };
+}
+
+/** Стаята на конфигурацията, записана или сглобена по стените. */
+export function kitchenRoom(kitchen: Kitchen): Room {
+  return kitchen.room ?? roomForWalls(kitchen.walls);
+}
+
+/** Стая по подразбиране: средно голяма кухня-трапезария. */ // ПРОВЕРИ
+export const ROOM_DEFAULT: Room = { width: 4200, depth: 3200 };
 
 /** Редовете на стената във вида, който системата разбира. */
 function rowsOf(wall: Wall): Record<RowId, KitchenModule[]> {
@@ -422,7 +485,8 @@ export function clampWallLength(value: number): number {
 
 export function emptyKitchen(length = 3600): Kitchen {
   return {
-    walls: [{ length, base: [], upper: [] }],
+    room: { ...ROOM_DEFAULT },
+    walls: [{ id: 'wall-1', side: 'top', length, base: [], upper: [] }],
     materials: { ...DEFAULT_MATERIALS },
     rulesVersion: RULES_VERSION,
   };
@@ -460,6 +524,8 @@ export interface CabinetResult {
   kind: ModuleKind;
   label: string;
   width: number;
+  /** На коя стена на стаята стои шкафът. */
+  wall: WallSide;
   parts: Part[];
 }
 
@@ -502,6 +568,22 @@ export function wallStatus(wall: Wall): { base: RowStatus; upper: RowStatus } {
 /** Вертикалната геометрия на модул — за чертежа. */
 export function moduleGeometry(kind: ModuleKind): { y: number; height: number; depth: number } {
   return geometryOf(KITCHEN, kind);
+}
+
+/** Планът отгоре: стените на стаята и правоъгълниците на модулите по тях. */
+export function kitchenPlan(
+  kitchen: Kitchen,
+  result: KitchenResult,
+): PlanWall<ModuleKind, RowId>[] {
+  return planGeometry(
+    KITCHEN,
+    kitchenRoom(kitchen),
+    kitchen.walls.map((wall, i) => ({
+      side: wallSide(wall, i),
+      length: wall.length,
+      placed: result.placed[i],
+    })),
+  );
 }
 
 /** Горният ръб на долния ред, без плота. */
@@ -863,7 +945,7 @@ export function computeKitchen(kitchen: Kitchen): KitchenResult {
   const cabinets: CabinetResult[] = [];
   const parts: Part[] = [];
 
-  for (const wall of kitchen.walls) {
+  for (const [index, wall] of kitchen.walls.entries()) {
     const p = placeWall(wall, counters);
     placed.push(p);
     statuses.push(wallStatus(wall));
@@ -878,6 +960,7 @@ export function computeKitchen(kitchen: Kitchen): KitchenResult {
         kind: m.kind,
         label: m.spec.label,
         width: m.width,
+        wall: wallSide(wall, index),
         parts: numbered,
       });
       parts.push(...numbered);

@@ -8,7 +8,8 @@
  * и на телефон (виж `fontSizeMm`).
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { useElementWidth } from './useElementWidth';
 import {
   DIM,
   clampWallLength,
@@ -91,23 +92,6 @@ function toPoint(svg: SVGSVGElement, clientX: number, clientY: number): { x: num
   return { x: p.x, y: p.y };
 }
 
-/** Ширината на контейнера в пиксели — за мащаба на шрифта. */
-function useWidth<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [width, setWidth] = useState(0);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
-    ro.observe(el);
-    setWidth(el.getBoundingClientRect().width);
-    return () => ro.disconnect();
-  }, []);
-
-  return { ref, width };
-}
-
 export function KitchenDrawing({
   wall,
   placed,
@@ -119,7 +103,7 @@ export function KitchenDrawing({
   onWallLength,
   onMoveToRow,
 }: Props) {
-  const { ref, width: pxWidth } = useWidth<HTMLDivElement>();
+  const { ref, width: pxWidth } = useElementWidth<HTMLDivElement>();
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   // При надвишаване чертежът се разширява, за да се види колко излиза.

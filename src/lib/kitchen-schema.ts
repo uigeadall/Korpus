@@ -16,16 +16,22 @@ import {
   MODULES,
   type ModuleKind,
   type OpeningType,
+  type Room,
   RULES_VERSION,
   type Wall,
+  type WallSide,
+  WALL_SIDES,
   type WorktopType,
   WORKTOP_THICKNESS,
+  clampRoom,
   clampWallLength,
+  roomForWalls,
 } from './cabinet-rules';
 
 /** Горни граници, за да не може една заявка да изяде сървъра. */
 export const LIMITS = {
-  walls: 8,
+  /** Правоъгълна стая — по една стена на страна. */
+  walls: 4,
   modulesPerRow: 40,
   colorLength: 60,
 } as const;
@@ -84,6 +90,10 @@ function parseWall(raw: unknown, index: number): Wall | string {
     return `стена ${index + 1}: дължина ${length} е извън ${DIM.WALL_MIN}–${DIM.WALL_MAX} мм`;
   }
 
+  // Конфигурациите отпреди стаите нямат страна — подреждат се по часовника.
+  const side = oneOf<WallSide>(raw.side, WALL_SIDES, WALL_SIDES[index % WALL_SIDES.length]);
+  const id = typeof raw.id === 'string' && raw.id.length <= 64 ? raw.id : `wall-${index + 1}`;
+
   const rows: Record<'base' | 'upper', KitchenModule[]> = { base: [], upper: [] };
   for (const row of ['base', 'upper'] as const) {
     const list = raw[row];
@@ -99,7 +109,17 @@ function parseWall(raw: unknown, index: number): Wall | string {
     }
   }
 
-  return { length: clampWallLength(length), base: rows.base, upper: rows.upper };
+  return { id, side, length: clampWallLength(length), base: rows.base, upper: rows.upper };
+}
+
+/** Стаята е по избор; подадена, минава през същите граници като в интерфейса. */
+function parseRoom(raw: unknown): Room | string | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isRecord(raw)) return 'стаята не е обект';
+  const width = Number(raw.width);
+  const depth = Number(raw.depth);
+  if (!Number.isFinite(width) || !Number.isFinite(depth)) return 'стаята е без размери';
+  return { width: clampRoom(width), depth: clampRoom(depth) };
 }
 
 /** Чете конфигурация от непроверено тяло на заявка. */
@@ -117,12 +137,19 @@ export function parseKitchen(raw: unknown): Validation {
     parsed.push(result);
   }
 
+  const sides = parsed.map((w) => w.side);
+  if (new Set(sides).size !== sides.length) return fail('две стени на една и съща страна');
+
+  const room = parseRoom(raw.room);
+  if (typeof room === 'string') return fail(room);
+
   const m = isRecord(raw.materials) ? raw.materials : {};
   const facade = isRecord(m.facade) ? m.facade : {};
 
   return {
     ok: true,
     kitchen: {
+      room: room ?? roomForWalls(parsed),
       walls: parsed,
       materials: {
         carcassColor: text(m.carcassColor, DEFAULT_MATERIALS.carcassColor),

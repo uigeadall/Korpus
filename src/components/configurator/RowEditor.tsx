@@ -21,6 +21,7 @@ const STATUS_TEXT: Record<RowStatus['state'], (diff: number) => string> = {
 
 export function RowEditor({
   row,
+  wallId,
   modules,
   status,
   selectedId,
@@ -28,6 +29,8 @@ export function RowEditor({
   dispatch,
 }: {
   row: RowId;
+  /** Стената, в която отиват новите модули. */
+  wallId?: string;
   modules: PlacedModule[];
   status: RowStatus;
   selectedId: string | null;
@@ -76,7 +79,7 @@ export function RowEditor({
           <button
             key={kind}
             type="button"
-            onClick={() => dispatch({ type: 'add', row, kind })}
+            onClick={() => wallId && dispatch({ type: 'add', wallId, row, kind })}
             className="border border-border px-3 py-1.5 text-xs transition-colors hover:border-accent hover:text-accent focus-visible:outline-2 focus-visible:outline-accent"
           >
             + {MODULES[kind].label}

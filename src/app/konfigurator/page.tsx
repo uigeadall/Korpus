@@ -4,7 +4,7 @@ import { Configurator } from '@/components/configurator/Configurator';
 export const metadata: Metadata = {
   title: 'Конфигуратор на кухня',
   description:
-    'Нареди шкафовете сам: чертеж с размери, спецификация и разбивка на детайлите за разкрой.',
+    'Нареди кухнята по стените на стаята: план отгоре, чертеж с размери, спецификация и разбивка на детайлите за разкрой.',
 };
 
 export default function KonfiguratorPage() {
