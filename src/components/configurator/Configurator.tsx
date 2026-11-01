@@ -4,12 +4,26 @@ import Link from 'next/link';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { DIM, type Kitchen, computeKitchen } from '@/lib/cabinet-rules';
 import { formatMm } from '@/lib/drawing';
-import { type ExportView, exportFileName, toCsv, toExportRows } from '@/lib/export-mapping';
+import {
+  CABINET_COLUMNS,
+  EXPORT_COLUMNS,
+  type ExportView,
+  exportFileName,
+  toCabinetRows,
+  toCsv,
+  toExportRows,
+} from '@/lib/export-mapping';
 import { KitchenDrawing } from './KitchenDrawing';
 import { MaterialsPanel } from './MaterialsPanel';
 import { ResultTabs } from './ResultTabs';
 import { RowEditor } from './RowEditor';
 import { type Action, clampWall, loadLocal, reducer, sampleKitchen, saveLocal } from './state';
+
+const VIEW_LABEL: Record<ExportView, string> = {
+  cabinet: 'По шкафове',
+  material: 'По материал',
+  cabinets: 'Заявка за шкафове',
+};
 
 /** Състояние на екрана: кухнята + дали е върната от браузъра. */
 interface UiState {
@@ -51,8 +65,11 @@ export function Configurator() {
   const status = result.rowStatus[0];
 
   const downloadCsv = () => {
-    const rows = toExportRows(result, view);
-    const blob = new Blob([toCsv(rows)], { type: 'text/csv;charset=utf-8' });
+    const csv =
+      view === 'cabinets'
+        ? toCsv(toCabinetRows(result, kitchen.materials), CABINET_COLUMNS)
+        : toCsv(toExportRows(result, view), EXPORT_COLUMNS);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -177,7 +194,7 @@ export function Configurator() {
                 onClick={downloadCsv}
                 className="border border-border px-4 py-2.5 text-sm transition-colors hover:border-accent hover:text-accent"
               >
-                Свали CSV за цеха ({view === 'material' ? 'по материал' : 'по шкафове'})
+                Свали CSV за цеха ({VIEW_LABEL[view].toLowerCase()})
               </button>
               <button
                 type="button"

@@ -229,6 +229,17 @@ export const FACADE_LABEL: Record<FacadeType, string> = {
   'pdch-decor': 'ПДЧ декор',
 };
 
+export const OPENING_LABEL: Record<OpeningType, string> = {
+  handles: 'Дръжки',
+  push: 'Push-to-open',
+  'alu-profile': 'Алуминиев профил',
+};
+
+export const DRAWER_SYSTEM_LABEL: Record<DrawerSystem, string> = {
+  'metal-box': 'метален борд',
+  'ball-bearing': 'сферични водачи',
+};
+
 export const MATERIAL_LABEL: Record<PartMaterial, string> = {
   pdch18: 'ПДЧ 18',
   pdch16: 'ПДЧ 16',

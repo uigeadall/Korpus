@@ -7,10 +7,18 @@
  */
 
 import {
+  type CabinetResult,
+  DRAWER_SYSTEM_LABEL,
   MATERIAL_LABEL,
+  MODULES,
   type KitchenResult,
+  type Materials,
   type MergedPart,
+  OPENING_LABEL,
   type Part,
+  facadeParts,
+  hingeCount,
+  moduleGeometry,
 } from './cabinet-rules';
 import { formatMm } from './drawing';
 
@@ -32,12 +40,14 @@ export interface ExportRow {
   note: string;
 }
 
-export interface ExportColumn {
-  key: keyof ExportRow;
+export interface Column<T> {
+  key: keyof T;
   header: string;
   /** Как стойността влиза в CSV / XLSX клетка. */
-  format?: (row: ExportRow) => string | number;
+  format?: (row: T) => string | number;
 }
+
+export type ExportColumn = Column<ExportRow>;
 
 /** Колони по SPEC 5.4. Разменете редовете тук, ако цехът иска друг ред. */
 export const EXPORT_COLUMNS: ExportColumn[] = [
@@ -54,7 +64,7 @@ export const EXPORT_COLUMNS: ExportColumn[] = [
   { key: 'note', header: 'Бележка' },
 ];
 
-export type ExportView = 'cabinet' | 'material';
+export type ExportView = 'cabinet' | 'material' | 'cabinets';
 
 function rowFromPart(p: Part): ExportRow {
   return {
@@ -98,6 +108,93 @@ export function toExportRows(result: KitchenResult, view: ExportView): ExportRow
 }
 
 /* ------------------------------------------------------------------ */
+/* Заявка по шкафове                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Обобщение на ниво шкаф — това, което външният цех иска, за да разкрои и
+ * пробие детайлите за домашен монтаж: габарит, брой рафтове, брой чела,
+ * начин на отваряне и какви механизми се ползват.
+ */
+export interface CabinetSummaryRow {
+  cabinet: string;
+  type: string;
+  carcass: string;
+  width: number;
+  height: number;
+  depth: number;
+  shelves: number;
+  fronts: number;
+  opening: string;
+  mechanisms: string;
+  note: string;
+}
+
+export const CABINET_COLUMNS: Column<CabinetSummaryRow>[] = [
+  { key: 'cabinet', header: 'Шкаф' },
+  { key: 'type', header: 'Тип' },
+  { key: 'carcass', header: 'Корпус' },
+  { key: 'width', header: 'Ширина', format: (r) => formatMm(r.width) },
+  { key: 'height', header: 'Височина', format: (r) => formatMm(r.height) },
+  { key: 'depth', header: 'Дълбочина', format: (r) => formatMm(r.depth) },
+  { key: 'shelves', header: 'Рафтове' },
+  { key: 'fronts', header: 'Чела' },
+  { key: 'opening', header: 'Отваряне' },
+  { key: 'mechanisms', header: 'Механизми' },
+  { key: 'note', header: 'Бележка' },
+];
+
+function mechanismsFor(cabinet: CabinetResult, materials: Materials): string {
+  const facades = facadeParts(
+    { id: cabinet.code, kind: cabinet.kind, width: cabinet.width },
+    materials,
+  );
+
+  const out: string[] = [];
+  const hinges = facades
+    .filter((f) => f.name.startsWith('Врата'))
+    .reduce((sum, f) => sum + hingeCount(f.length) * (f.qty ?? 1), 0);
+  if (hinges) out.push(`${hinges} панти`);
+
+  if (cabinet.kind === 'drawers') out.push(`3 × ${DRAWER_SYSTEM_LABEL[materials.drawers]}`);
+  if (facades.some((f) => f.name === 'Клапа')) out.push('подемен механизъм');
+
+  return out.join(', ');
+}
+
+export function toCabinetRows(result: KitchenResult, materials: Materials): CabinetSummaryRow[] {
+  return result.cabinets.map((c) => {
+    const g = moduleGeometry(c.kind);
+    const shelves = c.parts
+      .filter((p) => p.name.toLowerCase().includes('рафт'))
+      .reduce((s, p) => s + p.qty, 0);
+    const fronts = c.parts
+      .filter((p) => p.material === 'facade')
+      .reduce((s, p) => s + p.qty, 0);
+
+    const notes: string[] = [];
+    if (!MODULES[c.kind].hasCarcass) notes.push('само фасада, без корпус');
+    if (c.kind === 'oven') notes.push(`ниша за фурна ${formatMm(595)}`);
+    if (c.kind === 'hood') notes.push('дъно с изрез по аспиратора');
+    if (c.kind === 'sink' || c.kind === 'oven') notes.push('без гръб');
+
+    return {
+      cabinet: c.code,
+      type: c.label,
+      carcass: MODULES[c.kind].hasCarcass ? `ПДЧ 18, ${materials.carcassColor}` : '—',
+      width: c.width,
+      height: g.height,
+      depth: g.depth,
+      shelves,
+      fronts,
+      opening: OPENING_LABEL[materials.opening],
+      mechanisms: mechanismsFor(c, materials),
+      note: notes.join('; '),
+    };
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* CSV                                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -116,9 +213,9 @@ function csvCell(value: string | number, delimiter: string): string {
   return s;
 }
 
-export function toCsv(
-  rows: ExportRow[],
-  columns: ExportColumn[] = EXPORT_COLUMNS,
+export function toCsv<T>(
+  rows: T[],
+  columns: Column<T>[],
   { delimiter = ';', bom = true }: CsvOptions = {},
 ): string {
   const head = columns.map((c) => csvCell(c.header, delimiter)).join(delimiter);
@@ -133,6 +230,7 @@ export function toCsv(
 /** Име на файла: korpus-razkroi-po-material-2026-11-01.csv */
 export function exportFileName(view: ExportView, ext: string, date = new Date()): string {
   const iso = date.toISOString().slice(0, 10);
-  const suffix = view === 'material' ? 'po-material' : 'po-shkafove';
+  const suffix =
+    view === 'material' ? 'po-material' : view === 'cabinets' ? 'zayavka-shkafove' : 'po-shkafove';
   return `korpus-razkroi-${suffix}-${iso}.${ext}`;
 }

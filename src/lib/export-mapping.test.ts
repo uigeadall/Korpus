@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_MATERIALS, type Kitchen, computeKitchen } from './cabinet-rules';
-import { EXPORT_COLUMNS, exportFileName, toCsv, toExportRows } from './export-mapping';
+import {
+  CABINET_COLUMNS,
+  EXPORT_COLUMNS,
+  exportFileName,
+  toCabinetRows,
+  toCsv,
+  toExportRows,
+} from './export-mapping';
 
 function kitchen(): Kitchen {
   return {
@@ -19,6 +26,7 @@ function kitchen(): Kitchen {
   };
 }
 
+const materials = kitchen().materials;
 const result = computeKitchen(kitchen());
 
 describe('колони за цеха', () => {
@@ -67,7 +75,7 @@ describe('изглед по материал', () => {
 });
 
 describe('CSV', () => {
-  const csv = toCsv(toExportRows(result, 'material'));
+  const csv = toCsv(toExportRows(result, 'material'), EXPORT_COLUMNS);
 
   it('започва с BOM и заглавния ред', () => {
     expect(csv.startsWith('﻿№;Шкаф;Детайл')).toBe(true);
@@ -126,12 +134,54 @@ describe('CSV', () => {
   });
 });
 
+describe('заявка по шкафове', () => {
+  const rows = toCabinetRows(result, materials);
+
+  it('е по един ред на шкаф', () => {
+    expect(rows.map((r) => r.cabinet)).toEqual(result.cabinets.map((c) => c.code));
+  });
+
+  it('дава габарита на шкафа', () => {
+    const drawers = rows.find((r) => r.cabinet === 'Д1')!;
+    expect([drawers.width, drawers.height, drawers.depth]).toEqual([600, 720, 560]);
+    const upper = rows.find((r) => r.cabinet === 'Г1')!;
+    expect([upper.width, upper.height, upper.depth]).toEqual([600, 720, 320]);
+  });
+
+  it('брои рафтове и чела', () => {
+    const door = rows.find((r) => r.cabinet === 'Д2')!;
+    expect(door.shelves).toBe(1);
+    expect(door.fronts).toBe(1);
+
+    const drawers = rows.find((r) => r.cabinet === 'Д1')!;
+    expect(drawers.shelves).toBe(0);
+    expect(drawers.fronts).toBe(3);
+  });
+
+  it('казва какви механизми трябват', () => {
+    expect(rows.find((r) => r.cabinet === 'Д1')!.mechanisms).toBe('3 × метален борд');
+    expect(rows.find((r) => r.cabinet === 'Д2')!.mechanisms).toBe('2 панти');
+    expect(rows.find((r) => r.cabinet === 'Д2')!.opening).toBe('Дръжки');
+  });
+
+  it('излиза като CSV със собствени колони', () => {
+    const csv = toCsv(rows, CABINET_COLUMNS, { bom: false });
+    expect(csv.split('\r\n')[0]).toBe(
+      'Шкаф;Тип;Корпус;Ширина;Височина;Дълбочина;Рафтове;Чела;Отваряне;Механизми;Бележка',
+    );
+    expect(csv.split('\r\n')[1]).toContain('ПДЧ 18, Бял');
+  });
+});
+
 describe('име на файла', () => {
   it('съдържа изгледа и датата', () => {
     const name = exportFileName('material', 'csv', new Date('2026-11-01T10:00:00Z'));
     expect(name).toBe('korpus-razkroi-po-material-2026-11-01.csv');
     expect(exportFileName('cabinet', 'xlsx', new Date('2026-11-01T10:00:00Z'))).toBe(
       'korpus-razkroi-po-shkafove-2026-11-01.xlsx',
+    );
+    expect(exportFileName('cabinets', 'csv', new Date('2026-11-01T10:00:00Z'))).toBe(
+      'korpus-razkroi-zayavka-shkafove-2026-11-01.csv',
     );
   });
 });

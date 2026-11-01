@@ -10,7 +10,12 @@ import {
   WORKTOP_LABEL,
 } from '@/lib/cabinet-rules';
 import { formatMm } from '@/lib/drawing';
-import { type ExportView, toExportRows } from '@/lib/export-mapping';
+import {
+  CABINET_COLUMNS,
+  type ExportView,
+  toCabinetRows,
+  toExportRows,
+} from '@/lib/export-mapping';
 
 type Tab = 'summary' | 'cutting' | 'hardware';
 
@@ -56,7 +61,12 @@ export function ResultTabs({
       <div className="px-4 py-4">
         {tab === 'summary' && <SummaryTab result={result} materials={materials} />}
         {tab === 'cutting' && (
-          <CuttingTab result={result} view={view} onViewChange={onViewChange} />
+          <CuttingTab
+            result={result}
+            materials={materials}
+            view={view}
+            onViewChange={onViewChange}
+          />
         )}
         {tab === 'hardware' && <HardwareTab result={result} materials={materials} />}
       </div>
@@ -127,14 +137,17 @@ function SummaryTab({ result, materials }: { result: KitchenResult; materials: M
 
 function CuttingTab({
   result,
+  materials,
   view,
   onViewChange,
 }: {
   result: KitchenResult;
+  materials: Materials;
   view: ExportView;
   onViewChange: (v: ExportView) => void;
 }) {
-  const rows = toExportRows(result, view);
+  const rows = view === 'cabinets' ? [] : toExportRows(result, view);
+  const cabinetRows = view === 'cabinets' ? toCabinetRows(result, materials) : [];
 
   return (
     <div className="space-y-4">
@@ -144,6 +157,7 @@ function CuttingTab({
             [
               { id: 'cabinet' as ExportView, label: 'По шкафове' },
               { id: 'material' as ExportView, label: 'По материал' },
+              { id: 'cabinets' as ExportView, label: 'Заявка за шкафове' },
             ] satisfies { id: ExportView; label: string }[]
           ).map((o) => (
             <button
@@ -161,48 +175,71 @@ function CuttingTab({
             </button>
           ))}
         </div>
-        <p className="dim text-xs">{rows.length} реда</p>
+        <p className="dim text-xs">{(view === 'cabinets' ? cabinetRows : rows).length} реда</p>
       </div>
 
       <div className="-mx-4 overflow-x-auto px-4">
-        <Table
-          head={[
-            '№',
-            'Шкаф',
-            'Детайл',
-            'Материал',
-            'Д',
-            'Ш',
-            'Бр.',
-            'Кант Д',
-            'Кант Ш',
-            'Кант мм',
-            'Бележка',
-          ]}
-        >
-          {rows.map((r, i) => (
-            <tr key={`${r.no}-${i}`} className="border-t border-border">
-              <Td mono>{r.no}</Td>
-              <Td mono>{r.cabinet}</Td>
-              <Td>{r.part}</Td>
-              <Td>{r.material}</Td>
-              <Td mono>{formatMm(r.length)}</Td>
-              <Td mono>{formatMm(r.width)}</Td>
-              <Td mono>{r.qty}</Td>
-              <Td mono>{r.edgeL}</Td>
-              <Td mono>{r.edgeW}</Td>
-              <Td mono>{formatMm(r.edgeMm)}</Td>
-              <Td>
-                <span className="text-muted">{r.note}</span>
-              </Td>
-            </tr>
-          ))}
-        </Table>
+        {view === 'cabinets' ? (
+          <Table head={CABINET_COLUMNS.map((c) => c.header)}>
+            {cabinetRows.map((r) => (
+              <tr key={r.cabinet} className="border-t border-border">
+                <Td mono>{r.cabinet}</Td>
+                <Td>{r.type}</Td>
+                <Td>{r.carcass}</Td>
+                <Td mono>{formatMm(r.width)}</Td>
+                <Td mono>{formatMm(r.height)}</Td>
+                <Td mono>{formatMm(r.depth)}</Td>
+                <Td mono>{r.shelves}</Td>
+                <Td mono>{r.fronts}</Td>
+                <Td>{r.opening}</Td>
+                <Td>{r.mechanisms}</Td>
+                <Td>
+                  <span className="text-muted">{r.note}</span>
+                </Td>
+              </tr>
+            ))}
+          </Table>
+        ) : (
+          <Table
+            head={[
+              '№',
+              'Шкаф',
+              'Детайл',
+              'Материал',
+              'Д',
+              'Ш',
+              'Бр.',
+              'Кант Д',
+              'Кант Ш',
+              'Кант мм',
+              'Бележка',
+            ]}
+          >
+            {rows.map((r, i) => (
+              <tr key={`${r.no}-${i}`} className="border-t border-border">
+                <Td mono>{r.no}</Td>
+                <Td mono>{r.cabinet}</Td>
+                <Td>{r.part}</Td>
+                <Td>{r.material}</Td>
+                <Td mono>{formatMm(r.length)}</Td>
+                <Td mono>{formatMm(r.width)}</Td>
+                <Td mono>{r.qty}</Td>
+                <Td mono>{r.edgeL}</Td>
+                <Td mono>{r.edgeW}</Td>
+                <Td mono>{formatMm(r.edgeMm)}</Td>
+                <Td>
+                  <span className="text-muted">{r.note}</span>
+                </Td>
+              </tr>
+            ))}
+          </Table>
+        )}
       </div>
 
       <p className="text-xs text-muted">
-        „Кант Д“ и „Кант Ш“ са броят кантирани страни по дължината и по ширината. Номерът се лепи
-        на детайла, за да може монтажът да стане и у дома.
+        {view === 'cabinets'
+          ? 'Заявка на ниво шкаф за външен цех: габарит, рафтове, чела, начин на отваряне и механизми. Детайлите се вземат от другите два изгледа.'
+          : '„Кант Д“ и „Кант Ш“ са броят кантирани страни по дължината и по ширината. Номерът се лепи на детайла, за да може монтажът да стане и у дома.'}
       </p>
     </div>
   );
