@@ -427,11 +427,17 @@ export function hatchLines(
 /* ------------------------------------------------------------------ */
 
 /**
+ * Таван на шрифта в милиметри. Полетата около чертежа са фиксирани в мм,
+ * а шрифтът расте, когато чертежът се рисува тесен — без таван последният
+ * размер изпада извън рамката.
+ */
+export const MAX_FONT_MM = 75;
+
+/**
  * Големина на шрифта в мм, така че на екрана да излезе ~`px` пиксела.
  * Така размерите остават четими и на телефон.
  */
 export function fontSizeMm(view: ViewBox, renderedWidthPx: number, px: number): number {
-  if (!renderedWidthPx) return px * 4;
-  const mmPerPx = view.width / renderedWidthPx;
-  return px * mmPerPx;
+  const mmPerPx = renderedWidthPx ? view.width / renderedWidthPx : 4;
+  return Math.min(MAX_FONT_MM, px * mmPerPx);
 }

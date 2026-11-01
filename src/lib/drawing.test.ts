@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DIM, type KitchenModule, type ModuleKind, placeWall } from './cabinet-rules';
 import {
   DRAW_H,
+  MAX_FONT_MM,
   PAD,
   WALL_T,
   chainFromRanges,
@@ -253,11 +254,22 @@ describe('кой ред е под показалеца', () => {
 });
 
 describe('мащаб на текста', () => {
+  const view = viewBoxFor(3600);
+
   it('шрифтът расте, когато чертежът се смали на екрана', () => {
-    const view = viewBoxFor(3600);
     const onDesktop = fontSizeMm(view, 1000, 11);
-    const onPhone = fontSizeMm(view, 360, 11);
+    const onPhone = fontSizeMm(view, 500, 11);
     expect(onPhone).toBeGreaterThan(onDesktop);
     expect(onDesktop * 1000).toBeCloseTo(11 * view.width, 5);
+  });
+
+  it('има таван, за да не изпадне размерът извън рамката', () => {
+    expect(fontSizeMm(view, 200, 12)).toBe(MAX_FONT_MM);
+  });
+
+  it('общият размер се побира в долното поле', () => {
+    // надписът стои на floorY + FLOOR_T + 330, плюс височината на шрифта
+    const baseline = view.floorY + 90 + 330 + MAX_FONT_MM;
+    expect(baseline).toBeLessThan(view.y + view.height);
   });
 });
