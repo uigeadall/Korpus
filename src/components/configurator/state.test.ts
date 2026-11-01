@@ -96,6 +96,45 @@ describe('редакция', () => {
   });
 });
 
+describe('преподреждане', () => {
+  const start = run([
+    { type: 'add', row: 'base', kind: 'door' },
+    { type: 'add', row: 'base', kind: 'drawers' },
+    { type: 'add', row: 'base', kind: 'sink' },
+  ]);
+  const ids = base(start).map((m) => m.id);
+
+  it('мести на произволна позиция', () => {
+    const k = reducer(start, { type: 'reorder', id: ids[0], toIndex: 2 });
+    expect(base(k).map((m) => m.id)).toEqual([ids[1], ids[2], ids[0]]);
+  });
+
+  it('мести назад', () => {
+    const k = reducer(start, { type: 'reorder', id: ids[2], toIndex: 0 });
+    expect(base(k).map((m) => m.id)).toEqual([ids[2], ids[0], ids[1]]);
+  });
+
+  it('ограничава индекса в реда', () => {
+    const k = reducer(start, { type: 'reorder', id: ids[0], toIndex: 99 });
+    expect(base(k).map((m) => m.id)).toEqual([ids[1], ids[2], ids[0]]);
+    const k2 = reducer(start, { type: 'reorder', id: ids[2], toIndex: -5 });
+    expect(base(k2).map((m) => m.id)).toEqual([ids[2], ids[0], ids[1]]);
+  });
+
+  it('на същото място не прави нищо', () => {
+    const k = reducer(start, { type: 'reorder', id: ids[1], toIndex: 1 });
+    expect(base(k).map((m) => m.id)).toEqual(ids);
+  });
+
+  it('не бърка двата реда', () => {
+    const k = run([{ type: 'add', row: 'upper', kind: 'upper' }], start);
+    const upperId = upper(k)[0].id;
+    const moved = reducer(k, { type: 'reorder', id: upperId, toIndex: 0 });
+    expect(base(moved).map((m) => m.id)).toEqual(ids);
+    expect(upper(moved)).toHaveLength(1);
+  });
+});
+
 describe('материали', () => {
   it('се сливат частично', () => {
     const k = run([{ type: 'materials', value: { worktop: 'quartz20' } }]);

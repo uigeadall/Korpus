@@ -5,6 +5,7 @@ import {
   PAD,
   WALL_T,
   chainFromRanges,
+  dropIndex,
   facadeRects,
   fontSizeMm,
   formatMm,
@@ -180,6 +181,54 @@ describe('фасади на чертежа', () => {
   it('горният шкаф отваря по избраната страна', () => {
     const [door] = facadeRects(view, placeUpper(mod('upper', 500, 'left')));
     expect(door.swing?.side).toBe('left');
+  });
+});
+
+describe('преподреждане с влачене', () => {
+  const row = placeWall({
+    length: 3600,
+    base: [mod('door', 600), mod('drawers', 600), mod('sink', 800)],
+    upper: [],
+  }).base;
+
+  const at = (id: string, left: number) => dropIndex(row, id, left);
+
+  it('на мястото си не мърда', () => {
+    expect(at(row[0].id, row[0].x)).toBe(0);
+    expect(at(row[1].id, row[1].x)).toBe(1);
+    expect(at(row[2].id, row[2].x)).toBe(2);
+  });
+
+  it('влачене надясно дава следващия индекс', () => {
+    // свободните позиции за първия са 0, 600 и 1400
+    expect(at(row[0].id, 650)).toBe(1);
+    expect(at(row[0].id, 1400)).toBe(2);
+  });
+
+  it('широк модул стига и до началото на реда', () => {
+    // мивката е 800 — по центрове не би могла да се върне на позиция 0
+    expect(at(row[2].id, 0)).toBe(0);
+  });
+
+  it('влачене наляво връща назад', () => {
+    expect(at(row[1].id, 100)).toBe(0);
+    expect(at(row[2].id, 700)).toBe(1);
+  });
+
+  it('горният ред се мери спрямо началото си, не спрямо нулата', () => {
+    const upperRow = placeWall({
+      length: 3600,
+      base: [mod('column', 600)],
+      upper: [mod('upper', 600), mod('upper', 400)],
+    }).upper;
+    expect(upperRow[0].x).toBe(600);
+    expect(dropIndex(upperRow, upperRow[1].id, 600)).toBe(0);
+    expect(dropIndex(upperRow, upperRow[1].id, 1200)).toBe(1);
+  });
+
+  it('далеч извън реда се ограничава до краищата', () => {
+    expect(at(row[0].id, -5000)).toBe(0);
+    expect(at(row[0].id, 99_000)).toBe(2);
   });
 });
 

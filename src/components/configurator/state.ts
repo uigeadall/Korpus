@@ -22,6 +22,7 @@ export type Action =
   | { type: 'width'; id: string; value: number }
   | { type: 'hinge'; id: string; value: HingeSide }
   | { type: 'move'; id: string; dir: -1 | 1 }
+  | { type: 'reorder'; id: string; toIndex: number }
   | { type: 'materials'; value: Partial<Materials> }
   | { type: 'load'; value: Kitchen }
   | { type: 'reset' };
@@ -119,6 +120,19 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
         const j = i + action.dir;
         if (i < 0 || j < 0 || j >= list.length) return;
         [list[i], list[j]] = [list[j], list[i]];
+      });
+    }
+
+    case 'reorder': {
+      const row = findRow(kitchen, action.id);
+      if (!row) return kitchen;
+      return withWall(kitchen, (base, upper) => {
+        const list = row === 'base' ? base : upper;
+        const from = list.findIndex((m) => m.id === action.id);
+        const to = Math.min(list.length - 1, Math.max(0, action.toIndex));
+        if (from < 0 || from === to) return;
+        const [moved] = list.splice(from, 1);
+        list.splice(to, 0, moved);
       });
     }
 

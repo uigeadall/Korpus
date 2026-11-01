@@ -335,6 +335,41 @@ export function facadeRects(view: ViewBox, m: PlacedModule): FacadeRect[] {
 }
 
 /* ------------------------------------------------------------------ */
+/* Преподреждане с влачене                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Къде да влезе влаченият модул в реда си.
+ *
+ * За всяка възможна позиция се пресмята къде би застанал левият му ръб и
+ * се избира най-близката. Сравняването по центрове не върши работа, защото
+ * при различни ширини крайните позиции стават недостижими.
+ */
+export function dropIndex(
+  row: PlacedModule[],
+  draggedId: string,
+  draggedLeft: number,
+): number {
+  const others = row.filter((m) => m.id !== draggedId);
+  if (!others.length) return 0;
+
+  const rowStart = Math.min(...row.map((m) => m.x));
+  let best = 0;
+  let bestDistance = Infinity;
+  let slot = rowStart;
+
+  for (let i = 0; i <= others.length; i += 1) {
+    const distance = Math.abs(slot - draggedLeft);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = i;
+    }
+    if (i < others.length) slot += others[i].width;
+  }
+  return best;
+}
+
+/* ------------------------------------------------------------------ */
 /* Мащаб на текста                                                     */
 /* ------------------------------------------------------------------ */
 

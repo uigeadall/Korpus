@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   DIM,
   type PlacedModule,
+  type RowId,
   type RowStatus,
   WORKTOP_THICKNESS,
   type Wall,
@@ -23,6 +24,7 @@ import {
   FLOOR_T,
   WALL_T,
   chainForModules,
+  dropIndex,
   facadeRects,
   fontSizeMm,
   formatMm,
@@ -39,6 +41,30 @@ interface Props {
   worktop: WorktopType;
   selectedId?: string | null;
   onSelect?: (id: string) => void;
+  /** Преподреждане чрез влачене или стрелки. Без него чертежът е само за гледане. */
+  onReorder?: (id: string, toIndex: number) => void;
+}
+
+/** Модулът, който се влачи в момента. */
+interface Drag {
+  id: string;
+  row: RowId;
+  /** Разстояние от показалеца до левия ръб на модула, мм */
+  grab: number;
+  /** Текущ ляв ръб под показалеца, мм */
+  x: number;
+  /** Влачено ли е достатъчно, за да не брои за клик */
+  moved: boolean;
+}
+
+/** Колко мм трябва да се помръдне, преди да се смята за влачене, а не клик. */
+const DRAG_THRESHOLD = 15;
+
+/** Клиентски X → милиметри в координатите на чертежа. */
+function toMm(svg: SVGSVGElement, clientX: number, clientY: number): number {
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return 0;
+  return new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse()).x;
 }
 
 /** Ширината на контейнера в пиксели — за мащаба на шрифта. */
@@ -58,8 +84,20 @@ function useWidth<T extends HTMLElement>() {
   return { ref, width };
 }
 
-export function KitchenDrawing({ wall, placed, status, worktop, selectedId, onSelect }: Props) {
+export function KitchenDrawing({
+  wall,
+  placed,
+  status,
+  worktop,
+  selectedId,
+  onSelect,
+  onReorder,
+}: Props) {
   const { ref, width: pxWidth } = useWidth<HTMLDivElement>();
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  /** След влачене не искаме и клик, който да „избере" нещо друго. */
+  const skipClick = useRef(false);
   // При надвишаване чертежът се разширява, за да се види колко излиза.
   const contentRight = Math.max(
     wall.length,
@@ -97,13 +135,70 @@ export function KitchenDrawing({ wall, placed, status, worktop, selectedId, onSe
     else plinthRuns.push({ x: m.x, width: m.width });
   }
 
+  const startDrag = (m: PlacedModule, row: RowId, e: React.PointerEvent) => {
+    if (!onReorder || !svgRef.current) return;
+    const x = toMm(svgRef.current, e.clientX, e.clientY);
+    svgRef.current.setPointerCapture(e.pointerId);
+    setDrag({ id: m.id, row, grab: x - m.x, x: m.x, moved: false });
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!drag || !svgRef.current) return;
+    const left = toMm(svgRef.current, e.clientX, e.clientY) - drag.grab;
+    const row = placed[drag.row];
+    const dragged = row.find((m) => m.id === drag.id);
+    if (!dragged) return;
+
+    const moved = drag.moved || Math.abs(left - dragged.x) > DRAG_THRESHOLD;
+    setDrag({ ...drag, x: left, moved });
+    if (!moved) return;
+
+    skipClick.current = true;
+    const to = dropIndex(row, drag.id, left);
+    if (to !== row.indexOf(dragged)) onReorder?.(drag.id, to);
+  };
+
+  const endDrag = () => setDrag(null);
+
+  const handleSelect = (id: string) => {
+    if (skipClick.current) {
+      skipClick.current = false;
+      return;
+    }
+    onSelect?.(id);
+  };
+
+  /** Стрелки на клавиатурата — същото преподреждане без мишка. */
+  const onModuleKeyDown = (m: PlacedModule, row: RowId, e: React.KeyboardEvent) => {
+    const index = placed[row].indexOf(m);
+    if (e.key === 'ArrowLeft' && index > 0) {
+      e.preventDefault();
+      onReorder?.(m.id, index - 1);
+    } else if (e.key === 'ArrowRight' && index < placed[row].length - 1) {
+      e.preventDefault();
+      onReorder?.(m.id, index + 1);
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onSelect?.(m.id);
+    }
+  };
+
+  const dragged = drag ? placed[drag.row].find((m) => m.id === drag.id) : undefined;
+
   return (
     <div ref={ref} className="w-full overflow-hidden">
       <svg
+        ref={svgRef}
         viewBox={view.value}
-        className="block w-full h-auto"
+        // touch-action важи само за самия <svg>, не за групите вътре в него
+        className={`block w-full h-auto [touch-action:pan-y] ${
+          drag?.moved ? 'cursor-grabbing select-none' : ''
+        }`}
         role="img"
         aria-label={`Фронтален чертеж на кухня, стена ${formatMm(wall.length)} мм`}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
       >
         <defs>
           <pattern id="mmgrid" width="100" height="100" patternUnits="userSpaceOnUse">
@@ -220,17 +315,52 @@ export function KitchenDrawing({ wall, placed, status, worktop, selectedId, onSe
 
         {/* модули */}
         {(['base', 'upper'] as const).map((row) =>
-          placed[row].map((m) => (
-            <Module
-              key={m.id}
-              view={view}
-              m={m}
-              fs={fs}
-              selected={selectedId === m.id}
-              over={overflow[row] && m.x + m.width > wall.length}
-              onSelect={onSelect}
+          placed[row].map((m) =>
+            m.id === drag?.id ? null : (
+              <Module
+                key={m.id}
+                view={view}
+                m={m}
+                fs={fs}
+                selected={selectedId === m.id}
+                over={overflow[row] && m.x + m.width > wall.length}
+                draggable={Boolean(onReorder)}
+                onSelect={handleSelect}
+                onDragStart={(e) => startDrag(m, row, e)}
+                onKeyDown={(e) => onModuleKeyDown(m, row, e)}
+              />
+            ),
+          ),
+        )}
+
+        {/* влаченият модул: мястото му и самият той, нарисуван отгоре */}
+        {drag && dragged && (
+          <>
+            <rect
+              x={dragged.x}
+              y={moduleBox(view, dragged).y}
+              width={dragged.width}
+              height={moduleBox(view, dragged).height}
+              fill="color-mix(in srgb, var(--accent) 8%, transparent)"
+              stroke="var(--accent)"
+              strokeWidth="1.5"
+              strokeDasharray="30 22"
+              vectorEffect="non-scaling-stroke"
             />
-          )),
+            <Module
+              view={view}
+              m={dragged}
+              fs={fs}
+              selected
+              over={overflow[drag.row] && dragged.x + dragged.width > wall.length}
+              draggable
+              dragging
+              offsetX={drag.moved ? drag.x - dragged.x : 0}
+              onSelect={handleSelect}
+              onDragStart={(e) => startDrag(dragged, drag.row, e)}
+              onKeyDown={(e) => onModuleKeyDown(dragged, drag.row, e)}
+            />
+          </>
         )}
 
         {/* вериги */}
@@ -308,26 +438,53 @@ function Module({
   fs,
   selected,
   over,
+  draggable = false,
+  dragging = false,
+  offsetX = 0,
   onSelect,
+  onDragStart,
+  onKeyDown,
 }: {
   view: ReturnType<typeof viewBoxFor>;
   m: PlacedModule;
   fs: (px: number) => number;
   selected: boolean;
   over: boolean;
+  draggable?: boolean;
+  dragging?: boolean;
+  offsetX?: number;
   onSelect?: (id: string) => void;
+  onDragStart?: (e: React.PointerEvent) => void;
+  onKeyDown?: (e: React.KeyboardEvent) => void;
 }) {
   const box = moduleBox(view, m);
-  const stroke = over ? 'var(--danger)' : 'var(--foreground)';
+  const stroke = over ? 'var(--danger)' : dragging ? 'var(--accent)' : 'var(--foreground)';
   const facades = facadeRects(view, m);
   const interactive = Boolean(onSelect);
 
   return (
     <g
+      transform={offsetX ? `translate(${offsetX},0)` : undefined}
       onClick={interactive ? () => onSelect?.(m.id) : undefined}
-      className={interactive ? 'cursor-pointer' : undefined}
+      onPointerDown={onDragStart}
+      onKeyDown={onKeyDown}
+      tabIndex={interactive ? 0 : undefined}
+      className={
+        draggable
+          ? dragging
+            ? 'cursor-grabbing'
+            : 'cursor-grab'
+          : interactive
+            ? 'cursor-pointer'
+            : undefined
+      }
       role={interactive ? 'button' : undefined}
-      aria-label={m.code ? `${m.code} ${box.label} ${formatMm(m.width)}` : box.label}
+      aria-label={
+        m.code
+          ? `${m.code} ${box.label} ${formatMm(m.width)} мм${draggable ? ', стрелките местят' : ''}`
+          : box.label
+      }
+      opacity={dragging ? 0.95 : undefined}
     >
       <rect
         x={box.x}

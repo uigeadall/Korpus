@@ -114,6 +114,7 @@ export function Configurator() {
               worktop={kitchen.materials.worktop}
               selectedId={selectedId}
               onSelect={setSelectedId}
+              onReorder={(id, toIndex) => dispatch({ type: 'reorder', id, toIndex })}
             />
           </div>
 
