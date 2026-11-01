@@ -1,0 +1,349 @@
+/**
+ * drawing.ts — геометрия на фронталния чертеж.
+ *
+ * Чисти функции, без React. Всички координати са в милиметри.
+ * Моделът мери височината от пода нагоре; SVG мери надолу, затова
+ * всяко преобразуване минава през `floorY`.
+ */
+
+import {
+  DIM,
+  DRAWER_FRONT_H,
+  type HingeSide,
+  type ModuleKind,
+  type PlacedModule,
+  MODULES,
+  doorLayout,
+  mm,
+  moduleGeometry,
+} from './cabinet-rules';
+
+/** Полета около чертежа — място за размерните вериги и височините. */
+export const PAD = {
+  /** горе: верига на горния ред */
+  top: 230,
+  /** долу: верига на долния ред + обща дължина */
+  bottom: 520,
+  /** вляво: височини */
+  left: 330,
+  right: 150,
+} as const;
+
+/** Стена в разрез */
+export const WALL_T = 90;
+/** Видима височина над пода */
+export const DRAW_H = 2320;
+/** Дебелина на пода в разрез */
+export const FLOOR_T = 90;
+
+export interface ViewBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Y на пода в SVG координати */
+  floorY: number;
+  /** Дължина на стената */
+  wallLength: number;
+  /** Текстът за viewBox атрибута */
+  value: string;
+}
+
+/**
+ * @param wallLength дължина на стената
+ * @param contentRight най-десният край на съдържанието; при надвишаване е
+ *   по-голям от стената, за да не изпадат размерите извън рамката
+ */
+export function viewBoxFor(wallLength: number, contentRight = wallLength): ViewBox {
+  const right = Math.max(wallLength, contentRight);
+  const x = -(PAD.left + WALL_T);
+  const y = -PAD.top;
+  const width = PAD.left + WALL_T + right + WALL_T + PAD.right;
+  const height = PAD.top + DRAW_H + PAD.bottom;
+  return {
+    x,
+    y,
+    width,
+    height,
+    floorY: DRAW_H,
+    wallLength,
+    value: `${x} ${y} ${width} ${height}`,
+  };
+}
+
+/** Преобразува височина над пода в SVG Y. */
+export function toSvgY(view: ViewBox, heightAboveFloor: number): number {
+  return view.floorY - heightAboveFloor;
+}
+
+export interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  code: string | null;
+  kind: ModuleKind;
+  label: string;
+  /** Празно място / ниша — рисува се само с пунктир. */
+  empty: boolean;
+}
+
+export function moduleBox(view: ViewBox, m: PlacedModule): Box {
+  const g = moduleGeometry(m.kind);
+  const spec = MODULES[m.kind];
+  return {
+    x: m.x,
+    y: toSvgY(view, g.y + g.height),
+    width: m.width,
+    height: g.height,
+    code: m.code,
+    kind: m.kind,
+    label: spec.label,
+    empty: m.kind === 'lgap' || m.kind === 'ugap',
+  };
+}
+
+export function moduleBoxes(view: ViewBox, modules: PlacedModule[]): Box[] {
+  return modules.map((m) => moduleBox(view, m));
+}
+
+/* ------------------------------------------------------------------ */
+/* Размерни вериги                                                     */
+/* ------------------------------------------------------------------ */
+
+export interface ChainSegment {
+  x: number;
+  width: number;
+  /** Текстът на размера */
+  label: string;
+  /** Център за надписа */
+  center: number;
+  /** Сегментът е дупка в реда (например мястото на колоната). */
+  gap: boolean;
+}
+
+/**
+ * Вериден размер от подредени интервали, със запълнени дупки.
+ * Дупките също са размер — чертежът трябва да е затворен.
+ */
+export function chainFromRanges(
+  ranges: { x: number; width: number }[],
+  total: number,
+): ChainSegment[] {
+  const sorted = [...ranges].sort((a, b) => a.x - b.x);
+  const out: ChainSegment[] = [];
+  let cursor = 0;
+
+  const push = (x: number, width: number, gap: boolean) => {
+    if (width <= 0) return;
+    out.push({ x, width, label: formatMm(width), center: x + width / 2, gap });
+  };
+
+  for (const r of sorted) {
+    if (r.x > cursor) push(cursor, r.x - cursor, true);
+    push(r.x, r.width, false);
+    cursor = Math.max(cursor, r.x + r.width);
+  }
+  if (total > cursor) push(cursor, total - cursor, true);
+  return out;
+}
+
+export function chainForModules(modules: PlacedModule[], total: number): ChainSegment[] {
+  return chainFromRanges(
+    modules.map((m) => ({ x: m.x, width: m.width })),
+    total,
+  );
+}
+
+/** 1234 → „1234"; 396,5 → „396,5" (десетичната запетая е българска). */
+export function formatMm(value: number): string {
+  const v = mm(value);
+  return Number.isInteger(v) ? String(v) : String(v).replace('.', ',');
+}
+
+/* ------------------------------------------------------------------ */
+/* Височини вляво                                                      */
+/* ------------------------------------------------------------------ */
+
+export interface HeightMark {
+  /** Височина над пода */
+  h: number;
+  label: string;
+  /** Основна (с надпис) или спомагателна линия */
+  minor?: boolean;
+}
+
+export function heightMarks(worktopThickness: number): HeightMark[] {
+  const worktop = DIM.LEG + DIM.BASE_H + worktopThickness;
+  return [
+    { h: 0, label: '0' },
+    { h: DIM.LEG, label: formatMm(DIM.LEG), minor: true },
+    { h: worktop, label: formatMm(worktop) },
+    { h: DIM.UPPER_BOTTOM, label: formatMm(DIM.UPPER_BOTTOM) },
+    { h: DIM.UPPER_BOTTOM + DIM.UPPER_H, label: formatMm(DIM.UPPER_BOTTOM + DIM.UPPER_H) },
+  ];
+}
+
+/* ------------------------------------------------------------------ */
+/* Отваряне на вратите                                                 */
+/* ------------------------------------------------------------------ */
+
+export interface Swing {
+  /** Пунктирен триъгълник: връх сочи към пантите. */
+  points: string;
+  side: HingeSide;
+}
+
+/**
+ * Триъгълник на отваряне в границите на една фасада.
+ * Основата е при дръжката, върхът — при пантите.
+ */
+export function swingTriangle(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  side: HingeSide,
+): Swing {
+  const hingeX = side === 'left' ? x : x + width;
+  const handleX = side === 'left' ? x + width : x;
+  const midY = y + height / 2;
+  return {
+    points: `${handleX},${y} ${hingeX},${midY} ${handleX},${y + height}`,
+    side,
+  };
+}
+
+export interface FacadeRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  swing?: Swing;
+}
+
+/**
+ * Фасадите на един модул в координатите на чертежа, заедно с
+ * триъгълниците на отваряне. Използва същите фуги като формулите.
+ */
+export function facadeRects(view: ViewBox, m: PlacedModule): FacadeRect[] {
+  const g = moduleGeometry(m.kind);
+  const top = toSvgY(view, g.y + g.height);
+  const gap = DIM.GAP_EDGE;
+  const inner = { x: m.x + gap, width: m.width - 2 * gap };
+
+  const doors = (height: number, offsetFromTop: number): FacadeRect[] => {
+    const layout = doorLayout(m.width, m.hingeSide);
+    const y = top + offsetFromTop;
+    if (layout.count === 1) {
+      const side = layout.sides[0];
+      return [
+        {
+          x: inner.x,
+          y,
+          width: layout.width,
+          height,
+          swing: swingTriangle(inner.x, y, layout.width, height, side),
+        },
+      ];
+    }
+    const second = inner.x + layout.width + DIM.GAP_BETWEEN;
+    return [
+      {
+        x: inner.x,
+        y,
+        width: layout.width,
+        height,
+        swing: swingTriangle(inner.x, y, layout.width, height, 'left'),
+      },
+      {
+        x: second,
+        y,
+        width: layout.width,
+        height,
+        swing: swingTriangle(second, y, layout.width, height, 'right'),
+      },
+    ];
+  };
+
+  switch (m.kind) {
+    case 'door':
+    case 'sink':
+    case 'upper':
+      return doors(g.height - 2 * gap, gap);
+
+    case 'dw':
+      return [{ x: inner.x, y: top + gap, width: inner.width, height: g.height - 2 * gap }];
+
+    case 'hood':
+      return [{ x: inner.x, y: top + gap, width: inner.width, height: g.height - 2 * gap }];
+
+    case 'oven': {
+      // Фурната е уред; под нея има бленда.
+      const fillerH = DIM.OVEN_FILLER_H;
+      const applianceH = g.height - 2 * gap - fillerH - DIM.GAP_BETWEEN;
+      return [
+        { x: inner.x, y: top + gap, width: inner.width, height: applianceH },
+        {
+          x: inner.x,
+          y: top + gap + applianceH + DIM.GAP_BETWEEN,
+          width: inner.width,
+          height: fillerH,
+        },
+      ];
+    }
+
+    case 'drawers': {
+      const out: FacadeRect[] = [];
+      let y = top + gap;
+      for (const h of DRAWER_FRONT_H) {
+        out.push({ x: inner.x, y, width: inner.width, height: h });
+        y += h + DIM.GAP_BETWEEN;
+      }
+      return out;
+    }
+
+    case 'column': {
+      const layout = doorLayout(m.width, m.hingeSide);
+      const side = layout.sides[0];
+      // Малката врата е отгоре, над нишата за хладилника.
+      const upperH = 209;
+      const lowerH = 1814;
+      const upperY = top + gap;
+      const lower = upperY + upperH + DIM.GAP_BETWEEN;
+      return [
+        {
+          x: inner.x,
+          y: upperY,
+          width: layout.width,
+          height: upperH,
+          swing: swingTriangle(inner.x, upperY, layout.width, upperH, side),
+        },
+        {
+          x: inner.x,
+          y: lower,
+          width: layout.width,
+          height: lowerH,
+          swing: swingTriangle(inner.x, lower, layout.width, lowerH, side),
+        },
+      ];
+    }
+
+    default:
+      return [];
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Мащаб на текста                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Големина на шрифта в мм, така че на екрана да излезе ~`px` пиксела.
+ * Така размерите остават четими и на телефон.
+ */
+export function fontSizeMm(view: ViewBox, renderedWidthPx: number, px: number): number {
+  if (!renderedWidthPx) return px * 4;
+  const mmPerPx = view.width / renderedWidthPx;
+  return px * mmPerPx;
+}

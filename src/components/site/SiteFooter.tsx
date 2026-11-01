@@ -1,0 +1,48 @@
+import Link from 'next/link';
+import { brand, legal } from '@/config/brand';
+
+const LEGAL_LINKS = [
+  { href: '/poveritelnost', label: 'Поверителност' },
+  { href: '/usloviya', label: 'Общи условия' },
+  { href: '/biskvitki', label: 'Бисквитки' },
+];
+
+export function SiteFooter() {
+  return (
+    <footer className="mt-auto border-t border-border">
+      <div className="mx-auto grid w-full max-w-[1400px] gap-6 px-4 py-8 sm:grid-cols-3 sm:px-6 lg:px-8">
+        <div>
+          <p className="font-display text-base">{brand.name}</p>
+          <p className="mt-1 text-xs text-muted">{brand.tagline}</p>
+        </div>
+
+        <div className="text-xs text-muted">
+          <p className="uppercase tracking-[0.12em]">Контакт</p>
+          <ul className="mt-2 space-y-1">
+            <li>{brand.contacts.phone || 'телефон: предстои'}</li>
+            <li>{brand.contacts.email || 'имейл: предстои'}</li>
+            <li>{brand.contacts.studio || 'студио: адресът предстои'}</li>
+          </ul>
+        </div>
+
+        <div className="text-xs text-muted">
+          <p className="uppercase tracking-[0.12em]">Правни</p>
+          <ul className="mt-2 space-y-1">
+            {LEGAL_LINKS.map((l) => (
+              <li key={l.href}>
+                <Link href={l.href} className="transition-colors hover:text-accent">
+                  {l.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {legal.draft && (
+            <p className="mt-3 border border-border px-2 py-1 leading-relaxed">
+              Правните текстове са чернови до преглед от юрист.
+            </p>
+          )}
+        </div>
+      </div>
+    </footer>
+  );
+}

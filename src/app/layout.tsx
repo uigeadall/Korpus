@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Geologica, JetBrains_Mono, Onest } from 'next/font/google';
 import { brand } from '@/config/brand';
+import { SiteFooter } from '@/components/site/SiteFooter';
+import { SiteHeader } from '@/components/site/SiteHeader';
 import './globals.css';
 
 const geologica = Geologica({
@@ -38,7 +40,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       lang="bg"
       className={`${geologica.variable} ${onest.variable} ${jetbrains.variable} h-full`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <SiteHeader />
+        {children}
+        <SiteFooter />
+      </body>
     </html>
   );
 }
