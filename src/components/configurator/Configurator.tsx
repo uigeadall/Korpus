@@ -14,6 +14,7 @@ import {
   toExportRows,
   workbookFileName,
 } from '@/lib/export-mapping';
+import { offerFileName } from '@/lib/pdf/names';
 import { KitchenDrawing } from './KitchenDrawing';
 import { MaterialsPanel } from './MaterialsPanel';
 import { ResultTabs } from './ResultTabs';
@@ -47,7 +48,7 @@ export function Configurator() {
   const dispatch: (a: Action) => void = dispatchUi;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<ExportView>('cabinet');
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const hydrated = useRef(false);
 
@@ -84,12 +85,13 @@ export function Configurator() {
     save(new Blob([csv], { type: 'text/csv;charset=utf-8' }), exportFileName(view, 'csv'));
   };
 
-  /** XLSX се прави на сървъра — файлът излиза сметнат с правилата на сайта. */
-  const downloadXlsx = async () => {
-    setExporting(true);
+  /** XLSX и PDF се правят на сървъра — файловете излизат сметнати с
+   * правилата на сайта, а браузърът не носи библиотеките. */
+  const download = async (kind: 'xlsx' | 'pdf') => {
+    setExporting(kind);
     setExportError(null);
     try {
-      const response = await fetch('/api/export/xlsx', {
+      const response = await fetch(`/api/export/${kind}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(kitchen),
@@ -98,11 +100,11 @@ export function Configurator() {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error ?? `Грешка ${response.status}`);
       }
-      save(await response.blob(), workbookFileName());
+      save(await response.blob(), kind === 'xlsx' ? workbookFileName() : offerFileName());
     } catch (error) {
       setExportError(error instanceof Error ? error.message : 'Нещо се обърка.');
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   };
 
@@ -222,11 +224,19 @@ export function Configurator() {
               </Link>
               <button
                 type="button"
-                onClick={downloadXlsx}
-                disabled={exporting}
+                onClick={() => download('pdf')}
+                disabled={exporting !== null}
                 className="border border-border px-4 py-2.5 text-sm transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
               >
-                {exporting ? 'Подготвя се…' : 'Свали XLSX за цеха (4 листа)'}
+                {exporting === 'pdf' ? 'Подготвя се…' : 'Свали PDF с чертежа'}
+              </button>
+              <button
+                type="button"
+                onClick={() => download('xlsx')}
+                disabled={exporting !== null}
+                className="border border-border px-4 py-2.5 text-sm transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+              >
+                {exporting === 'xlsx' ? 'Подготвя се…' : 'Свали XLSX за цеха (4 листа)'}
               </button>
               <button
                 type="button"

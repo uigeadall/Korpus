@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.9.0",
     "exceljs": "^4.4.0",
     "next": "16.4.3",
     "react": "19.3.0",

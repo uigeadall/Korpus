@@ -380,6 +380,49 @@ export function dropIndex(
 }
 
 /* ------------------------------------------------------------------ */
+/* Щриховка                                                            */
+/* ------------------------------------------------------------------ */
+
+export interface Segment {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+/**
+ * Диагонални линии под 45°, отрязани в правоъгълника.
+ *
+ * В браузъра щриховката е SVG pattern, но PDF рендерът не поддържа
+ * patterns — там линиите трябва да са изрично изчислени.
+ */
+export function hatchLines(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  spacing: number,
+): Segment[] {
+  if (width <= 0 || height <= 0 || spacing <= 0) return [];
+
+  const out: Segment[] = [];
+  for (let t = -height; t <= width; t += spacing) {
+    const px = x + t;
+    // Точките по линията са (px + s, y + height − s)
+    const sMin = Math.max(0, x - px);
+    const sMax = Math.min(height, x + width - px);
+    if (sMin >= sMax) continue;
+    out.push({
+      x1: px + sMin,
+      y1: y + height - sMin,
+      x2: px + sMax,
+      y2: y + height - sMax,
+    });
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
 /* Мащаб на текста                                                     */
 /* ------------------------------------------------------------------ */
 
