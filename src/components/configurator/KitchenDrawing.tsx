@@ -96,8 +96,6 @@ export function KitchenDrawing({
   const { ref, width: pxWidth } = useWidth<HTMLDivElement>();
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
-  /** След влачене не искаме и клик, който да „избере" нещо друго. */
-  const skipClick = useRef(false);
   // При надвишаване чертежът се разширява, за да се види колко излиза.
   const contentRight = Math.max(
     wall.length,
@@ -136,6 +134,9 @@ export function KitchenDrawing({
   }
 
   const startDrag = (m: PlacedModule, row: RowId, e: React.PointerEvent) => {
+    // Натискането избира. Не разчитаме на click: pointer capture върху
+    // <svg> пренасочва клика към него и групата не го получава.
+    onSelect?.(m.id);
     if (!onReorder || !svgRef.current) return;
     const x = toMm(svgRef.current, e.clientX, e.clientY);
     svgRef.current.setPointerCapture(e.pointerId);
@@ -153,20 +154,14 @@ export function KitchenDrawing({
     setDrag({ ...drag, x: left, moved });
     if (!moved) return;
 
-    skipClick.current = true;
+    // Спира маркирането, което в Safari боядисва целия чертеж.
+    e.preventDefault();
+    window.getSelection()?.removeAllRanges();
     const to = dropIndex(row, drag.id, left);
     if (to !== row.indexOf(dragged)) onReorder?.(drag.id, to);
   };
 
   const endDrag = () => setDrag(null);
-
-  const handleSelect = (id: string) => {
-    if (skipClick.current) {
-      skipClick.current = false;
-      return;
-    }
-    onSelect?.(id);
-  };
 
   /** Стрелки на клавиатурата — същото преподреждане без мишка. */
   const onModuleKeyDown = (m: PlacedModule, row: RowId, e: React.KeyboardEvent) => {
@@ -191,9 +186,11 @@ export function KitchenDrawing({
         ref={svgRef}
         viewBox={view.value}
         // touch-action важи само за самия <svg>, не за групите вътре в него
-        className={`block w-full h-auto [touch-action:pan-y] ${
-          drag?.moved ? 'cursor-grabbing select-none' : ''
+        className={`block w-full h-auto select-none [touch-action:pan-y] [-webkit-tap-highlight-color:transparent] ${
+          drag?.moved ? 'cursor-grabbing' : ''
         }`}
+        // без нативното влачене на SVG като картинка — Safari оцветява целия чертеж
+        onDragStart={(e) => e.preventDefault()}
         role="img"
         aria-label={`Фронтален чертеж на кухня, стена ${formatMm(wall.length)} мм`}
         onPointerMove={onPointerMove}
@@ -316,7 +313,10 @@ export function KitchenDrawing({
         {/* модули */}
         {(['base', 'upper'] as const).map((row) =>
           placed[row].map((m) =>
-            m.id === drag?.id ? null : (
+            // Модулът се вади от реда чак когато наистина се влачи: ако го
+            // заменим още на pointerdown, DOM възелът се сменя между
+            // натискане и пускане и кликът за избор не се случва.
+            m.id === drag?.id && drag.moved ? null : (
               <Module
                 key={m.id}
                 view={view}
@@ -325,8 +325,8 @@ export function KitchenDrawing({
                 selected={selectedId === m.id}
                 over={overflow[row] && m.x + m.width > wall.length}
                 draggable={Boolean(onReorder)}
-                onSelect={handleSelect}
-                onDragStart={(e) => startDrag(m, row, e)}
+                onSelect={onSelect}
+                onGrab={(e) => startDrag(m, row, e)}
                 onKeyDown={(e) => onModuleKeyDown(m, row, e)}
               />
             ),
@@ -334,7 +334,7 @@ export function KitchenDrawing({
         )}
 
         {/* влаченият модул: мястото му и самият той, нарисуван отгоре */}
-        {drag && dragged && (
+        {drag?.moved && dragged && (
           <>
             <rect
               x={dragged.x}
@@ -356,8 +356,8 @@ export function KitchenDrawing({
               draggable
               dragging
               offsetX={drag.moved ? drag.x - dragged.x : 0}
-              onSelect={handleSelect}
-              onDragStart={(e) => startDrag(dragged, drag.row, e)}
+              onSelect={onSelect}
+              onGrab={(e) => startDrag(dragged, drag.row, e)}
               onKeyDown={(e) => onModuleKeyDown(dragged, drag.row, e)}
             />
           </>
@@ -442,7 +442,7 @@ function Module({
   dragging = false,
   offsetX = 0,
   onSelect,
-  onDragStart,
+  onGrab,
   onKeyDown,
 }: {
   view: ReturnType<typeof viewBoxFor>;
@@ -454,7 +454,7 @@ function Module({
   dragging?: boolean;
   offsetX?: number;
   onSelect?: (id: string) => void;
-  onDragStart?: (e: React.PointerEvent) => void;
+  onGrab?: (e: React.PointerEvent) => void;
   onKeyDown?: (e: React.KeyboardEvent) => void;
 }) {
   const box = moduleBox(view, m);
@@ -466,7 +466,7 @@ function Module({
     <g
       transform={offsetX ? `translate(${offsetX},0)` : undefined}
       onClick={interactive ? () => onSelect?.(m.id) : undefined}
-      onPointerDown={onDragStart}
+      onPointerDown={onGrab}
       onKeyDown={onKeyDown}
       tabIndex={interactive ? 0 : undefined}
       className={
