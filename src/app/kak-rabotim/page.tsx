@@ -18,7 +18,7 @@ export default function HowPage() {
         lead="Не продаваме продукт, а организиран проект с отговорност тук. Ето какво се случва и кога."
       />
 
-      <Section>
+      <Section caption="Осемте стъпки">
         <ol className="grid gap-x-10 gap-y-8 lg:grid-cols-2">
           {STEPS.map((s) => (
             <li key={s.n}>

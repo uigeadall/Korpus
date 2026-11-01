@@ -267,7 +267,9 @@ export function KitchenDrawing({
         }`}
         // без нативното влачене на SVG като картинка — Safari оцветява целия чертеж
         onDragStart={(e) => e.preventDefault()}
-        role="img"
+        // „group", не „img": вътре има модули и дръжка на стената, които се
+        // хващат с Tab. При role="img" четецът скрива съдържанието им.
+        role="group"
         aria-label={`Фронтален чертеж на кухня, стена ${formatMm(wall.length)} мм`}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}

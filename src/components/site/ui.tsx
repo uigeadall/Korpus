@@ -7,7 +7,11 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 export function Shell({ children }: { children: ReactNode }) {
-  return <main className="mx-auto w-full max-w-[1200px] px-4 pb-20 sm:px-6 lg:px-8">{children}</main>;
+  return (
+    <main id="sadarzhanie" className="mx-auto w-full max-w-[1200px] px-4 pb-20 sm:px-6 lg:px-8">
+      {children}
+    </main>
+  );
 }
 
 export function PageHeader({
@@ -28,6 +32,10 @@ export function PageHeader({
   );
 }
 
+/**
+ * Надписът на секцията е заглавие, не украса: когато няма едро заглавие,
+ * той е `h2`, за да не скача нивото от `h1` направо на `h3` в каретата.
+ */
 export function Section({
   caption,
   title,
@@ -37,9 +45,14 @@ export function Section({
   title?: string;
   children: ReactNode;
 }) {
+  const Caption = title ? 'p' : 'h2';
   return (
     <section className="border-b border-border py-10 sm:py-14">
-      {caption && <p className="text-xs uppercase tracking-[0.2em] text-muted">{caption}</p>}
+      {caption && (
+        <Caption className="font-sans text-xs font-normal uppercase tracking-[0.2em] text-muted">
+          {caption}
+        </Caption>
+      )}
       {title && <h2 className="font-display mt-2 text-xl sm:text-2xl">{title}</h2>}
       <div className={caption || title ? 'mt-6' : undefined}>{children}</div>
     </section>

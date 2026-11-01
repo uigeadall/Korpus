@@ -109,7 +109,7 @@ export function Configurator() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-6 lg:px-8">
+    <main id="sadarzhanie" className="mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-6 lg:px-8">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-border pb-5">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted">Конфигуратор</p>
@@ -214,7 +214,7 @@ export function Configurator() {
           <MaterialsPanel materials={kitchen.materials} dispatch={dispatch} />
 
           <section className="border border-border bg-surface px-4 py-4">
-            <h3 className="font-display text-sm uppercase tracking-wide">Готово?</h3>
+            <h2 className="font-display text-sm uppercase tracking-wide">Готово?</h2>
             <div className="mt-3 flex flex-col gap-2">
               <Link
                 href="/kontakt?konfiguraciya=1"
@@ -265,6 +265,6 @@ export function Configurator() {
           </section>
         </aside>
       </div>
-    </div>
+    </main>
   );
 }

@@ -41,6 +41,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       className={`${geologica.variable} ${onest.variable} ${jetbrains.variable} h-full`}
     >
       <body className="min-h-full flex flex-col">
+        {/* Първото нещо под Tab: прескача менюто и отива в съдържанието. */}
+        <a
+          href="#sadarzhanie"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:border focus:border-accent focus:bg-background focus:px-4 focus:py-2 focus:text-sm"
+        >
+          Към съдържанието
+        </a>
         <SiteHeader />
         {children}
         <SiteFooter />

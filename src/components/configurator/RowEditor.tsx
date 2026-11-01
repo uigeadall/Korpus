@@ -39,9 +39,9 @@ export function RowEditor({
   return (
     <section className="border border-border bg-surface">
       <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3">
-        <h3 className="font-display text-sm tracking-wide uppercase">
+        <h2 className="font-display text-sm tracking-wide uppercase">
           {row === 'base' ? 'Долен ред' : 'Горен ред'}
-        </h3>
+        </h2>
         <p
           className={`dim text-xs ${
             status.state === 'over' ? 'text-danger' : status.state === 'exact' ? 'text-ok' : ''

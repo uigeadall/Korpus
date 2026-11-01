@@ -18,7 +18,7 @@ export default function ContactPage() {
         lead="Кажете какво обзавеждате и в какъв срок. Ако имате план на жилището или снимки, пратете ги — пестят време на всички."
       />
 
-      <Section>
+      <Section caption="Как да ни намерите">
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
           <Card title="Телефон">
             {phone ? (

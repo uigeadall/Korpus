@@ -18,7 +18,7 @@ export default function ProductsPage() {
         lead="Линия влиза в предложението чак когато имаме мостра, документи за ЕС и срок, който можем да обещаем."
       />
 
-      <Section>
+      <Section caption="Линиите">
         <div className="grid gap-8 sm:grid-cols-2">
           {PRODUCTS.map((p) => (
             <Card key={p.title} title={p.title} tag={p.soon ? 'скоро' : 'основна линия'}>

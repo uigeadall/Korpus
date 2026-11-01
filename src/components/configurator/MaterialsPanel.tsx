@@ -23,7 +23,7 @@ export function MaterialsPanel({
   return (
     <section className="border border-border bg-surface">
       <header className="border-b border-border px-4 py-3">
-        <h3 className="font-display text-sm uppercase tracking-wide">Материали</h3>
+        <h2 className="font-display text-sm uppercase tracking-wide">Материали</h2>
       </header>
 
       <div className="space-y-5 px-4 py-4">

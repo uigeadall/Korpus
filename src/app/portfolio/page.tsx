@@ -20,7 +20,7 @@ export default function PortfolioPage() {
         lead="Тук влизат само наши обекти — със снимки, описание и материалите, които са вложени."
       />
 
-      <Section>
+      <Section caption="Проекти">
         {projects.length > 0 ? (
           <>
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">

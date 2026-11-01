@@ -1,13 +1,6 @@
 import Link from 'next/link';
 import { brand } from '@/config/brand';
-
-const NAV = [
-  { href: '/kak-rabotim', label: 'Как работим' },
-  { href: '/produkti', label: 'Продукти' },
-  { href: '/portfolio', label: 'Портфолио' },
-  { href: '/konfigurator', label: 'Конфигуратор' },
-  { href: '/kontakt', label: 'Контакт' },
-];
+import { SiteNav } from './SiteNav';
 
 export function SiteHeader() {
   return (
@@ -20,20 +13,7 @@ export function SiteHeader() {
           </span>
         </Link>
 
-        <nav aria-label="Основна навигация" className="-mr-2 overflow-x-auto">
-          <ul className="flex items-center gap-1">
-            {NAV.map((item) => (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className="block whitespace-nowrap px-2.5 py-1.5 text-xs text-muted transition-colors hover:text-accent sm:text-sm"
-                >
-                  {item.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
+        <SiteNav />
       </div>
     </header>
   );

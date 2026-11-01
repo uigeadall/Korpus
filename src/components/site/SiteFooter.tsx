@@ -27,10 +27,14 @@ export function SiteFooter() {
 
         <div className="text-xs text-muted">
           <p className="uppercase tracking-[0.12em]">Правни</p>
-          <ul className="mt-2 space-y-1">
+          {/* py-1.5: целта под пръста става 28 px висока (WCAG 2.2, 2.5.8). */}
+          <ul className="mt-1">
             {LEGAL_LINKS.map((l) => (
               <li key={l.href}>
-                <Link href={l.href} className="transition-colors hover:text-accent">
+                <Link
+                  href={l.href}
+                  className="inline-block py-1.5 transition-colors hover:text-accent"
+                >
                   {l.label}
                 </Link>
               </li>

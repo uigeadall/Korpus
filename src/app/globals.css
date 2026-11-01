@@ -108,6 +108,15 @@ h4 {
     40px 40px;
 }
 
+/**
+ * Фокусът от клавиатурата се вижда навсякъде с един и същ знак — месингов
+ * контур встрани от елемента. Важи и за групите в SVG чертежа.
+ */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /** Размери и номера — винаги моноспейс. */
 .dim {
   font-family: var(--font-mono), ui-monospace, monospace;
