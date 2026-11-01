@@ -111,18 +111,17 @@ function ModuleRow({
       className={`px-4 py-3 ${selected ? 'bg-surface-sunken' : ''}`}
       onFocus={() => onSelect(m.id)}
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <button
-          type="button"
-          onClick={() => onSelect(m.id)}
-          className="dim w-10 shrink-0 text-left text-xs"
-          aria-label={`Избери ${m.code ?? spec.label}`}
-        >
-          {m.code ?? '—'}
-        </button>
+      {/* Името заема целия ред — иначе дългите се режат до „Долен с 3 ч…". */}
+      <button
+        type="button"
+        onClick={() => onSelect(m.id)}
+        className="flex w-full items-baseline gap-2 text-left"
+      >
+        <span className="dim w-8 shrink-0 text-xs">{m.code ?? '—'}</span>
+        <span className="text-sm leading-snug">{spec.label}</span>
+      </button>
 
-        <span className="min-w-0 flex-1 truncate text-sm">{spec.label}</span>
-
+      <div className="mt-2 flex flex-wrap items-center gap-2 pl-10">
         <label className="flex items-center gap-1.5 text-xs text-muted">
           <span className="sr-only">Ширина</span>
           <select
@@ -155,7 +154,7 @@ function ModuleRow({
           </button>
         )}
 
-        <div className="flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-1">
           <IconButton
             label="Премести наляво"
             disabled={index === 0}
