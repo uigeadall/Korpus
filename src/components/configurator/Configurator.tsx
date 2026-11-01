@@ -12,6 +12,7 @@ import {
   toCabinetRows,
   toCsv,
   toExportRows,
+  workbookFileName,
 } from '@/lib/export-mapping';
 import { KitchenDrawing } from './KitchenDrawing';
 import { MaterialsPanel } from './MaterialsPanel';
@@ -46,6 +47,8 @@ export function Configurator() {
   const dispatch: (a: Action) => void = dispatchUi;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<ExportView>('cabinet');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const hydrated = useRef(false);
 
   // Връщаме последната конфигурация след mount, за да няма разминаване при SSR.
@@ -64,18 +67,43 @@ export function Configurator() {
   const placed = result.placed[0];
   const status = result.rowStatus[0];
 
+  const save = (blob: Blob, name: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const downloadCsv = () => {
     const csv =
       view === 'cabinets'
         ? toCsv(toCabinetRows(result, kitchen.materials), CABINET_COLUMNS)
         : toCsv(toExportRows(result, view), EXPORT_COLUMNS);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = exportFileName(view, 'csv');
-    a.click();
-    URL.revokeObjectURL(url);
+    save(new Blob([csv], { type: 'text/csv;charset=utf-8' }), exportFileName(view, 'csv'));
+  };
+
+  /** XLSX се прави на сървъра — файлът излиза сметнат с правилата на сайта. */
+  const downloadXlsx = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const response = await fetch('/api/export/xlsx', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(kitchen),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error ?? `Грешка ${response.status}`);
+      }
+      save(await response.blob(), workbookFileName());
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'Нещо се обърка.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -194,11 +222,24 @@ export function Configurator() {
               </Link>
               <button
                 type="button"
+                onClick={downloadXlsx}
+                disabled={exporting}
+                className="border border-border px-4 py-2.5 text-sm transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+              >
+                {exporting ? 'Подготвя се…' : 'Свали XLSX за цеха (4 листа)'}
+              </button>
+              <button
+                type="button"
                 onClick={downloadCsv}
                 className="border border-border px-4 py-2.5 text-sm transition-colors hover:border-accent hover:text-accent"
               >
-                Свали CSV за цеха ({VIEW_LABEL[view].toLowerCase()})
+                Свали CSV ({VIEW_LABEL[view].toLowerCase()})
               </button>
+              {exportError && (
+                <p role="alert" className="text-xs text-danger">
+                  {exportError}
+                </p>
+              )}
               <button
                 type="button"
                 onClick={() => dispatch({ type: 'reset' })}

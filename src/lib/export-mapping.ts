@@ -227,7 +227,12 @@ export function toCsv<T>(
   return (bom ? '﻿' : '') + [head, ...body].join('\r\n') + '\r\n';
 }
 
-/** Име на файла: korpus-razkroi-po-material-2026-11-01.csv */
+/** Цялата книга за цеха: korpus-specifikaciya-2026-11-01.xlsx */
+export function workbookFileName(date = new Date()): string {
+  return `korpus-specifikaciya-${date.toISOString().slice(0, 10)}.xlsx`;
+}
+
+/** Един изглед: korpus-razkroi-po-material-2026-11-01.csv */
 export function exportFileName(view: ExportView, ext: string, date = new Date()): string {
   const iso = date.toISOString().slice(0, 10);
   const suffix =

@@ -7,6 +7,7 @@ import {
   toCabinetRows,
   toCsv,
   toExportRows,
+  workbookFileName,
 } from './export-mapping';
 
 function kitchen(): Kitchen {
@@ -182,6 +183,9 @@ describe('име на файла', () => {
     );
     expect(exportFileName('cabinets', 'csv', new Date('2026-11-01T10:00:00Z'))).toBe(
       'korpus-razkroi-zayavka-shkafove-2026-11-01.csv',
+    );
+    expect(workbookFileName(new Date('2026-11-01T10:00:00Z'))).toBe(
+      'korpus-specifikaciya-2026-11-01.xlsx',
     );
   });
 });
