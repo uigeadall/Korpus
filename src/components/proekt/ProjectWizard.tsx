@@ -498,7 +498,7 @@ export function ProjectWizard() {
   return (
     <main id="sadarzhanie" className="mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-6 lg:px-8">
       <header className="mb-6">
-        <p className="text-sm font-medium text-accent">Проект за пет минути</p>
+        <p className="eyebrow">Проект за пет минути</p>
         <h1 className="font-display mt-2 text-4xl sm:text-5xl">{copy.title}</h1>
         <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted">
           {copy.lead} Това не е оферта — точната цена идва след измерване на място.
@@ -540,7 +540,9 @@ export function ProjectWizard() {
       </ol>
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="space-y-3 lg:sticky lg:top-4">
+        {/* Скролира се сама, щом надрасне прозореца — иначе закованата
+            колона крие долния си край (виж и конфигуратора). */}
+        <div className="space-y-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
           <div className="card overflow-hidden bg-gradient-to-b from-surface to-surface-sunken">
             <Scene3D
               kitchen={furniture}

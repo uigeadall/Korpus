@@ -120,6 +120,24 @@ test.describe('лентата в конфигуратора', () => {
     expect((await klipove(page, 'upper')).indexOf(first)).toBeGreaterThan(0);
   });
 
+  /**
+   * Закованата колона („sticky") е по-висока от прозореца и лентата е
+   * най-отдолу в нея. Без собствен скрол тя не мърда, страницата се
+   * плъзга под нея и долният ѝ край не се стига с мишката — лентата е
+   * там, вижда се наполовина и не се хваща. Намери се случайно, затова
+   * тук се пази нарочно.
+   */
+  test('лентата се стига докрай — колоната не крие долния си край', async ({ page }) => {
+    const vidima = await page.evaluate(() => {
+      const el = document.querySelector('[data-track="upper"]')!;
+      el.scrollIntoView({ block: 'center' });
+      const b = el.getBoundingClientRect();
+      return { gore: b.y, dolu: b.y + b.height, visochina: window.innerHeight };
+    });
+    expect(vidima.gore).toBeGreaterThanOrEqual(0);
+    expect(vidima.dolu).toBeLessThanOrEqual(vidima.visochina);
+  });
+
   test('долната лента не застава върху клиповете', async ({ page }) => {
     const list = await klipove(page);
     const p = await sredataNaKlip(page, list[0]);

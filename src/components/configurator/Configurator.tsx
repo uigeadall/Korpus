@@ -382,7 +382,7 @@ export function Configurator() {
       <header className="mb-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <div>
           {/* Инструментът е наш, не на клиента — казва се направо. */}
-          <p className="text-sm font-medium text-accent">Конфигуратор · вътрешен инструмент</p>
+          <p className="eyebrow">Конфигуратор · вътрешен инструмент</p>
           <h1 className="font-display mt-1 text-3xl sm:text-4xl">
             {ROOM_KIND_LABEL[kitchen.roomKind ?? 'kitchen']} в стаята
           </h1>
@@ -431,8 +431,13 @@ export function Configurator() {
       )}
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-        {/* Работната площ: стои на екрана, докато се работи отдясно. */}
-        <div className="space-y-3 pb-24 lg:sticky lg:top-4">
+        {/*
+          Работната площ стои на екрана, докато се работи отдясно. Щом
+          стане по-висока от прозореца, се скролира сама: закована колона,
+          по-дълга от екрана, крие долния си край — страницата се плъзга
+          под нея, но тя не мърда и лентата долу не се стига.
+        */}
+        <div className="space-y-3 pb-24 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <WallTabs
               walls={kitchen.walls}
