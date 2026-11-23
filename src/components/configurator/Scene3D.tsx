@@ -59,8 +59,11 @@ function paletteFor(kitchen: Kitchen): Record<string, string> {
   const facade =
     FACADE_COLORS.find((s) => s.name.startsWith(kitchen.materials.facade.color))?.hex ?? '#f1ece4';
   return {
-    floor: '#c6bdae',
-    wall: '#ddd8cf',
+    // Подът е топъл, зидът — по-светъл от мебелта. Светла фасада върху
+    // зид от същата стойност се слива с него и шкафовете престават да
+    // са предмети; стената трябва да е фон, не съсед.
+    floor: '#cfc6b7',
+    wall: '#ebe7e0',
     carcass,
     facade,
     worktop: WORKTOP_COLOR[kitchen.materials.worktop],
