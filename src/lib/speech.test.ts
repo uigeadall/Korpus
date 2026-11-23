@@ -70,3 +70,17 @@ describe('всеки вид модул се изговаря', () => {
     }
   });
 });
+
+describe('махането', () => {
+  const m = (kind: ModuleKind) => ({ code: 'Д1', kind, spec: { label: MODULES[kind].label } });
+
+  it('се обещава само когато екранът го предлага', () => {
+    expect(moduleSpeech(m('door'), false)).not.toContain('Delete');
+    expect(moduleSpeech(m('door'), false, true)).toContain('Delete го маха.');
+  });
+
+  it('прави и уреда бутон — той няма какво друго да приеме', () => {
+    expect(isOperable('oven')).toBe(false);
+    expect(isOperable('oven', true)).toBe(true);
+  });
+});

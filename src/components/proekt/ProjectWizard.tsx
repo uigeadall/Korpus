@@ -335,6 +335,7 @@ export function ProjectWizard() {
               }}
               onDropCancel={() => setDragKind(null)}
               onMoveModule={(id, toIndex) => edit({ type: 'reorder', id, toIndex })}
+              onRemoveModule={(id) => edit({ type: 'remove', id })}
               onShelves={(id, value) =>
                 set((p) => ({ shelves: { ...p.shelves, [id]: value } }))
               }

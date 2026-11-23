@@ -24,9 +24,12 @@ export function shelvesPhrase(n: number): string {
 /**
  * Може ли клавиатурата да направи нещо с този модул. Ако не може, той
  * не е бутон — уредът се вижда и се чува, но не се натиска.
+ *
+ * Махането брои: уред, който не се отваря и не приема рафтове, пак е
+ * бутон, щом Delete го маха.
  */
-export function isOperable(kind: ModuleKind): boolean {
-  return canOpen(kind) || acceptsShelves(kind);
+export function isOperable(kind: ModuleKind, removable = false): boolean {
+  return canOpen(kind) || acceptsShelves(kind) || removable;
 }
 
 export interface SpokenModule {
@@ -36,8 +39,14 @@ export interface SpokenModule {
   spec: { label: string };
 }
 
-/** Цялото изречение за един модул: кой е, как стои и какво приема. */
-export function moduleSpeech(m: SpokenModule, open: boolean): string {
+/**
+ * Цялото изречение за един модул: кой е, как стои и какво приема.
+ *
+ * Обещава се само това, което наистина работи. Махането го има само
+ * там, където екранът го предлага — затова се подава отвън, вместо да
+ * се предполага.
+ */
+export function moduleSpeech(m: SpokenModule, open: boolean, removable = false): string {
   const state = canOpen(m.kind)
     ? open
       ? 'отворен'
@@ -51,6 +60,7 @@ export function moduleSpeech(m: SpokenModule, open: boolean): string {
   return (
     `${name}, ${state}, ${shelvesPhrase(shelfCount(m))}.` +
     (canOpen(m.kind) ? ' Enter отваря и затваря.' : '') +
-    (acceptsShelves(m.kind) ? ' Плюс и минус менят рафтовете.' : '')
+    (acceptsShelves(m.kind) ? ' Плюс и минус менят рафтовете.' : '') +
+    (removable ? ' Delete го маха.' : '')
   );
 }

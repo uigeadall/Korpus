@@ -527,6 +527,10 @@ export function Configurator() {
                 }}
                 onDropCancel={() => setDragKind(null)}
                 onMoveModule={(id, toIndex) => dispatch({ type: 'reorder', id, toIndex })}
+                onRemoveModule={(id) => {
+                  dispatch({ type: 'remove', id });
+                  setSelected((s) => s.filter((x) => x !== id));
+                }}
               />
             </div>
           ) : (

@@ -153,6 +153,7 @@ export function Scene3D({
   onDropModule,
   onDropCancel,
   onMoveModule,
+  onRemoveModule,
 }: {
   kitchen: Kitchen;
   room: Room;
@@ -178,6 +179,8 @@ export function Scene3D({
   onDropCancel?: () => void;
   /** Разместване на готов шкаф по стената. Без него той само се отваря. */
   onMoveModule?: (moduleId: string, toIndex: number) => void;
+  /** Махане на шкаф. Без него щракнатият шкаф няма какво да предложи. */
+  onRemoveModule?: (moduleId: string) => void;
 }) {
   const [camera, setCamera] = useState<Camera>(() => DEFAULT_CAMERA(room));
 
@@ -338,6 +341,18 @@ export function Scene3D({
   const carried = useRef<{ id: string; x: number; y: number } | null>(null);
   const [carriedId, setCarriedId] = useState<string | null>(null);
 
+  /*
+   * Щракнатият шкаф. Пази се само името му; самият шкаф се разрешава
+   * при всеки рендер, защото може да е махнат или преподреден — както
+   * и при готовите изделия.
+   */
+  const [chosenId, setChosenId] = useState<string | null>(null);
+  /*
+   * Избраният шкаф се разрешава наново при всеки рендер: може да е
+   * махнат или преподреден и запомненото име да сочи в празното.
+   */
+  const chosen = chosenId ? moduleById.get(chosenId) : undefined;
+
   const dropWall = kitchen.walls[dropWallIndex];
   const dropRows = placed[dropWallIndex];
 
@@ -464,17 +479,27 @@ export function Scene3D({
   const tap = (e: React.PointerEvent) => {
     const start = press.current;
     press.current = null;
-    if (!start?.id) return;
+    // Щракване по празното отменя избора — иначе лентата на избрания
+    // стои и след като човек е погледнал другаде.
+    if (!start?.id) {
+      setChosenId(null);
+      return;
+    }
     if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) return;
 
     if (furnishingById.has(start.id)) {
       setPicked(start.id);
+      setChosenId(null);
       return;
     }
     setPicked(null);
 
     const m = moduleById.get(start.id);
-    if (!m) return;
+    if (!m) {
+      setChosenId(null);
+      return;
+    }
+    setChosenId(m.id);
     if (start.role === 'shelf' && acceptsShelves(m.kind)) {
       onShelves?.(m.id, Math.max(0, shelfCount(m) - 1));
     } else if (canOpen(m.kind)) {
@@ -667,7 +692,8 @@ export function Scene3D({
                 face.moduleId &&
                   (face.moduleId === hover ||
                     face.moduleId === pickedItem?.id ||
-                    face.moduleId === carriedId),
+                    face.moduleId === carriedId ||
+                    face.moduleId === chosen?.id),
               )}
               module={m}
               gradientId={gradients.idOf(face)}
@@ -706,9 +732,9 @@ export function Scene3D({
               points={outlineOf(points)}
               fill="none"
               pointerEvents="none"
-              role={isOperable(m.kind) ? 'button' : 'img'}
+              role={isOperable(m.kind, Boolean(onRemoveModule)) ? 'button' : 'img'}
               tabIndex={0}
-              aria-label={moduleSpeech(m, open)}
+              aria-label={moduleSpeech(m, open, Boolean(onRemoveModule))}
               onKeyDown={(e) => {
                 if ((e.key === 'Enter' || e.key === ' ') && canOpen(m.kind)) {
                   e.preventDefault();
@@ -722,6 +748,12 @@ export function Scene3D({
                   e.preventDefault();
                   e.stopPropagation();
                   onShelves(m.id, Math.max(0, shelfCount(m) - 1));
+                } else if (onRemoveModule && (e.key === 'Delete' || e.key === 'Backspace')) {
+                  // Същото, което прави „× махни" — но без мишка.
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setChosenId(null);
+                  onRemoveModule(m.id);
                 }
               }}
             />
@@ -748,49 +780,77 @@ export function Scene3D({
         </button>
       )}
 
-      {pickedItem && (onRotateFurnishing || onRemoveFurnishing) && (
-        <div className="absolute bottom-3 left-3 flex items-center gap-2 rounded-pill bg-surface/95 px-3 py-1.5 shadow-sm ring-1 ring-accent backdrop-blur">
-          <span className="text-[11px] text-muted">{FURNISHINGS[pickedItem.kind].label}</span>
-          {onRotateFurnishing && (
-            <button
-              type="button"
-              onClick={() => onRotateFurnishing(pickedItem.id)}
-              className="rounded-pill bg-surface-sunken px-2.5 py-1 text-[11px] transition-colors hover:bg-border"
-            >
-              ⟳ завърти
-            </button>
+      {/*
+        Долният ред е един и е гъвкав: отляво какво е избрано, отдясно
+        изгледът. Поотделно и закотвени, двете групи се застъпваха на
+        тесен екран и „× махни" оставаше под „Затвори всички".
+      */}
+      <div className="pointer-events-none absolute inset-x-3 bottom-3 flex flex-wrap items-end justify-between gap-2">
+        <div className="flex flex-wrap gap-2">
+          {pickedItem && (onRotateFurnishing || onRemoveFurnishing) && (
+            <div className="pointer-events-auto flex items-center gap-2 rounded-pill bg-surface/95 px-3 py-1.5 shadow-sm ring-1 ring-accent backdrop-blur">
+              <span className="text-[11px] text-muted">{FURNISHINGS[pickedItem.kind].label}</span>
+              {onRotateFurnishing && (
+                <button
+                  type="button"
+                  onClick={() => onRotateFurnishing(pickedItem.id)}
+                  className="rounded-pill bg-surface-sunken px-2.5 py-1 text-[11px] transition-colors hover:bg-border"
+                >
+                  ⟳ завърти
+                </button>
+              )}
+              {onRemoveFurnishing && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onRemoveFurnishing(pickedItem.id);
+                    setPicked(null);
+                  }}
+                  className="rounded-pill bg-surface-sunken px-2.5 py-1 text-[11px] transition-colors hover:bg-danger hover:text-accent-contrast"
+                >
+                  × махни
+                </button>
+              )}
+            </div>
           )}
-          {onRemoveFurnishing && (
-            <button
-              type="button"
-              onClick={() => {
-                onRemoveFurnishing(pickedItem.id);
-                setPicked(null);
-              }}
-              className="rounded-pill bg-surface-sunken px-2.5 py-1 text-[11px] transition-colors hover:bg-danger hover:text-accent-contrast"
-            >
-              × махни
-            </button>
+
+          {chosen && onRemoveModule && (
+            <div className="pointer-events-auto flex items-center gap-2 rounded-pill bg-surface/95 px-3 py-1.5 shadow-sm ring-1 ring-accent backdrop-blur">
+              <span className="text-[11px] text-muted">
+                {[chosen.code, chosen.spec.label].filter(Boolean).join(' ')}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  onRemoveModule(chosen.id);
+                  setChosenId(null);
+                }}
+                className="rounded-pill bg-surface-sunken px-2.5 py-1 text-[11px] transition-colors hover:bg-danger hover:text-accent-contrast"
+              >
+                × махни
+              </button>
+            </div>
           )}
         </div>
-      )}
 
-      <div className="absolute right-3 bottom-3 flex gap-2">
-        <button
-          type="button"
-          onClick={() => setAll(!anyOpen)}
-          className="rounded-pill bg-surface/90 px-3 py-1.5 text-[11px] text-muted shadow-sm ring-1 ring-border backdrop-blur transition-colors hover:text-foreground"
-        >
-          {anyOpen ? 'Затвори всички' : 'Отвори всички'}
-        </button>
-        <button
-          type="button"
-          onClick={() => setCamera(DEFAULT_CAMERA(room))}
-          className="rounded-pill bg-surface/90 px-3 py-1.5 text-[11px] text-muted shadow-sm ring-1 ring-border backdrop-blur transition-colors hover:text-foreground"
-        >
-          Изправи изгледа
-        </button>
+        <div className="pointer-events-auto flex gap-2">
+          <button
+            type="button"
+            onClick={() => setAll(!anyOpen)}
+            className="rounded-pill bg-surface/90 px-3 py-1.5 text-[11px] text-muted shadow-sm ring-1 ring-border backdrop-blur transition-colors hover:text-foreground"
+          >
+            {anyOpen ? 'Затвори всички' : 'Отвори всички'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCamera(DEFAULT_CAMERA(room))}
+            className="rounded-pill bg-surface/90 px-3 py-1.5 text-[11px] text-muted shadow-sm ring-1 ring-border backdrop-blur transition-colors hover:text-foreground"
+          >
+            Изправи изгледа
+          </button>
+        </div>
       </div>
+
     </div>
   );
 }

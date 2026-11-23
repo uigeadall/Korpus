@@ -106,6 +106,43 @@ test.describe('местене на шкаф в обема', () => {
     expect(otvoren).toBe(true);
   });
 
+  test('щракнат шкаф се маха от лентата над него', async ({ page }) => {
+    const predi = await redicata(page);
+    const red = await dolniyatRed(page);
+
+    await page.mouse.click(red[1].x, red[1].y);
+    await page.waitForTimeout(500);
+
+    const bar = page.getByRole('button', { name: '× махни' });
+    await expect(bar).toBeVisible();
+    await bar.click();
+    await page.waitForTimeout(500);
+
+    const sled = await redicata(page);
+    expect(sled).toHaveLength(predi.length - 1);
+    // Лентата си отива заедно с шкафа — няма какво да маха повече.
+    await expect(bar).toHaveCount(0);
+  });
+
+  test('Delete маха шкафа и без мишка', async ({ page }) => {
+    const predi = await redicata(page);
+
+    // Табулацията стига до шкафовете: всеки е бутон в обема.
+    const nameran = await page.evaluate(() => {
+      const el = document.querySelector(
+        'svg[aria-label^="Обемен"] polygon[role=button]',
+      ) as SVGElement | null;
+      if (!el) return null;
+      el.focus();
+      return el.getAttribute('aria-label');
+    });
+    expect(nameran).toContain('Delete го маха.');
+
+    await page.keyboard.press('Delete');
+    await page.waitForTimeout(500);
+    expect(await redicata(page)).toHaveLength(predi.length - 1);
+  });
+
   test('празното място още върти стаята', async ({ page }) => {
     const predi = await page.evaluate(
       () => document.querySelector('svg[aria-label^="Обемен"]')!.getAttribute('viewBox'),
