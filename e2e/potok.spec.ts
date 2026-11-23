@@ -29,6 +29,44 @@ test.describe('направи проект', () => {
     });
   }
 
+  /**
+   * Всяка стая е сама за себе си.
+   *
+   * Отговорите преживяват смяната на стаята — там им е мястото, защото
+   * размерите и цветовете си остават. Мебелта обаче не: гардеробът няма
+   * какво да прави в кухнята, а каталозите на двете стаи дори не се
+   * застъпват.
+   */
+  test('гардеробите от спалнята не отиват в кухнята', async ({ page }) => {
+    await otvoriChisto(page, '/proekt');
+    await page.waitForTimeout(500);
+    await page.getByRole('button', { name: /Спалня/ }).first().click();
+    await page.waitForTimeout(300);
+    await podrediPoPravilata(page);
+    await page.waitForTimeout(500);
+
+    const broi = () =>
+      page.evaluate(() =>
+        document.querySelectorAll('svg[aria-label^="Обемен"] polygon[role=button], svg[aria-label^="Обемен"] polygon[role=img]').length,
+      );
+    expect(await broi()).toBeGreaterThan(0);
+
+    // Обратно на първата стъпка през самите стъпки — „Назад" на нея е
+    // изключен и чакането му би увиснало.
+    await page.getByRole('button', { name: 'Стаята', exact: true }).click();
+    await page.waitForTimeout(400);
+    await page.getByRole('button', { name: /Кухня/ }).first().click();
+    await page.waitForTimeout(400);
+    for (let i = 0; i < 2; i++) {
+      await page.getByRole('button', { name: /Напред/ }).first().click();
+      await page.waitForTimeout(350);
+    }
+    await page.waitForTimeout(500);
+
+    await expect(page.getByText('Още няма нищо в стаята.')).toBeVisible();
+    expect(await broi()).toBe(0);
+  });
+
   test('проектът пътува в линк и се отваря в чужд браузър', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await otvoriChisto(page, '/proekt');

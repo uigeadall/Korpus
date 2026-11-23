@@ -16,14 +16,10 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useReducer, useState } from 'react';
 import {
-  DEFAULT_MATERIALS,
   DOOR,
-  type Kitchen,
-  type KitchenModule,
   MODULES,
   type ModuleKind,
   ROOM_KIND_LABEL,
-  RULES_VERSION,
   type RoomDoor,
   type RoomKind,
   WALL_SIDES,
@@ -34,33 +30,36 @@ import {
   defaultWindow,
   kitchenWindows,
   type WallSide,
-  type WorktopType,
   clampDoor,
   clampRoom,
   clampWallLength,
   computeKitchen,
-  defaultDoor,
   kitchenPlan,
   kitchenDoor,
   kitchenRoom,
   rulesNote,
 } from '@/lib/cabinet-rules';
 import { DOOR_HINGE_LABEL, doorClashes } from '@/lib/openings';
-import { type RoomNeeds, DEFAULT_ROOM_NEEDS, NEEDS_KEY, layoutFor } from '@/lib/autolayout';
+import { NEEDS_KEY, layoutFor } from '@/lib/autolayout';
 import { CARCASS_COLORS, FACADE_COLORS, WORKTOPS } from '@/config/materials';
 import { type Action, reducer } from '@/components/configurator/state';
 import { ActionBar } from '@/components/configurator/ActionBar';
 import { ModulePalette } from '@/components/configurator/ModulePalette';
 import { Timeline } from '@/components/configurator/Timeline';
 import { Scene3D } from '@/components/configurator/Scene3D';
-import {
-  type Furnishing,
-  FURNISHINGS,
-  furnishingsFor,
-} from '@/lib/furnishings';
+import { FURNISHINGS, furnishingsFor } from '@/lib/furnishings';
 import { decodeProject, encodeProject } from '@/lib/share';
 import { MiniPlan } from './MiniPlan';
 import { SendProject } from './SendProject';
+import {
+  type Answers,
+  ANSWERS_KEY,
+  START,
+  answers,
+  fromKitchen,
+  furnitureFrom,
+  place,
+} from './answers';
 import {
   BATH_SWITCHES,
   BEDROOM_CHOICES,
@@ -74,137 +73,11 @@ import {
   compositionOf,
 } from './rooms';
 
-interface Answers {
-  room: RoomKind;
-  roomWidth: number;
-  roomDepth: number;
-  wallLength: number;
-  needs: RoomNeeds;
-  facadeColor: string;
-  carcassColor: string;
-  worktop: WorktopType;
-  /**
-   * Рафтове, които клиентът е завлякъл в конкретен шкаф. Пазят се по
-   * идентификатор, защото подреждането се преизчислява при всеки
-   * отговор; смени ли се то, старите ключове просто вече ги няма.
-   */
-  shelves: Record<string, number>;
-  /** Готовите изделия в стаята — маса, диван, легло. Не се режат. */
-  furnishings: Furnishing[];
-  /**
-   * Къде се влиза. Няма стая без врата: липсва ли отговор, взема се
-   * подразбиращата се за тази стая и човекът я мести оттам.
-   */
-  door?: RoomDoor;
-  /** Прозорците в стаята. Празно значи стая без прозорец, не „още не". */
-  windows?: RoomWindow[];
-  /**
-   * Проект, отворен по линк. Показва се както е дошъл; пипне ли се
-   * който и да е въпрос, правилата подреждат наново и това отпада.
-   */
-  opened?: Kitchen;
-  /**
-   * Стаята се отваря празна и човек я нарежда сам.
-   *
-   * Това е редът по подразбиране: влизаш в помещение, виждаш го голо и
-   * слагаш в него каквото ти трябва. Правилата остават на един бутон —
-   * който иска готово, го получава, но не му се налага.
-   */
-  byHand: boolean;
-  /**
-   * Модулите, сложени на ръка. В ръчен режим те са мебелта.
-   *
-   * Стоят тук, а не в `opened`, нарочно: `opened` отпада при всеки
-   * пипнат въпрос, защото правилата подреждат наново. Нареденото на
-   * ръка няма какво да се преподрежда и не бива да се губи, когато
-   * човек промени ширината на стената.
-   */
-  hand: { base: KitchenModule[]; upper: KitchenModule[] };
-}
 
-const START: Answers = {
-  room: 'kitchen',
-  roomWidth: 4200,
-  roomDepth: 3200,
-  wallLength: 3600,
-  needs: DEFAULT_ROOM_NEEDS,
-  // Тъмна фасада по подразбиране: бяло върху бял корпус не се чете и
-  // първото, което клиентът вижда, изглежда като празна кутия.
-  facadeColor: 'RAL 5008 сиво синьо',
-  carcassColor: CARCASS_COLORS[0].name,
-  worktop: 'laminate38',
-  shelves: {},
-  furnishings: [],
-  byHand: true,
-  hand: { base: [], upper: [] },
-};
 
-/** Отговорите стават конфигурация. Нито една ширина не се избира от клиента. */
-function furnitureFrom(a: Answers): Kitchen {
-  // В ръчен режим мебелта е това, което човек е сложил — празно в
-  // началото. Иначе подреждат правилата.
-  const layout = a.byHand ? a.hand : layoutFor(a.room, a.wallLength, a.needs);
-  const room = { width: a.roomWidth, depth: a.roomDepth };
-  const withShelves = (list: typeof layout.base) =>
-    list.map((m) => (m.id in a.shelves ? { ...m, shelves: a.shelves[m.id] } : m));
-  return {
-    roomKind: a.room,
-    room,
-    // Мебелта е на горната стена, затова вратата по подразбиране пада
-    // на съседна — вкарва се в зида при всяка промяна на стаята.
-    door: clampDoor(room, a.door ?? defaultDoor(room, 'top')),
-    windows: (a.windows ?? []).map((w) => clampWindow(room, w)),
-    walls: [
-      {
-        id: 'proekt-wall-1',
-        side: 'top',
-        length: a.wallLength,
-        base: withShelves(layout.base),
-        upper: withShelves(layout.upper),
-      },
-    ],
-    furnishings: a.furnishings,
-    materials: {
-      ...DEFAULT_MATERIALS,
-      carcassColor: a.carcassColor,
-      facade: { ...DEFAULT_MATERIALS.facade, color: a.facadeColor },
-      worktop: a.worktop,
-    },
-    rulesVersion: RULES_VERSION,
-  };
-}
 
 const STEPS = ['Стаята', 'Размери', 'Какво да има', 'Как да изглежда', 'Готово'] as const;
 
-/**
- * Отворен по линк проект се връща в отговори. Самите въпроси не се
- * пазят в линка — пази се резултатът, затова състава го няма. Това е
- * нарочно: линкът носи мебелта, а не пътя до нея.
- */
-function fromKitchen(k: Kitchen): Partial<Answers> {
-  const wall = k.walls[0];
-  return {
-    room: k.roomKind ?? 'kitchen',
-    roomWidth: k.room?.width ?? START.roomWidth,
-    roomDepth: k.room?.depth ?? START.roomDepth,
-    wallLength: wall.length,
-    facadeColor: k.materials.facade.color,
-    carcassColor: k.materials.carcassColor,
-    worktop: k.materials.worktop,
-    furnishings: k.furnishings ?? [],
-    // Донесеният проект вече е подреден; оттук нататък го водят
-    // правилата, както беше и преди ръчният режим да съществува.
-    byHand: false,
-    door: kitchenDoor(k),
-    windows: kitchenWindows(k),
-    shelves: Object.fromEntries(
-      [...wall.base, ...wall.upper]
-        .filter((m) => m.shelves !== undefined)
-        .map((m) => [m.id, m.shelves as number]),
-    ),
-    opened: k,
-  };
-}
 
 const ROOM_CARDS: { id: RoomKind; note: string }[] = [
   { id: 'kitchen', note: 'Долен и горен ред, уреди, плот' },
@@ -217,154 +90,9 @@ const ROOM_CARDS: { id: RoomKind; note: string }[] = [
 
 const metres = (mm: number) => (mm / 1000).toFixed(2).replace('.', ',');
 
-const ANSWERS_KEY = 'korpus:proekt:v2';
 
-type AnswerPatch = Partial<Answers> | ((prev: Answers) => Partial<Answers>);
 
-/**
- * Къде да застане нов предмет. Всеки вид си има обичайно място спрямо
- * стената с мебелта: диванът срещу нея, холната маса между двете,
- * столовете около масата. Еднаквите се нареждат един до друг, вместо
- * да се трупат на купчина.
- */
-const SPOT: Record<Furnishing['kind'], { depth: number; side: number }> = {
-  sofa: { depth: 0.66, side: 0 },
-  'coffee-table': { depth: 0.34, side: 0 },
-  armchair: { depth: 0.45, side: -0.32 },
-  'dining-table': { depth: 0.58, side: 0 },
-  chair: { depth: 0.58, side: 0 },
-  // Леглото стои далеч от стената с гардероба, за да се отварят вратите.
-  bed: { depth: 0.82, side: 0 },
-  nightstand: { depth: 0.82, side: -0.32 },
-};
 
-function place(a: Answers, kind: Furnishing['kind']): Furnishing {
-  const spec = FURNISHINGS[kind];
-  const spot = SPOT[kind];
-  const sameKind = a.furnishings.filter((f) => f.kind === kind).length;
-
-  /*
-   * Нощните шкафчета отиват до главата на леглото, ако има легло.
-   * Иначе биха застанали някъде по средата на стаята.
-   */
-  const bed = a.furnishings.find((f) => f.kind === 'bed');
-  if (kind === 'nightstand' && bed) {
-    const bedSpec = FURNISHINGS.bed;
-    const side = a.furnishings.filter((f) => f.kind === 'nightstand').length % 2 ? 1 : -1;
-    return {
-      id: `f${Date.now().toString(36)}-${a.furnishings.length}`,
-      kind,
-      x: Math.max(
-        spec.width / 2,
-        Math.min(
-          a.roomWidth - spec.width / 2,
-          bed.x + side * (bedSpec.width / 2 + spec.width / 2 + 80),
-        ),
-      ),
-      z: Math.max(spec.depth / 2, bed.z - bedSpec.depth / 2 + spec.depth / 2),
-      rotation: 0,
-    };
-  }
-
-  // Столовете обикалят масата; останалите еднакви се редят настрани.
-  const around =
-    kind === 'chair'
-      ? [
-          { dx: -600, dz: -700 },
-          { dx: 600, dz: -700 },
-          { dx: -600, dz: 700 },
-          { dx: 600, dz: 700 },
-          { dx: -1100, dz: 0 },
-          { dx: 1100, dz: 0 },
-        ][sameKind % 6]
-      : { dx: sameKind * (spec.width + 200), dz: 0 };
-
-  const clamp = (v: number, size: number, limit: number) =>
-    Math.max(size / 2, Math.min(limit - size / 2, v));
-
-  const wanted = {
-    x: clamp(a.roomWidth * (0.5 + spot.side) + around.dx, spec.width, a.roomWidth),
-    z: clamp(a.roomDepth * spot.depth + around.dz, spec.depth, a.roomDepth),
-  };
-
-  /*
-   * Столовете се подпъхват под масата и затова се застъпват с нея по
-   * план — това е наред. Всичко останало се отмества, докато престане
-   * да стои върху вече сложеното; иначе диванът поглъща фотьойла.
-   */
-  const spread = kind === 'chair' ? wanted : freeSpot(a, kind, wanted);
-
-  return {
-    id: `f${Date.now().toString(36)}-${a.furnishings.length}`,
-    kind,
-    x: clamp(spread.x, spec.width, a.roomWidth),
-    z: clamp(spread.z, spec.depth, a.roomDepth),
-    rotation: 0,
-  };
-}
-
-/** Най-близкото свободно място около желаното. */
-function freeSpot(a: Answers, kind: Furnishing['kind'], want: { x: number; z: number }) {
-  const spec = FURNISHINGS[kind];
-  const taken = a.furnishings
-    .filter((f) => f.kind !== 'chair')
-    .map((f) => ({ ...FURNISHINGS[f.kind], x: f.x, z: f.z }));
-
-  const clashes = (x: number, z: number) =>
-    taken.some(
-      (t) =>
-        Math.abs(t.x - x) < (t.width + spec.width) / 2 + 150 &&
-        Math.abs(t.z - z) < (t.depth + spec.depth) / 2 + 150,
-    );
-
-  const ring = [
-    [0, 0],
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-    [1, 1],
-    [-1, 1],
-    [1, -1],
-    [-1, -1],
-  ];
-  for (let r = 0; r < 8; r++) {
-    for (const [dx, dz] of ring) {
-      const x = want.x + dx * r * 450;
-      const z = want.z + dz * r * 450;
-      if (x < 0 || z < 0 || x > a.roomWidth || z > a.roomDepth) continue;
-      if (!clashes(x, z)) return { x, z };
-    }
-  }
-  return want;
-}
-
-function answers(state: Answers, patch: AnswerPatch): Answers {
-  const delta = typeof patch === 'function' ? patch(state) : patch;
-  const next = { ...state, ...delta };
-  const touched = Object.keys(delta);
-
-  /*
-   * Вратата е на стаята, а не въпрос за мебелта: местенето ѝ не
-   * пренарежда шкафовете и затова не бута донесения по линк проект —
-   * само вратата в него.
-   */
-  if (touched.length > 0 && touched.every((key) => key === 'door' || key === 'windows')) {
-    if (state.opened) {
-      next.opened = {
-        ...state.opened,
-        ...(next.door ? { door: next.door } : {}),
-        ...(next.windows ? { windows: next.windows } : {}),
-      };
-    }
-    return next;
-  }
-
-  // Всяка друга промяна по въпросите отменя донесения проект — оттук
-  // нататък подреждат правилата.
-  if (!('opened' in delta)) next.opened = undefined;
-  return next;
-}
 
 export function ProjectWizard() {
   const router = useRouter();
@@ -606,6 +334,7 @@ export function ProjectWizard() {
                 setDragKind(null);
               }}
               onDropCancel={() => setDragKind(null)}
+              onMoveModule={(id, toIndex) => edit({ type: 'reorder', id, toIndex })}
               onShelves={(id, value) =>
                 set((p) => ({ shelves: { ...p.shelves, [id]: value } }))
               }
