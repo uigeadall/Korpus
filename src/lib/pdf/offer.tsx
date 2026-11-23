@@ -48,10 +48,10 @@ function registerFonts(): void {
   fontsReady = true;
 }
 
-const INK = '#1c1d1f';
-const BRASS = '#9a7636';
-const MUTED = '#6b6e74';
-const BORDER = '#e2dfd7';
+const INK = '#23211e';
+const ACCENT = '#1c5873';
+const MUTED = '#6f6a62';
+const BORDER = '#e8e4dc';
 
 const s = StyleSheet.create({
   page: {
@@ -74,7 +74,7 @@ const s = StyleSheet.create({
   },
   brand: { fontSize: 16 },
   tagline: { fontSize: 8, color: MUTED, marginTop: 2 },
-  meta: { fontSize: 8, color: BRASS, fontFamily: 'KorpusMono', textAlign: 'right' },
+  meta: { fontSize: 8, color: ACCENT, fontFamily: 'KorpusMono', textAlign: 'right' },
   body: { flexDirection: 'row', gap: 18 },
   drawing: { width: 520 },
   side: { width: 236 },
@@ -94,7 +94,7 @@ const s = StyleSheet.create({
     borderBottomColor: BORDER,
     fontSize: 8,
   },
-  code: { fontFamily: 'KorpusMono', color: BRASS, width: 22, flexShrink: 0 },
+  code: { fontFamily: 'KorpusMono', color: ACCENT, width: 22, flexShrink: 0 },
   label: { flex: 1, paddingRight: 6 },
   value: { fontFamily: 'KorpusMono', flexShrink: 0, textAlign: 'right' },
   footer: {

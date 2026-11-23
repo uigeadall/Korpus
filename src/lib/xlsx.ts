@@ -24,7 +24,7 @@ import {
   toExportRows,
 } from './export-mapping';
 
-const BRASS = 'FF9A7636';
+const ACCENT = 'FF1C5873';
 const STONE = 'FFEFEDE8';
 
 function header(sheet: ExcelJS.Worksheet, headers: string[]): void {
@@ -33,7 +33,7 @@ function header(sheet: ExcelJS.Worksheet, headers: string[]): void {
   row.alignment = { vertical: 'middle' };
   row.eachCell((cell) => {
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: STONE } };
-    cell.border = { bottom: { style: 'thin', color: { argb: BRASS } } };
+    cell.border = { bottom: { style: 'thin', color: { argb: ACCENT } } };
   });
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
 }

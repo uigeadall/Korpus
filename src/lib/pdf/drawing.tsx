@@ -30,9 +30,9 @@ import {
   viewBoxFor,
 } from '@/lib/drawing';
 
-const INK = '#1c1d1f';
-const BRASS = '#9a7636';
-const MUTED = '#6b6e74';
+const INK = '#23211e';
+const ACCENT = '#1c5873';
+const MUTED = '#6f6a62';
 const SUNKEN = '#efede8';
 
 interface Props {
@@ -223,7 +223,7 @@ export function PdfDrawing({ wall, openings, placed, worktop, maxWidthPt, maxHei
                   <Polyline
                     points={f.swing.points}
                     fill="none"
-                    stroke={BRASS}
+                    stroke={ACCENT}
                     strokeWidth={w(0.3)}
                     strokeDasharray={`${w(5)} ${w(4)}`}
                   />
@@ -282,7 +282,7 @@ export function PdfDrawing({ wall, openings, placed, worktop, maxWidthPt, maxHei
           y1={toSvgY(view, 0)}
           x2={-180}
           y2={toSvgY(view, DIM.UPPER_BOTTOM + DIM.UPPER_H)}
-          stroke={BRASS}
+          stroke={ACCENT}
           strokeWidth={w(0.4)}
         />
         {heightMarks(worktopT).map((mk) => (
@@ -292,7 +292,7 @@ export function PdfDrawing({ wall, openings, placed, worktop, maxWidthPt, maxHei
               y1={toSvgY(view, mk.h)}
               x2={mk.minor ? -160 : -40}
               y2={toSvgY(view, mk.h)}
-              stroke={BRASS}
+              stroke={ACCENT}
               strokeWidth={w(0.4)}
               strokeDasharray={mk.minor ? undefined : `${w(5)} ${w(4)}`}
             />
@@ -301,7 +301,7 @@ export function PdfDrawing({ wall, openings, placed, worktop, maxWidthPt, maxHei
               y={toSvgY(view, mk.h) - fs(2)}
               textAnchor="end"
               style={{ fontSize: fs(mk.minor ? 6 : 7), fontFamily: 'KorpusMono' }}
-              fill={BRASS}
+              fill={ACCENT}
             >
               {mk.label}
             </Text>
@@ -334,7 +334,7 @@ function Chain({
 
   return (
     <G>
-      <Line x1={0} y1={y} x2={total} y2={y} stroke={BRASS} strokeWidth={w(strong ? 0.6 : 0.4)} />
+      <Line x1={0} y1={y} x2={total} y2={y} stroke={ACCENT} strokeWidth={w(strong ? 0.6 : 0.4)} />
       {[0, ...segments.map((s) => s.x + s.width)].map((x) => (
         <Line
           key={x}
@@ -342,7 +342,7 @@ function Chain({
           y1={y + tick / 2}
           x2={x + tick / 2}
           y2={y - tick / 2}
-          stroke={BRASS}
+          stroke={ACCENT}
           strokeWidth={w(0.4)}
         />
       ))}
@@ -353,7 +353,7 @@ function Chain({
           y={above ? y - fs(4) : y + fs(9)}
           textAnchor="middle"
           style={{ fontSize: fs(strong ? 8 : 6.5), fontFamily: 'KorpusMono' }}
-          fill={BRASS}
+          fill={ACCENT}
         >
           {s.label}
         </Text>
