@@ -10,11 +10,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useElementWidth } from './useElementWidth';
+import { slideTarget } from '@/lib/slide';
 import {
   DIM,
   MODULES,
   type ModuleKind,
+  type RoomKind,
   clampWallLength,
+  gapKindFor,
   type PlacedModule,
   toOtherRow,
   type RowId,
@@ -59,7 +62,16 @@ interface Props {
   selectedId?: string | null;
   onSelect?: (id: string) => void;
   /** Преподреждане чрез влачене или стрелки. Без него чертежът е само за гледане. */
+  /** Разместване с една стъпка: стрелките и лентата на шкафа. */
   onReorder?: (id: string, toIndex: number) => void;
+  /**
+   * Плъзгане с влачене: шкафът застава на място, а празното пред него
+   * става ниша. Същото, което прави и влаченето в обема — един жест,
+   * един отговор в двата изгледа.
+   */
+  onSlide?: (id: string, toIndex: number, gap: number) => void;
+  /** Коя стая е — от нея зависи с каква ниша се запълва. */
+  roomKind?: RoomKind;
   /** Опъване на стената от чертежа. */
   onWallLength?: (value: number) => void;
   /** Преместване в другия ред. */
@@ -93,6 +105,9 @@ type Drag =
       x: number;
       /** Влачено ли е достатъчно, за да не брои за клик */
       moved: boolean;
+      /** Последният изход, който е подаден навън — за да не се повтаря. */
+      lastIndex?: number;
+      lastGap?: number;
     }
   | {
       kind: 'wall';
@@ -131,6 +146,8 @@ export function KitchenDrawing({
   selectedId,
   onSelect,
   onReorder,
+  onSlide,
+  roomKind = 'kitchen',
   onWallLength,
   onMoveToRow,
   onNudgeWidth,
@@ -233,8 +250,17 @@ export function KitchenDrawing({
       return;
     }
 
-    const to = dropIndex(row, drag.id, left);
-    if (to !== row.indexOf(dragged)) onReorder?.(drag.id, to);
+    /*
+     * Плъзгане, не размяна. Обажда се само когато изходът наистина се
+     * мени: иначе всяко трепване на показалеца правеше нишите наново и
+     * те сменяха самоличността си по шейсет пъти в секунда.
+     */
+    const target = slideTarget(row, drag.id, Math.max(0, left), gapKindFor(roomKind, drag.row));
+    if (!target) return;
+    if (target.index !== drag.lastIndex || target.gap !== drag.lastGap) {
+      setDrag({ ...drag, x: left, moved: true, lastIndex: target.index, lastGap: target.gap });
+      onSlide?.(drag.id, target.index, target.gap);
+    }
   };
 
   /** Стрелки върху дръжката на стената: 10 мм, с Shift — 100 мм. */

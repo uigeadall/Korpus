@@ -550,6 +550,11 @@ export function Configurator() {
               selectedId={selectedId}
               onSelect={setSelectedId}
               onReorder={(id, toIndex) => dispatch({ type: 'reorder', id, toIndex })}
+              /* Влаченето плъзга по стената и прави ниша пред шкафа —
+                 същото, което прави и влаченето в обема. Стрелките си
+                 остават разместване с една стъпка. */
+              roomKind={kitchen.roomKind ?? 'kitchen'}
+              onSlide={(id, toIndex, gap) => dispatch({ type: 'slide', id, toIndex, gap })}
               onWallLength={(value) =>
                 wall.id && dispatch({ type: 'wallLength', wallId: wall.id, value })
               }

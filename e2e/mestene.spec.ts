@@ -239,3 +239,64 @@ test.describe('местене на шкаф в обема', () => {
     expect(sled).not.toBe(predi);
   });
 });
+
+test.describe('чертежът прави същото като обема', () => {
+  /*
+   * Един жест, един отговор в двата изгледа. Дотук влаченето в чертежа
+   * само разменяше места и шкаф, сам на стената, не мърдаше — точно
+   * това, което се докладва за обема.
+   *
+   * Чете се от самия чертеж, не от хранилището: то е празно, докато
+   * човек не промени нещо, а тук се тръгва от празна стена.
+   */
+  const red = (page: import('@playwright/test').Page) =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('svg[aria-label^="Фронтален чертеж"] g[aria-label]')]
+        .map((g) => (g.getAttribute('aria-label') ?? '').split(',')[0])
+        .filter((l) => !l.startsWith('Дължина')),
+    );
+
+  test('влаченето плъзга и прави ниша; едно връщане го отменя', async ({ page }) => {
+    await otvoriChisto(page, '/konfigurator');
+    await page.waitForTimeout(900);
+
+    await page.getByRole('button', { name: 'Изчисти всичко' }).click();
+    await page.waitForTimeout(700);
+    expect(await red(page)).toHaveLength(0);
+
+    // Един шкаф, сложен с щракване — влиза в началото на стената.
+    await page.getByRole('button', { name: /^Шкаф за мивка/ }).first().click();
+    await page.waitForTimeout(700);
+    expect(await red(page)).toHaveLength(1);
+
+    const kade = await page.evaluate(() => {
+      const svg = document.querySelector('svg[aria-label^="Фронтален чертеж"]')!;
+      svg.scrollIntoView({ block: 'center' });
+      const g = [...svg.querySelectorAll('g[role=button]')].find((n) =>
+        /мм/.test(n.getAttribute('aria-label') ?? ''),
+      )!;
+      const b = g.getBoundingClientRect();
+      const s = svg.getBoundingClientRect();
+      return { x: b.x + b.width / 2, y: b.y + b.height / 2, dyasno: s.x + s.width * 0.6 };
+    });
+    await page.waitForTimeout(200);
+
+    await page.mouse.move(kade.x, kade.y);
+    await page.mouse.down();
+    await page.mouse.move(kade.dyasno, kade.y, { steps: 20 });
+    await page.waitForTimeout(250);
+    await page.mouse.up();
+    await page.waitForTimeout(600);
+
+    const sled = await red(page);
+    expect(sled.length).toBeGreaterThan(1);
+    // Пред шкафа вече има ниша — тя се мери и влиза в заявката.
+    expect(sled.slice(0, -1).every((l) => l === 'Свободна ниша')).toBe(true);
+    expect(sled.at(-1)).toContain('Шкаф за мивка');
+
+    // Едно връщане отменя цялото влачене, не стъпка по стъпка.
+    await page.getByRole('button', { name: 'Назад (⌘Z)' }).click();
+    await page.waitForTimeout(600);
+    expect(await red(page)).toHaveLength(1);
+  });
+});

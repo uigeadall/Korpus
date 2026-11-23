@@ -167,6 +167,83 @@ describe('преподреждане', () => {
   });
 });
 
+describe('плъзгане по стената', () => {
+  /*
+   * Различно от преподреждането: там шкафът разменя място със съсед, тук
+   * застава на място по стената, а празното пред него става ниша. Заради
+   * това шкаф, сам на стената, изобщо може да се мести.
+   */
+  const sam = () => run([{ type: 'add', row: 'base', kind: 'sink' }]);
+
+  it('плъзнат надясно, получава ниши пред себе си', () => {
+    const start = sam();
+    const id = base(start)[0].id;
+    const k = reducer(start, { type: 'slide', id, toIndex: 0, gap: 900 });
+
+    const row = base(k);
+    expect(row.at(-1)!.id).toBe(id);
+    expect(row.slice(0, -1).every((m) => m.kind === 'lgap')).toBe(true);
+    expect(row.slice(0, -1).reduce((s, m) => s + m.width, 0)).toBe(900);
+  });
+
+  it('плъзнат обратно към ъгъла, нишите изчезват', () => {
+    const start = sam();
+    const id = base(start)[0].id;
+    const сНиша = reducer(start, { type: 'slide', id, toIndex: 0, gap: 900 });
+    expect(base(сНиша).length).toBeGreaterThan(1);
+
+    const обратно = reducer(сНиша, { type: 'slide', id, toIndex: 0, gap: 0 });
+    expect(base(обратно).map((m) => m.kind)).toEqual(['sink']);
+  });
+
+  it('нишата точно пред шкафа е негова и се прави наново', () => {
+    /*
+     * Тя е това, което го е изтласкало дотам. Мръдне ли той, тя губи
+     * смисъл — иначе шкафът не може да се върне към ъгъла.
+     */
+    const start = run([
+      { type: 'add', row: 'base', kind: 'door' },
+      { type: 'add', row: 'base', kind: 'lgap' },
+      { type: 'add', row: 'base', kind: 'drawers' },
+    ]);
+    const ниша = base(start)[1].id;
+    const шкаф = base(start)[2].id;
+
+    const k = reducer(start, { type: 'slide', id: шкаф, toIndex: 0, gap: 0 });
+    expect(base(k).some((m) => m.id === ниша)).toBe(false);
+    expect(base(k).map((m) => m.kind)).toEqual(['drawers', 'door']);
+  });
+
+  it('ниша по-назад в реда не се пипа', () => {
+    // Нишата е пред чекмеджетата; мести се мивката, която е след тях.
+    const start = run([
+      { type: 'add', row: 'base', kind: 'door' },
+      { type: 'add', row: 'base', kind: 'lgap' },
+      { type: 'add', row: 'base', kind: 'drawers' },
+      { type: 'add', row: 'base', kind: 'sink' },
+    ]);
+    const ниша = base(start)[1].id;
+    const мивка = base(start)[3].id;
+
+    const k = reducer(start, { type: 'slide', id: мивка, toIndex: 0, gap: 0 });
+    expect(base(k).some((m) => m.id === ниша)).toBe(true);
+    expect(base(k)[0].id).toBe(мивка);
+  });
+
+  it('ред без ниша не се разтяга', () => {
+    const спалня = { ...emptyKitchen(3600), roomKind: 'bedroom' as const };
+    const k = run([{ type: 'add', row: 'upper', kind: 'attic' }], спалня);
+    const id = upper(k)[0].id;
+    const след = reducer(k, { type: 'slide', id, toIndex: 0, gap: 900 });
+    expect(upper(след).map((m) => m.kind)).toEqual(['attic']);
+  });
+
+  it('непознат шкаф не мени нищо', () => {
+    const start = sam();
+    expect(reducer(start, { type: 'slide', id: 'няма-такъв', toIndex: 0, gap: 600 })).toBe(start);
+  });
+});
+
 describe('преместване между редовете', () => {
   const start = run([
     { type: 'add', row: 'base', kind: 'door' },
