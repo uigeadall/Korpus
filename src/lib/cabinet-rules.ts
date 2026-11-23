@@ -135,6 +135,7 @@ export {
 };
 
 import type { Furnishing } from './furnishings';
+import type { WallFinishChoice } from './wall-finish';
 
 /**
  * Версия на правилата.
@@ -148,8 +149,11 @@ import type { Furnishing } from './furnishings';
  * 1.0.0 — кухня, спалня, всекидневна; стая с до четири стени.
  * 1.1.0 — баня, коридор и антре; врата и прозорци на стаята; те
  *         режат реда, който пресичат, и местят шкафове.
+ * 1.2.0 — ъглите: където две стени с мебел се срещнат, по-късната
+ *         стена започва след дълбочината на реда на по-ранната, вместо
+ *         двата реда да се застъпват в ъгъла.
  */
-export const RULES_VERSION = '1.1.0';
+export const RULES_VERSION = '1.2.0';
 
 /** Сметната ли е тази конфигурация по днешните правила. */
 export function rulesAreCurrent(kitchen: { rulesVersion?: string }): boolean {
@@ -344,7 +348,39 @@ export const SHELVES: Record<ModuleKind, number> = {
 export function acceptsShelves(kind: ModuleKind): boolean {
   const style = MODULES[kind].facade?.style;
   if (!MODULES[kind].hasCarcass) return false;
+  if (NO_EXTRA_SHELVES.has(kind)) return false;
   return style === 'doors' || style === 'split' || style === 'open' || style === 'panel';
+}
+
+/**
+ * Модули с корпус, в които рафт пак няма място: хладилникът заема
+ * колоната, аспираторът — шкафа над себе си, а стенният рафт и пейката
+ * са самата дъска. Пуснат там, рафтът стърчеше встрани от тях.
+ */
+const NO_EXTRA_SHELVES: ReadonlySet<ModuleKind> = new Set<ModuleKind>([
+  'column',
+  'hood',
+  'wallshelf',
+  'bench',
+]);
+
+/** Най-малкото разстояние между два рафта — по-гъсто не се слага нищо. */ // ПРОВЕРИ
+export const SHELF_MIN_GAP = 150;
+
+/**
+ * Колко рафта най-много събира модулът: вътрешната височина, разделена
+ * на най-малкото разстояние. Без таван рафтовете растяха до десет и в
+ * долния шкаф се редяха един върху друг.
+ */
+export function maxShelves(kind: ModuleKind): number {
+  if (!acceptsShelves(kind)) return 0;
+  const inner = moduleGeometry(kind).height - 2 * DIM.T;
+  return Math.max(0, Math.floor(inner / SHELF_MIN_GAP) - 1);
+}
+
+/** Броят рафтове, вкаран в границите на модула. */
+export function clampShelves(kind: ModuleKind, value: number): number {
+  return Math.max(0, Math.min(maxShelves(kind), Math.round(value)));
 }
 
 /**
@@ -971,17 +1007,6 @@ export function systemFor(room: RoomKind = 'kitchen'): FurnitureSystem<ModuleKin
   return SYSTEMS[room] ?? KITCHEN;
 }
 
-/**
- * Празнина ли е този модул — чист въздух между шкафовете.
- *
- * Чете се от белега в каталога, не се извежда. Първият опит беше
- * „няма корпус и няма чело" и хващаше нишата за пералня: тя също няма
- * нито едното, но е място за уред, не въздух.
- */
-export function isGap(kind: ModuleKind): boolean {
-  return MODULES[kind].gap === true;
-}
-
 /** Кои модули се предлагат в тази стая, в реда за показване. */
 const ROOM_MODULES: Record<RoomKind, Record<RowId, ModuleKind[]>> = {
   kitchen: {
@@ -1014,16 +1039,6 @@ export function modulesFor(room: RoomKind, row: RowId): ModuleKind[] {
   return ROOM_MODULES[room][row];
 }
 
-/**
- * С какво се запълва празно място в този ред.
- *
- * Не всеки ред има с какво: над гардероба стои само антресол и празно
- * място там не е изделие, а просто въздух. Тогава се връща `null` и
- * който пита, трябва да се откаже, вместо да измисля.
- */
-export function gapKindFor(room: RoomKind, row: RowId): ModuleKind | null {
-  return modulesFor(room, row).find(isGap) ?? null;
-}
 
 /* --- Материали ---------------------------------------------------- */
 
@@ -1104,11 +1119,13 @@ export const OPENING_DEFAULT: Record<OpeningKind, { width: number; bottom: numbe
   {
     door: { width: 900, bottom: 0, height: 2000 },
     window: { width: 1200, bottom: 900, height: 1400 },
+    corner: { width: 600, bottom: 0, height: 900 },
   };
 
 export const OPENING_KIND_LABEL: Record<OpeningKind, string> = {
   door: 'Врата',
   window: 'Прозорец',
+  corner: 'Ъгъл',
 };
 
 export const OPENING_LIMITS = {
@@ -1162,6 +1179,17 @@ export interface Kitchen {
    * разбивката, нито в заявката за цеха.
    */
   furnishings?: Furnishing[];
+  /**
+   * С какво са покрити стените — боя, тухла, плочки, тапет. Само за
+   * картината: не влиза в разкроя и не мени правилата. Липсва в
+   * проектите отпреди него — тогава стените са както винаги.
+   */
+  wallFinish?: WallFinishChoice;
+  /**
+   * С какво е покрит подът — ключ от `config/floor-finishes`. Липсва —
+   * подът е такъв, какъвто беше. Само за картината, като стените.
+   */
+  floorFinish?: string;
   rulesVersion: string;
 }
 
@@ -1179,7 +1207,12 @@ function growToFit(room: Room, walls: Wall[]): Room {
     if (side === 'top' || side === 'bottom') width = Math.max(width, wall.length);
     else depth = Math.max(depth, wall.length);
   });
-  return { width: clampRoom(width), depth: clampRoom(depth) };
+  // Таванът се носи нататък — стените не го мерят.
+  return {
+    width: clampRoom(width),
+    depth: clampRoom(depth),
+    ...(room.height !== undefined ? { height: room.height } : {}),
+  };
 }
 
 /**
@@ -1265,7 +1298,98 @@ export function kitchenWallOpenings(kitchen: Kitchen, side: WallSide): WallOpeni
     .filter((wall, i) => wallSide(wall, i) === side)
     .flatMap((wall) => wall.openings ?? [])
     .filter((o) => !known.has(o.id));
-  return [...ofRoom, ...legacy].sort((a, b) => a.x - b.x);
+  return [...ofRoom, ...legacy, ...cornerBlocks(kitchen, side)].sort((a, b) => a.x - b.x);
+}
+
+/** Празните места по системи — нишите, с които се пълни редът. */
+/**
+ * Празнините в каталога.
+ *
+ * Изваждат се от самите описания, а не се пишат на ръка: нов вид
+ * празнина носи белега си и не чака някой да се сети да го допише и
+ * тук. Изричен белег, защото изведено правило („няма корпус и няма
+ * чело") хваща и нишата за пералня — тя е място за уред, не въздух.
+ */
+export const GAP_KINDS: readonly ModuleKind[] = (
+  Object.keys(MODULES) as ModuleKind[]
+).filter((k) => MODULES[k].gap === true);
+
+export function isGapKind(kind: ModuleKind): boolean {
+  return GAP_KINDS.includes(kind);
+}
+
+/** Стените по часовниковата стрелка: краят на всяка среща началото на следващата. */
+const CLOCKWISE: readonly WallSide[] = ['top', 'right', 'bottom', 'left'];
+
+/**
+ * Ъглите, заети от мебелта на съседна стена.
+ *
+ * Където две стени с мебел се срещнат, редовете им се застъпват в
+ * ъгъла — шкаф в шкаф. Ъгълът е на по-ранната стена (първата е
+ * главната); по-късната започва след дълбочината на нейния ред. Блокира
+ * се само редът, който наистина се застъпва: горните шкафове са плитки
+ * и не стигат до долния ред на съседа. Колона до ъгъла заема и двата.
+ *
+ * Мястото остава празно — сляп ъгъл. Ъглов шкаф с механизъм чака
+ * каталога на доставчика.
+ */
+function cornerBlocks(kitchen: Kitchen, side: WallSide): WallOpening[] {
+  const walls = kitchen.walls;
+  const mine = walls.findIndex((w, i) => wallSide(w, i) === side);
+  if (mine < 0) return [];
+  const me = walls[mine];
+  const room = kitchenRoom(kitchen);
+  const system = systemFor(kitchen.roomKind);
+  const k = CLOCKWISE.indexOf(side);
+  const mySide = sideLength(room, side);
+  const out: WallOpening[] = [];
+  const solid = (list: KitchenModule[]) => list.some((m) => !isGapKind(m.kind));
+
+  for (const [where, other] of [
+    ['start', CLOCKWISE[(k + 3) % 4]],
+    ['end', CLOCKWISE[(k + 1) % 4]],
+  ] as const) {
+    const theirs = walls.findIndex((w, i) => wallSide(w, i) === other);
+    if (theirs < 0 || theirs > mine) continue;
+    const them = walls[theirs];
+    const tall = them.base.some((m) => system.modules[m.kind].fullHeight);
+
+    for (const row of system.rowOrder) {
+      const span = system.rows[row];
+      const theyHave = solid(them[row]) || (row !== system.rowOrder[0] && tall);
+      if (!theyHave) continue;
+      // Колко навътре стърчи тяхната мебел — колкото заема от моя ред.
+      const theirDepth = tall ? system.rows[system.rowOrder[0]].depth : span.depth;
+
+      if (where === 'start') {
+        // Ъгълът е в края на тяхната стена: стига ли мебелта им дотам?
+        const theirSide = sideLength(room, other);
+        if (them.length < theirSide - span.depth) continue;
+        out.push({
+          id: `ъгъл-${side}-начало-${row}`,
+          kind: 'corner',
+          x: 0,
+          width: Math.min(theirDepth, me.length),
+          bottom: span.bottom,
+          height: span.height,
+        });
+      } else {
+        // Ъгълът е в началото на тяхната стена — там мебелта им винаги
+        // започва. Блокира се само ако моят ред стига до него.
+        const from = mySide - theirDepth;
+        if (from >= me.length) continue;
+        out.push({
+          id: `ъгъл-${side}-край-${row}`,
+          kind: 'corner',
+          x: from,
+          width: me.length - from,
+          bottom: span.bottom,
+          height: span.height,
+        });
+      }
+    }
+  }
+  return out;
 }
 
 /** Стая по подразбиране: средно голяма кухня-трапезария. */ // ПРОВЕРИ

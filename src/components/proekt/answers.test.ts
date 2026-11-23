@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyKitchen } from '@/lib/cabinet-rules';
-import { START, answers, fromKitchen, furnitureFrom, type Answers } from './answers';
+import { START, answers, fromKitchen, furnitureFrom, guardedAnswers, type Answers } from './answers';
 
 const mod = (kind: 'door' | 'wardrobe' | 'sink', width: number) => ({
   id: `${kind}-${width}-${Math.random().toString(36).slice(2, 7)}`,
@@ -194,3 +194,23 @@ describe('нареденото на ръка', () => {
     expect(furnitureFrom(след).walls[0].base.length).toBeGreaterThan(0);
   });
 });
+
+describe('рафт в шкаф не пренарежда стаята', () => {
+  it('махнатият шкаф не се връща, щом се сложи рафт', async () => {
+    const { TEMPLATES, templatePatch } = await import('./templates');
+    const { reducer } = await import('@/components/configurator/state');
+    let a = guardedAnswers(START, templatePatch(TEMPLATES[0]));
+    const f0 = a.opened ?? furnitureFrom(a);
+    const removed = reducer(f0, { type: 'remove', id: f0.walls[0].base[1].id });
+    a = guardedAnswers(a, { opened: removed });
+    const kinds = () => (a.opened ?? furnitureFrom(a)).walls[0].base.map((m) => m.id);
+    const before = kinds();
+
+    const target = (a.opened ?? furnitureFrom(a)).walls[0].base[0].id;
+    a = guardedAnswers(a, (p) => ({ shelves: { ...p.shelves, [target]: 2 } }));
+
+    expect(kinds()).toEqual(before);
+    expect((a.opened ?? furnitureFrom(a)).walls[0].base[0].shelves).toBe(2);
+  });
+});
+

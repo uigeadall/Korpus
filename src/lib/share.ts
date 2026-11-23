@@ -26,7 +26,7 @@ import {
   clampRoom,
   clampWallLength,
 } from './cabinet-rules';
-import { WALL_SIDES } from './furniture/room';
+import { ROOM, WALL_SIDES, clampCeiling } from './furniture/room';
 import {
   type DoorHinge,
   type DoorSwing,
@@ -37,6 +37,8 @@ import {
 } from './openings';
 import { CARCASS_COLORS, FACADE_COLORS } from '@/config/materials';
 import { type Furnishing, type FurnishingKind } from './furnishings';
+import { type PackedFinish, packFinish, unpackFinish } from './wall-finish';
+import { floorById } from '@/config/floor-finishes';
 
 /** Версия на записа. Вдига се, ако подредбата по-долу някога се счупи. */
 const VERSION = 1;
@@ -157,6 +159,20 @@ interface Packed {
   d?: PackedDoor;
   /** Прозорците. Липсват в линковете отпреди тях. */
   n?: PackedWindow[];
+  /**
+   * Покритието на стените: общото, после горна, дясна, долна, лява.
+   * Липсва в линковете отпреди него и при стени по подразбиране.
+   */
+  c?: PackedFinish;
+  /** Подът. Липсва в линковете отпреди него и при подразбиращия се под. */
+  fl?: string;
+  /** Височината до тавана. Липсва при обичайните 2,60 м и в старите линкове. */
+  hh?: number;
+  /**
+   * Другите стени с мебел: страна, дължина, долен и горен ред. Липсват в
+   * линковете отпреди тях и когато мебелта е само по главната стена.
+   */
+  xw?: [side: number, length: number, base: PackedModule[], upper: PackedModule[]][];
 }
 
 const packModule = (m: KitchenModule): PackedModule => {
@@ -242,6 +258,21 @@ export function encodeProject(kitchen: Kitchen): string {
     ]);
   }
 
+  const finish = packFinish(kitchen.wallFinish);
+  if (finish) packed.c = finish;
+  if (floorById(kitchen.floorFinish)) packed.fl = kitchen.floorFinish;
+  if (room.height !== undefined && room.height !== ROOM.HEIGHT) packed.hh = Math.round(room.height);
+  const others = kitchen.walls
+    .slice(1)
+    .filter((w) => w.base.length || w.upper.length)
+    .map((w, i): [number, number, PackedModule[], PackedModule[]] => [
+      Math.max(0, WALL_SIDES.indexOf(w.side ?? WALL_SIDES[(i + 1) % WALL_SIDES.length])),
+      Math.round(w.length),
+      w.base.map(packModule),
+      w.upper.map(packModule),
+    ]);
+  if (others.length) packed.xw = others;
+
   return toUrlSafe(JSON.stringify(packed));
 }
 
@@ -259,7 +290,11 @@ export function decodeProject(code: string): Kitchen | null {
       rotation: ((t[3] ?? 0) * Math.PI) / 180,
     }));
 
-    const room = { width: clampRoom(p.s?.[0] ?? 4200), depth: clampRoom(p.s?.[1] ?? 3200) };
+    const room = {
+      width: clampRoom(p.s?.[0] ?? 4200),
+      depth: clampRoom(p.s?.[1] ?? 3200),
+      ...(typeof p.hh === 'number' ? { height: clampCeiling(p.hh) } : {}),
+    };
     const door: RoomDoor | undefined = p.d
       ? clampDoor(room, {
           side: WALL_SIDES[p.d[0]] ?? 'top',
@@ -282,11 +317,17 @@ export function decodeProject(code: string): Kitchen | null {
       }),
     );
 
+    const wallFinish = unpackFinish(p.c);
+    // Непознат под — например от по-нова версия — се отваря като подразбиращия се.
+    const floorFinish = floorById(typeof p.fl === 'string' ? p.fl : null)?.id;
+
     return {
       roomKind: ROOMS[p.r] ?? 'kitchen',
       room,
       ...(door ? { door } : {}),
       ...(windows.length ? { windows } : {}),
+      ...(wallFinish ? { wallFinish } : {}),
+      ...(floorFinish ? { floorFinish } : {}),
       walls: [
         {
           id: 'share-wall-1',
@@ -295,6 +336,15 @@ export function decodeProject(code: string): Kitchen | null {
           base: p.b.map((m, i) => unpackModule(m, 'share-b', i)),
           upper: p.u.map((m, i) => unpackModule(m, 'share-u', i)),
         },
+        ...(Array.isArray(p.xw) ? p.xw : [])
+          .filter((x) => Array.isArray(x) && Array.isArray(x[2]) && Array.isArray(x[3]))
+          .map(([side, length, b, u], n) => ({
+            id: `share-wall-${n + 2}`,
+            side: WALL_SIDES[side] ?? 'right',
+            length: clampWallLength(length ?? 3600),
+            base: b.map((m, i) => unpackModule(m, `share-${n + 2}b`, i)),
+            upper: u.map((m, i) => unpackModule(m, `share-${n + 2}u`, i)),
+          })),
       ],
       materials: {
         carcassColor: CARCASS_COLORS[p.m?.[0] ?? 0]?.name ?? DEFAULT_MATERIALS.carcassColor,

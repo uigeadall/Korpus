@@ -19,6 +19,7 @@
  */
 
 import { decodeFlat } from './flat-share';
+import { type Ogled, ogledText, parseOgled } from './ogled';
 import { decodeProject } from './share';
 
 /** Горни граници, за да не може една заявка да изяде сървъра. */
@@ -45,6 +46,11 @@ export interface Zapitvane {
   flat: string | null;
   /** Една стая, когато идва от „Направи проект". */
   project: string | null;
+  /**
+   * Кога е удобно за оглед. Липсва, ако клиентът не е казал — тогава
+   * се пита по телефона, както и досега.
+   */
+  ogled?: Ogled;
   /** Изрично съгласие за обработка на лични данни. Без него не минава. */
   consent: true;
 }
@@ -149,6 +155,9 @@ export function parseZapitvane(raw: unknown): Validation {
 
   if (problems.length) return { ok: false, problems };
 
+  // Пожеланието не може да провали запитването: непознатото просто отпада.
+  const ogled = parseOgled(r.ogled);
+
   return {
     ok: true,
     value: {
@@ -158,6 +167,7 @@ export function parseZapitvane(raw: unknown): Validation {
       note,
       flat,
       project,
+      ...(ogled ? { ogled } : {}),
       consent: true,
     },
   };
@@ -183,6 +193,8 @@ export function summaryOf(z: Zapitvane): string {
   } else {
     parts.push('без проект');
   }
+
+  if (z.ogled) parts.push(`оглед: ${ogledText(z.ogled)}`);
 
   return parts.join(' · ');
 }

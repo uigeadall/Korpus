@@ -59,8 +59,18 @@ import { RoomPlan, type PlanMode } from './RoomPlan';
 import { RowEditor } from './RowEditor';
 import { RowStatusBar } from './RowStatusBar';
 import { WallTabs } from './WallTabs';
+import { WallFinishPanel } from './WallFinishPanel';
+import { FloorFinishPanel } from './FloorFinishPanel';
+import { useFitToViewport } from '@/components/useFitToViewport';
+import { useFlash } from '@/components/useFlash';
+import { ScrollMore } from '@/components/ScrollMore';
+import { PriceEstimate } from '@/components/proekt/PriceEstimate';
+import { ErgonomicsNotes } from '@/components/ErgonomicsNotes';
+import { ergonomics } from '@/lib/ergonomics';
 import {
   type Action,
+  NO_ROOM,
+  blockedByWall,
   canRedo,
   canUndo,
   clampWall,
@@ -82,7 +92,24 @@ export function Configurator() {
     initHistory(sampleKitchen()),
   );
   const kitchen = history.present;
-  const dispatch = dispatchHistory as (a: Action) => void;
+  /*
+   * Всичко минава оттук. Действие, за което няма място на стената, не
+   * минава (виж `reducer`) — и казва защо, вместо да мълчи.
+   */
+  const [notice, flash] = useFlash();
+  // Стабилна обвивка: ефектите, които я ползват, не бива да се
+  // пренавързват при всяка промяна на кухнята.
+  const kitchenNow = useRef(kitchen);
+  useEffect(() => {
+    kitchenNow.current = kitchen;
+  }, [kitchen]);
+  const dispatch = useCallback(
+    (a: Action) => {
+      if (blockedByWall(kitchenNow.current, a)) flash(NO_ROOM);
+      dispatchHistory(a);
+    },
+    [flash],
+  );
 
   // Отбелязва се с редуктор, а не със setState: връщането става вътре в
   // ефект, а setState там върти излишен цикъл рендери.
@@ -93,6 +120,11 @@ export function Configurator() {
    * последният избран.
    */
   const [selected, setSelected] = useState<string[]>([]);
+  /** Стената, за която се избира покритие — обемът се обръща към нея. */
+  const [wallTarget, setWallTarget] = useState<WallSide | null>(null);
+  /** Дясната колона се плъзга сама и се побира във видимото. */
+  // Двете колони са еднакво високи и свършват на една линия.
+  const asideRef = useFitToViewport<HTMLElement>(72, 16, 'exact');
   const selectedId = selected.at(-1) ?? null;
   const setSelectedId = (id: string | null) => setSelected(id ? [id] : []);
   const [view, setView] = useState<ExportView>('cabinet');
@@ -201,6 +233,7 @@ export function Configurator() {
   }, [changed, kitchen]);
 
   const result = useMemo(() => computeKitchen(kitchen), [kitchen]);
+  const notes = useMemo(() => ergonomics(kitchen, result), [kitchen, result]);
   const plan = useMemo(() => kitchenPlan(kitchen, result), [kitchen, result]);
   const room = kitchenRoom(kitchen);
   const door = kitchenDoor(kitchen);
@@ -430,14 +463,18 @@ export function Configurator() {
         </p>
       )}
 
-      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+      {/* Поне колкото екрана — виж „Направи проект". */}
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:min-h-[calc(100dvh-5.5rem)] lg:grid-cols-[minmax(0,1fr)_360px]">
         {/*
           Работната площ стои на екрана, докато се работи отдясно. Щом
           стане по-висока от прозореца, се скролира сама: закована колона,
           по-дълга от екрана, крие долния си край — страницата се плъзга
           под нея, но тя не мърда и лентата долу не се стига.
         */}
-        <div className="space-y-3 pb-24 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+        <div
+          data-kolona="lyava"
+          className="space-y-3 pb-24 lg:h-[calc(100dvh-5.5rem)] lg:overflow-y-auto"
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <WallTabs
               walls={kitchen.walls}
@@ -509,6 +546,12 @@ export function Configurator() {
             onFill={(row: RowId) => wall.id && dispatch({ type: 'fill', wallId: wall.id, row })}
           />
 
+          {notice && (
+            <p role="status" className="rounded-field bg-danger/8 px-4 py-2.5 text-xs text-danger">
+              {notice}
+            </p>
+          )}
+
           {view3d ? (
             <div className="card overflow-hidden bg-gradient-to-b from-surface to-surface-sunken">
               <Scene3D
@@ -516,6 +559,7 @@ export function Configurator() {
                 room={room}
                 placed={result.placed}
                 worktop={kitchen.materials.worktop}
+                focusSide={wallTarget ?? undefined}
                 onShelves={(id, value) => dispatch({ type: 'shelves', id, value })}
                 /* Същото влачене от палитрата работи и тук — нарежда се по
                    активната стена, както в чертежа. */
@@ -526,7 +570,8 @@ export function Configurator() {
                   setDragKind(null);
                 }}
                 onDropCancel={() => setDragKind(null)}
-                onMoveModule={(id, toIndex, gap) => dispatch({ type: 'slide', id, toIndex, gap })}
+                onMoveModule={(id, toIndex) => dispatch({ type: 'reorder', id, toIndex })}
+                onSlideModule={(id, left) => dispatch({ type: 'slide', id, left })}
                 onRemoveModule={(id) => {
                   dispatch({ type: 'remove', id });
                   setSelected((s) => s.filter((x) => x !== id));
@@ -553,8 +598,7 @@ export function Configurator() {
               /* Влаченето плъзга по стената и прави ниша пред шкафа —
                  същото, което прави и влаченето в обема. Стрелките си
                  остават разместване с една стъпка. */
-              roomKind={kitchen.roomKind ?? 'kitchen'}
-              onSlide={(id, toIndex, gap) => dispatch({ type: 'slide', id, toIndex, gap })}
+              onSlide={(id, left) => dispatch({ type: 'slide', id, left })}
               onWallLength={(value) =>
                 wall.id && dispatch({ type: 'wallLength', wallId: wall.id, value })
               }
@@ -627,8 +671,13 @@ export function Configurator() {
           </p>
         </div>
 
-        {/* Панелите: това, което се пипа рядко, стои сгънато. */}
-        <aside className="min-w-0 space-y-3">
+        {/* Панелите: това, което се пипа рядко, стои сгънато. На широк
+            екран колоната се плъзга сама и не избутва чертежа (виж
+            „Направи проект"). */}
+        <aside
+          ref={asideRef}
+          className="min-w-0 space-y-3 lg:h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-width:thin]"
+        >
           {/*
             Палитрата е най-горе вдясно: оттам се вземат модулите за
             тази стая и се пускат в чертежа. Едно място — преди всеки
@@ -737,6 +786,25 @@ export function Configurator() {
                     <span className="text-xs text-muted">мм</span>
                   </span>
                 </label>
+
+                <label className="block">
+                  <span className="text-sm text-muted">До тавана</span>
+                  <span className="mt-1 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={ROOM.HEIGHT_MIN}
+                      max={ROOM.HEIGHT_MAX}
+                      step={ROOM.STEP}
+                      value={room.height ?? ROOM.HEIGHT}
+                      onChange={(e) =>
+                        dispatch({ type: 'room', value: { height: Number(e.target.value) } })
+                      }
+                      className="field dim w-full text-sm"
+                      aria-label="Височина до тавана в милиметри"
+                    />
+                    <span className="text-xs text-muted">мм</span>
+                  </span>
+                </label>
               </div>
 
               <label className="mt-4 block border-t border-border pt-4">
@@ -829,6 +897,44 @@ export function Configurator() {
             <MaterialsPanel materials={kitchen.materials} dispatch={dispatch} />
           </Panel>
 
+          {notes.length > 0 && (
+            <Panel
+              title="Удобство"
+              badge={notes.length}
+              open={notes.some((n) => n.level === 'warn')}
+            >
+              <div className="px-5 pt-1 pb-5">
+                <ErgonomicsNotes notes={notes} />
+              </div>
+            </Panel>
+          )}
+
+          <Panel title="Цена">
+            <div className="px-5 pt-1 pb-5">
+              <PriceEstimate kitchen={kitchen} result={result} />
+            </div>
+          </Panel>
+
+          <Panel title="Стени">
+            <div className="px-5 pt-1 pb-5">
+            <WallFinishPanel
+              choice={kitchen.wallFinish}
+              onChoose={(side, id) => dispatch({ type: 'wallFinish', side, id })}
+              focusSide={wallSide(kitchen.walls[0])}
+              onTargetChange={(t) => setWallTarget(t === 'all' ? null : t)}
+            />
+            </div>
+          </Panel>
+
+          <Panel title="Под">
+            <div className="px-5 pt-1 pb-5">
+              <FloorFinishPanel
+                value={kitchen.floorFinish}
+                onChoose={(id) => dispatch({ type: 'floorFinish', id })}
+              />
+            </div>
+          </Panel>
+
           <section className="card p-5">
             <h2 className="font-display text-lg">Готово?</h2>
             <div className="mt-3 flex flex-col gap-2">
@@ -879,6 +985,7 @@ export function Configurator() {
               {result.rulesVersion}.
             </p>
           </section>
+          <ScrollMore target={asideRef} />
         </aside>
       </div>
 

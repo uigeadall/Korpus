@@ -39,12 +39,15 @@ import {
   flatHistoryReducer,
   initFlatHistory,
   loadFlat,
+  flatReducer,
   loadHere,
+  roomId,
   saveFlat,
   saveHere,
 } from './flatState';
-import { defaultFlat } from '@/lib/flat';
+import { defaultFlat, placeProject } from '@/lib/flat';
 import { decodeFlat, encodeFlat } from '@/lib/flat-share';
+import { decodeProject } from '@/lib/share';
 
 const KINDS: FlatRoomKind[] = ['kitchen', 'living', 'bedroom', 'corridor', 'bath', 'hall', 'other'];
 
@@ -147,13 +150,42 @@ export function FlatEditor() {
     const params = new URLSearchParams(window.location.search);
     const done = params.get('gotova');
     const project = params.get('p');
+    /*
+     * Отметнатото и добавеното се записват веднага, не чак при следващата
+     * промяна. Ефектът може да мине втори път (React в режим за разработка
+     * го пуска два пъти) — тогава адресът вече е изчистен и зареденият
+     * наново чертеж трябва да носи стаята, иначе тя се губи.
+     */
+    const base = saved?.rooms.length ? saved : defaultFlat();
     if (done && project) {
+      saveFlat(flatReducer(base, { type: 'finish', id: done, project }));
       dispatch({ type: 'finish', id: done, project });
       goTo(done, 'Стаята е готова и е отметната в схемата.');
       /*
        * Адресът се чисти, за да не се отмята наново при презареждане
        * и да не остане дълъг запис в лентата.
        */
+      window.history.replaceState(null, '', '/jilishte');
+    }
+
+    /*
+     * Готов проект, направен без чертежа — „Добави в жилището" накрая на
+     * „Направи проект". Влиза в чакаща стая от вида си или в нова, и се
+     * отмята. Мястото се смята предварително, за да се застане там.
+     */
+    const dobavi = params.get('dobavi');
+    const kitchen = dobavi ? decodeProject(dobavi) : null;
+    if (dobavi && kitchen) {
+      const kind = kitchen.roomKind ?? 'kitchen';
+      const size = { width: kitchen.room?.width ?? 4200, depth: kitchen.room?.depth ?? 3200 };
+      const id = roomId();
+      const wallLength = kitchen.walls[0]?.length ?? 0;
+      const placed = placeProject(base, kind, size, dobavi, id, wallLength);
+      saveFlat(placed.flat);
+      const where = placed.id;
+      dispatch({ type: 'place', kind, ...size, project: dobavi, id, wallLength });
+      if (where) goTo(where, 'Проектът е в жилището — стаята е отметната като готова.');
+      else show({ said: 'Жилището е пълно — махнете помещение, за да влезе ново.' });
       window.history.replaceState(null, '', '/jilishte');
     }
   }, []);

@@ -5,6 +5,7 @@ import {
   MODULES,
   WINDOW,
   computeKitchen,
+  maxShelves,
   emptyKitchen,
   kitchenDoor,
   kitchenRoom,
@@ -164,83 +165,6 @@ describe('преподреждане', () => {
     const moved = reducer(k, { type: 'reorder', id: upperId, toIndex: 0 });
     expect(base(moved).map((m) => m.id)).toEqual(ids);
     expect(upper(moved)).toHaveLength(1);
-  });
-});
-
-describe('плъзгане по стената', () => {
-  /*
-   * Различно от преподреждането: там шкафът разменя място със съсед, тук
-   * застава на място по стената, а празното пред него става ниша. Заради
-   * това шкаф, сам на стената, изобщо може да се мести.
-   */
-  const sam = () => run([{ type: 'add', row: 'base', kind: 'sink' }]);
-
-  it('плъзнат надясно, получава ниши пред себе си', () => {
-    const start = sam();
-    const id = base(start)[0].id;
-    const k = reducer(start, { type: 'slide', id, toIndex: 0, gap: 900 });
-
-    const row = base(k);
-    expect(row.at(-1)!.id).toBe(id);
-    expect(row.slice(0, -1).every((m) => m.kind === 'lgap')).toBe(true);
-    expect(row.slice(0, -1).reduce((s, m) => s + m.width, 0)).toBe(900);
-  });
-
-  it('плъзнат обратно към ъгъла, нишите изчезват', () => {
-    const start = sam();
-    const id = base(start)[0].id;
-    const сНиша = reducer(start, { type: 'slide', id, toIndex: 0, gap: 900 });
-    expect(base(сНиша).length).toBeGreaterThan(1);
-
-    const обратно = reducer(сНиша, { type: 'slide', id, toIndex: 0, gap: 0 });
-    expect(base(обратно).map((m) => m.kind)).toEqual(['sink']);
-  });
-
-  it('нишата точно пред шкафа е негова и се прави наново', () => {
-    /*
-     * Тя е това, което го е изтласкало дотам. Мръдне ли той, тя губи
-     * смисъл — иначе шкафът не може да се върне към ъгъла.
-     */
-    const start = run([
-      { type: 'add', row: 'base', kind: 'door' },
-      { type: 'add', row: 'base', kind: 'lgap' },
-      { type: 'add', row: 'base', kind: 'drawers' },
-    ]);
-    const ниша = base(start)[1].id;
-    const шкаф = base(start)[2].id;
-
-    const k = reducer(start, { type: 'slide', id: шкаф, toIndex: 0, gap: 0 });
-    expect(base(k).some((m) => m.id === ниша)).toBe(false);
-    expect(base(k).map((m) => m.kind)).toEqual(['drawers', 'door']);
-  });
-
-  it('ниша по-назад в реда не се пипа', () => {
-    // Нишата е пред чекмеджетата; мести се мивката, която е след тях.
-    const start = run([
-      { type: 'add', row: 'base', kind: 'door' },
-      { type: 'add', row: 'base', kind: 'lgap' },
-      { type: 'add', row: 'base', kind: 'drawers' },
-      { type: 'add', row: 'base', kind: 'sink' },
-    ]);
-    const ниша = base(start)[1].id;
-    const мивка = base(start)[3].id;
-
-    const k = reducer(start, { type: 'slide', id: мивка, toIndex: 0, gap: 0 });
-    expect(base(k).some((m) => m.id === ниша)).toBe(true);
-    expect(base(k)[0].id).toBe(мивка);
-  });
-
-  it('ред без ниша не се разтяга', () => {
-    const спалня = { ...emptyKitchen(3600), roomKind: 'bedroom' as const };
-    const k = run([{ type: 'add', row: 'upper', kind: 'attic' }], спалня);
-    const id = upper(k)[0].id;
-    const след = reducer(k, { type: 'slide', id, toIndex: 0, gap: 900 });
-    expect(upper(след).map((m) => m.kind)).toEqual(['attic']);
-  });
-
-  it('непознат шкаф не мени нищо', () => {
-    const start = sam();
-    expect(reducer(start, { type: 'slide', id: 'няма-такъв', toIndex: 0, gap: 600 })).toBe(start);
   });
 });
 
@@ -692,9 +616,12 @@ describe('връщане назад', () => {
 
   it('историята не расте без край', () => {
     const wallId = start().present.walls[0].id!;
-    let h = start();
+    let h = historyReducer(start(), { type: 'add', wallId, row: 'base', kind: 'door' });
+    const id = h.present.walls[0].base[0].id;
+    // Сто шкафа на една стена вече не минават (виж „мебелта остава в
+    // стената"), затова историята се пълни с разрешени промени.
     for (let i = 0; i < HISTORY_LIMIT + 20; i++) {
-      h = historyReducer(h, { type: 'add', wallId, row: 'base', kind: 'door' });
+      h = historyReducer(h, { type: 'hinge', id, value: i % 2 ? 'right' : 'left' });
     }
     expect(h.past).toHaveLength(HISTORY_LIMIT);
   });
@@ -704,18 +631,21 @@ describe('рафтове от обемния изглед', () => {
   it('задава брой и го стига до разкроя', () => {
     const k = run([{ type: 'add', row: 'base', kind: 'door' }]);
     const id = base(k)[0].id;
-    const four = reducer(k, { type: 'shelves', id, value: 4 });
-    expect(base(four)[0].shelves).toBe(4);
+    // Колкото събира шкафът — таванът е по височината му (`maxShelves`).
+    const n = maxShelves('door');
+    const full = reducer(k, { type: 'shelves', id, value: n });
+    expect(base(full)[0].shelves).toBe(n);
     const cut = (x: typeof k) =>
       computeKitchen(x).parts.filter((p) => /рафт/i.test(p.name)).length;
-    expect(cut(four)).toBe(cut(k) + 3);
+    expect(cut(full)).toBe(cut(k) + n - 1);
   });
 
   it('не приема безсмислени числа', () => {
     const k = run([{ type: 'add', row: 'base', kind: 'door' }]);
     const id = base(k)[0].id;
     expect(base(reducer(k, { type: 'shelves', id, value: -5 }))[0].shelves).toBe(0);
-    expect(base(reducer(k, { type: 'shelves', id, value: 999 }))[0].shelves).toBe(10);
+    // Не десет за всеки шкаф, а колкото се побират на височина.
+    expect(base(reducer(k, { type: 'shelves', id, value: 999 }))[0].shelves).toBe(maxShelves('door'));
   });
 
   it('поредните промени се сливат в една стъпка назад', () => {

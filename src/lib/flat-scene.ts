@@ -13,7 +13,6 @@
 
 import type { Box } from './scene3d';
 import { wallWithHoles, type WallHole } from './scene3d';
-import { flatFurniture } from './flat-furniture';
 import {
   FLAT,
   type Flat,
@@ -93,18 +92,7 @@ const keyOf = (b: PlainBox) =>
  * `currentId` е стаята, в която човекът стои — подът ѝ се отбелязва,
  * за да личи откъде тръгва следващата стрелка.
  */
-export function flatScene(
-  flat: Flat,
-  currentId: string | null = null,
-  /**
-   * Да се вижда ли какво има в стаите.
-   *
-   * Изключва се само там, където се мери гол макет. Кадърът обаче я
-   * иска: високите шкафове стърчат над ниските зидове и без тях в
-   * сметката се режат отгоре.
-   */
-  withFurniture = true,
-): Box[] {
+export function flatScene(flat: Flat, currentId: string | null = null): Box[] {
   const boxes: Box[] = [];
 
   for (const room of flat.rooms) {
@@ -174,8 +162,6 @@ export function flatScene(
       }
     }
   }
-
-  if (withFurniture) boxes.push(...flatFurniture(flat.rooms));
 
   return boxes;
 }

@@ -1,168 +1,76 @@
 import { describe, expect, it } from 'vitest';
-import {
-  MODULES,
-  type KitchenModule,
-  type ModuleKind,
-  gapKindFor,
-  isGap,
-  placeWall,
-} from './cabinet-rules';
-import { gapFill, slideRow, slideTarget } from './slide';
+import { computeKitchen, emptyKitchen, type Kitchen } from './cabinet-rules';
+import { reducer } from '@/components/configurator/state';
+import { gapKindFor, gridStep, isGap, slideRow, wallPoint } from './slide';
 
-let seq = 0;
-const mod = (kind: ModuleKind, width: number): KitchenModule => ({
-  id: `${kind}-${++seq}`,
-  kind,
-  width,
-  hingeSide: 'right',
-});
+/** Стена 3600 с два шкафа по 600 в началото. */
+function twoCabinets(): Kitchen {
+  let k = emptyKitchen(3600);
+  const wallId = k.walls[0].id!;
+  k = reducer(k, { type: 'add', wallId, row: 'base', kind: 'door' });
+  k = reducer(k, { type: 'add', wallId, row: 'base', kind: 'door' });
+  return k;
+}
+const xs = (k: Kitchen) =>
+  computeKitchen(k).placed[0].base.filter((m) => !isGap(m.kind)).map((m) => [m.id, m.x] as const);
 
-const novModul = (kind: ModuleKind, width: number): KitchenModule => mod(kind, width);
-
-/** Подредбата на ред, както я смятат правилата. */
-const naredi = (row: KitchenModule[], length = 3600) =>
-  placeWall({ id: 'w', side: 'top', length, base: row, upper: [] }, {}, 'kitchen', []).base;
-
-const LGAP = gapKindFor('kitchen', 'base');
-
-describe('коя ниша се ползва', () => {
-  it('всяка стая си има своята, а някои редове нямат', () => {
-    expect(gapKindFor('kitchen', 'base')).toBe('lgap');
-    expect(gapKindFor('kitchen', 'upper')).toBe('ugap');
-    expect(gapKindFor('bath', 'base')).toBe('bgap');
-    // Над гардероба стои само антресол — празно там не е изделие.
-    expect(gapKindFor('bedroom', 'upper')).toBeNull();
+describe('шкаф по стената, по решетка', () => {
+  it('решетката е по-ситна в къса стена и по-едра в дълга', () => {
+    expect(gridStep(1800)).toBe(50);
+    expect(gridStep(3600)).toBe(100);
+    expect(gridStep(6000)).toBe(150);
+    expect(gridStep(7000)).toBe(150);
   });
 
-  it('панелът на уред не е ниша', () => {
-    expect(isGap('lgap')).toBe(true);
-    expect(isGap('dw')).toBe(false);
-    expect(isGap('door')).toBe(false);
+  it('плъзнат шкаф ляга на решетката, а пред него остава ниша', () => {
+    const k = twoCabinets();
+    const id = k.walls[0].base[1].id;
+    const moved = reducer(k, { type: 'slide', id, left: 2033 });
+    const at = Object.fromEntries(xs(moved));
+    expect(at[id]).toBe(2000);
+    // Първият си стои; между тях — ниша, която не влиза в разкроя.
+    expect(at[k.walls[0].base[0].id]).toBe(0);
+    expect(moved.walls[0].base.some((m) => isGap(m.kind))).toBe(true);
+    expect(computeKitchen(moved).cabinets).toHaveLength(computeKitchen(k).cabinets.length);
   });
-});
 
-describe('колко празно се сглобява', () => {
-  it('точните ширини се правят точно', () => {
-    for (const w of MODULES.lgap.widths) {
-      expect(gapFill(w, 'lgap').total, String(w)).toBe(w);
+  it('прилепва към ръба на съседа, щом е близо', () => {
+    const k = twoCabinets();
+    const first = k.walls[0].base[0].id;
+    let moved = reducer(k, { type: 'slide', id: first, left: 2000 });
+    // Вторият е на 600; първият, пуснат на 1230, прилепва до него — на 1200.
+    moved = reducer(moved, { type: 'slide', id: first, left: 1230 });
+    expect(Object.fromEntries(xs(moved))[first]).toBe(1200);
+  });
+
+  it('не минава през края на стената и не влиза в съсед', () => {
+    const k = twoCabinets();
+    const id = k.walls[0].base[1].id;
+    const end = reducer(k, { type: 'slide', id, left: 9999 });
+    expect(Object.fromEntries(xs(end))[id]).toBe(3000);
+    // Върху първия шкаф място няма — плъзгането не минава.
+    expect(slideRow(k.walls[0], 'kitchen', [], id, -300)).toBeNull();
+  });
+
+  it('пълен ред не се плъзга — там местенето е разместване', () => {
+    let k = emptyKitchen(1200);
+    const wallId = k.walls[0].id!;
+    k = reducer(k, { type: 'add', wallId, row: 'base', kind: 'door' });
+    k = reducer(k, { type: 'add', wallId, row: 'base', kind: 'door' });
+    expect(slideRow(k.walls[0], 'kitchen', [], k.walls[0].base[0].id, 600)).toBeNull();
+  });
+
+  it('всяка стая има с какво да пълни празното долу', () => {
+    for (const room of ['kitchen', 'bedroom', 'living', 'bath', 'corridor', 'hall'] as const) {
+      expect(gapKindFor(room, 'base'), room).not.toBeNull();
     }
   });
 
-  it('под най-тясната ниша не се прави нищо', () => {
-    expect(gapFill(120, 'lgap')).toEqual({ widths: [], total: 0 });
-    expect(gapFill(0, 'lgap').total).toBe(0);
-  });
-
-  it('няма ли ниша в реда, няма и празно', () => {
-    expect(gapFill(900, null)).toEqual({ widths: [], total: 0 });
-  });
-
-  it('по-голямо място се сглобява от няколко', () => {
-    const { widths, total } = gapFill(1500, 'lgap');
-    expect(widths.length).toBeGreaterThan(1);
-    expect(total).toBeLessThanOrEqual(1500);
-    for (const w of widths) expect(MODULES.lgap.widths).toContain(w);
-  });
-});
-
-describe('един шкаф на празна стена', () => {
-  /* Това е случаят, заради който всичко това съществува. */
-  const sam = () => [mod('sink', 800)];
-
-  it('плъзнат надясно, получава ниша пред себе си', () => {
-    const row = sam();
-    const placed = naredi(row);
-    const цел = slideTarget(placed, row[0].id, 1500, LGAP)!;
-    expect(цел.index).toBe(0);
-    expect(цел.gap).toBeGreaterThan(0);
-
-    const нов = slideRow(row, row[0].id, цел.index, цел.gap, LGAP, novModul)!;
-    expect(нов.filter((m) => isGap(m.kind)).length).toBeGreaterThan(0);
-
-    // И наистина ляга там, където каза целта.
-    const след = naredi(нов);
-    expect(след.find((m) => m.id === row[0].id)!.x).toBe(цел.left);
-  });
-
-  it('плъзнат обратно към ъгъла, нишите изчезват', () => {
-    const row = sam();
-    const цел1 = slideTarget(naredi(row), row[0].id, 1500, LGAP)!;
-    const сНиша = slideRow(row, row[0].id, цел1.index, цел1.gap, LGAP, novModul)!;
-    expect(сНиша.length).toBeGreaterThan(1);
-
-    const цел2 = slideTarget(naredi(сНиша), row[0].id, 0, LGAP)!;
-    const обратно = slideRow(сНиша, row[0].id, цел2.index, цел2.gap, LGAP, novModul)!;
-    expect(обратно.filter((m) => isGap(m.kind))).toHaveLength(0);
-    expect(naredi(обратно).find((m) => m.id === row[0].id)!.x).toBe(0);
-  });
-
-  it('целта и резултатът не се разминават, където и да го пуснеш', () => {
-    for (const want of [0, 300, 700, 1200, 1900, 2600]) {
-      const row = sam();
-      const цел = slideTarget(naredi(row), row[0].id, want, LGAP)!;
-      const нов = slideRow(row, row[0].id, цел.index, цел.gap, LGAP, novModul)!;
-      expect(naredi(нов).find((m) => m.id === row[0].id)!.x, String(want)).toBe(цел.left);
-    }
-  });
-});
-
-describe('шкаф между други', () => {
-  const три = () => [mod('door', 600), mod('drawers', 400), mod('sink', 800)];
-
-  it('плъзнат наляво, разменя се със съседа', () => {
-    const row = три();
-    const id = row[2].id;
-    const цел = slideTarget(naredi(row), id, 0, LGAP)!;
-    expect(цел.index).toBe(0);
-    expect(цел.gap).toBe(0);
-
-    const нов = slideRow(row, id, цел.index, цел.gap, LGAP, novModul)!;
-    expect(нов.map((m) => m.kind)).toEqual(['sink', 'door', 'drawers']);
-  });
-
-  it('плъзнат зад последния, получава ниша след тях', () => {
-    const row = три();
-    const id = row[0].id;
-    const цел = slideTarget(naredi(row), id, 2400, LGAP)!;
-    const нов = slideRow(row, id, цел.index, цел.gap, LGAP, novModul)!;
-    expect(нов.at(-1)!.id).toBe(id);
-    expect(нов.filter((m) => isGap(m.kind)).length).toBeGreaterThan(0);
-    expect(naredi(нов).find((m) => m.id === id)!.x).toBe(цел.left);
-  });
-
-  it('чужда ниша не се пипа', () => {
-    // Ниша за прозорец между първия и втория шкаф.
-    const a = mod('door', 600);
-    const prozorec = mod('lgap', 900);
-    const b = mod('drawers', 400);
-    const c = mod('sink', 800);
-    const row = [a, prozorec, b, c];
-
-    // Мести се последният, далеч от тази ниша.
-    const цел = slideTarget(naredi(row), c.id, 0, LGAP)!;
-    const нов = slideRow(row, c.id, цел.index, цел.gap, LGAP, novModul)!;
-    expect(нов.map((m) => m.id)).toContain(prozorec.id);
-    expect(нов.indexOf(нов.find((m) => m.id === prozorec.id)!)).toBeGreaterThan(0);
-  });
-});
-
-describe('какво не минава', () => {
-  it('непознат шкаф не дава нито цел, нито ред', () => {
-    const row = [mod('door', 600)];
-    expect(slideTarget(naredi(row), 'няма-такъв', 500, LGAP)).toBeNull();
-    expect(slideRow(row, 'няма-такъв', 0, 300, LGAP, novModul)).toBeNull();
-  });
-
-  it('ред без ниша просто не се разтяга', () => {
-    const row = [mod('attic', 600)];
-    const цел = slideTarget(
-      placeWall({ id: 'w', side: 'top', length: 3600, base: [], upper: row }, {}, 'bedroom', [])
-        .upper,
-      row[0].id,
-      1500,
-      gapKindFor('bedroom', 'upper'),
-    )!;
-    expect(цел.gap).toBe(0);
-    expect(цел.left).toBe(0);
+  it('точка от стената се намира в стаята за всяка страна', () => {
+    const room = { width: 4000, depth: 3000 };
+    expect(wallPoint(room, 'top', 100, 50, 0)).toEqual({ x: 100, y: 0, z: 50 });
+    expect(wallPoint(room, 'right', 100, 50, 0)).toEqual({ x: 3950, y: 0, z: 100 });
+    expect(wallPoint(room, 'bottom', 100, 50, 0)).toEqual({ x: 3900, y: 0, z: 2950 });
+    expect(wallPoint(room, 'left', 100, 50, 0)).toEqual({ x: 50, y: 0, z: 2900 });
   });
 });

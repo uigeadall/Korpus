@@ -354,7 +354,8 @@ export function tint(normal: Vec3): { r: number; g: number; b: number } {
 
 /* --- Светът ---------------------------------------------------------- */
 
-const ROOM_H = 2600;
+/** Таванът, когато стаята не казва своя. */
+const ROOM_HEIGHT_DEFAULT = 2600;
 /** Дебелина на фасадата, която стърчи пред корпуса. */
 const FACADE_T = 18;
 /** Колко излиза дръжката пред фасадата. */
@@ -629,6 +630,8 @@ const SHELL_OUTWARD: Record<WallSide, Vec3> = {
  */
 export function shellWall(room: Room, side: WallSide): Box {
   const common = { role: 'wall' as const, facing: null, outward: SHELL_OUTWARD[side] };
+  // Зидът стига до тавана на стаята, не до общото 2,60 м.
+  const ROOM_H = room.height ?? ROOM_HEIGHT_DEFAULT;
   const long = room.width + 2 * WALL_T;
   switch (side) {
     case 'top':

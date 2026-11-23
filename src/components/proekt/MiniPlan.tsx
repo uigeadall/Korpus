@@ -253,14 +253,17 @@ export function MiniPlan({
       >
         {metres(roomWidth)}
       </text>
+      {/* Изправено по стената: хоризонтално излизаше вляво от рамката и
+          оставаше само „м". */}
       <text
-        x={-10}
+        x={-12}
         y={d / 2}
-        textAnchor="end"
+        textAnchor="middle"
         dominantBaseline="middle"
         fontSize="12"
         fill="var(--muted)"
         className="font-mono"
+        transform={`rotate(-90 -12 ${d / 2})`}
       >
         {metres(roomDepth)}
       </text>

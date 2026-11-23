@@ -362,6 +362,43 @@ export function addRoom(flat: Flat, kind: FlatRoomKind, id: string): Flat {
   return { rooms: [...flat.rooms, room] };
 }
 
+/**
+ * Готов проект, пренесен в жилището.
+ *
+ * Има ли стая от същия вид, която още чака обзавеждане, проектът отива
+ * в нея — човек е направил кухнята си, а кухнята вече е начертана. Няма
+ * ли, жилището получава нова стая с мерките на проекта. Връща жилището и
+ * името на стаята, в която е влязъл проектът.
+ */
+export function placeProject(
+  flat: Flat,
+  kind: FlatRoomKind,
+  size: { width: number; depth: number },
+  project: string,
+  id: string,
+  /** Колко е дълга стената с мебелта — чакаща стая, по-тясна от нея, не става. */
+  wallLength = 0,
+): { flat: Flat; id: string | null } {
+  // Мебел по-дълга от стаята би минала през зида ѝ в макета.
+  const waiting = flat.rooms.find((r) => r.kind === kind && !r.project && r.width >= wallLength);
+  if (waiting) {
+    return {
+      flat: { rooms: flat.rooms.map((r) => (r.id === waiting.id ? { ...r, project } : r)) },
+      id: waiting.id,
+    };
+  }
+  const added = addRoom(flat, kind, id);
+  if (added === flat) return { flat, id: null };
+  return {
+    flat: {
+      rooms: added.rooms.map((r) =>
+        r.id === id ? clampFlatRoom({ ...r, width: size.width, depth: size.depth, project }) : r,
+      ),
+    },
+    id,
+  };
+}
+
 /** Жилище по подразбиране: двустаен апартамент с коридор. */ // ПРОВЕРИ
 export function defaultFlat(): Flat {
   const rooms: FlatRoom[] = [

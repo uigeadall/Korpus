@@ -7,7 +7,7 @@ import {
   defaultWidth,
   placeWall,
 } from './cabinet-rules';
-import { dropTargetAt, ghostPlacement, moveTargetAt, wallPlane } from './drop3d';
+import { dropTargetAt, ghostPlacement, moveTargetAt, slideTargetAt, wallPlane } from './drop3d';
 import { alongFrom, pointAlong, type Room, type WallSide } from './furniture/room';
 import { DEFAULT_CAMERA, floorPointAt, planePointAt, project } from './scene3d';
 
@@ -229,20 +229,29 @@ describe('плъзгане на шкаф по стената', () => {
   /** Три шкафа: 600, 400, 800 — ясно различими по ширина. */
   const три = () => wallOf([mod('door', 600), mod('drawers', 400), mod('sink', 800)]);
 
-  it('първият, плъзнат надясно, минава зад втория', () => {
+  it('плъзнат в свободното, ляга близо до поисканото', () => {
     const wall = три();
     const id = wall.base[0].id;
-    // Левият му ръб се цели на 800: зад чекмеджетата (400 плътно).
-    const s = кадър(800 + 600 / 2, 400);
-    const цел = moveTargetAt(scene(wall), id, s.x, s.y, cam);
+    // Тримата заемат 1800 мм; на 2200 стената е свободна.
+    const s = кадър(2200 + 600 / 2, 400);
+    const цел = slideTargetAt(scene(wall), id, s.x, s.y, cam);
     expect(цел).not.toBeNull();
-    expect(цел!.index).toBe(1);
+    expect(цел!.slide).toBe(true);
     /*
-     * Останалите 400 мм празно не се изяждат: стават ниша. Най-близкото
-     * достижимо от каталога е 300, затова шкафът ляга на 700.
+     * Празното преди него не се изяжда: става ниша. Къде точно ляга
+     * решава решетката в `slide.ts`; тук се пази само, че е близо до
+     * поисканото.
      */
-    expect(цел!.gap).toBe(300);
-    expect(цел!.left).toBe(700);
+    expect(Math.abs(цел!.left - 2200)).toBeLessThanOrEqual(150);
+  });
+
+  it('в заето място плъзгане няма — там остава размяната', () => {
+    const wall = три();
+    const id = wall.base[0].id;
+    // 800 пада върху чекмеджетата и мивката: няма къде да легне.
+    const s = кадър(800 + 600 / 2, 400);
+    expect(slideTargetAt(scene(wall), id, s.x, s.y, cam)).toBeNull();
+    expect(moveTargetAt(scene(wall), id, s.x, s.y, cam)).not.toBeNull();
   });
 
   it('плъзнат до левия край се връща най-отпред', () => {
@@ -254,16 +263,25 @@ describe('плъзгане на шкаф по стената', () => {
     expect(цел!.left).toBe(0);
   });
 
-  it('плъзнат до десния край отива най-отзад, опрян в стената', () => {
+  it('плъзнат до десния край, опира в ъгъла и не излиза', () => {
     const wall = три();
     const id = wall.base[0].id;
     const s = кадър(3500, 400);
-    const цел = moveTargetAt(scene(wall), id, s.x, s.y, cam);
-    expect(цел!.index).toBe(2);
-    // Останалите два са 1200 плътно; до края на стената остават 1800,
-    // от които ниши правят 1800 — шкафът опира в десния ъгъл.
-    expect(цел!.left + цел!.width).toBeLessThanOrEqual(3600);
-    expect(цел!.left).toBe(3000);
+    const цел = slideTargetAt(scene(wall), id, s.x, s.y, cam)!;
+    expect(цел.slide).toBe(true);
+    expect(цел.left + цел.width).toBeLessThanOrEqual(3600);
+    expect(цел.left).toBe(3600 - цел.width);
+  });
+
+  it('разместването си остава отделен път, когато плъзгане няма', () => {
+    // Без свободно място наблизо `slideTargetAt` се отказва и
+    // `moveTargetAt` разменя местата — както беше досега.
+    const wall = три();
+    const id = wall.base[2].id;
+    const s = кадър(0, 400);
+    const цел = moveTargetAt(scene(wall), id, s.x, s.y, cam)!;
+    expect(цел.slide).toBeUndefined();
+    expect(цел.index).toBe(0);
   });
 
   it('сам на стената, шкафът все пак се мести — с ниша пред себе си', () => {
@@ -272,9 +290,8 @@ describe('плъзгане на шкаф по стената', () => {
     const wall = wallOf([mod('sink', 800)]);
     const id = wall.base[0].id;
     const s = кадър(1500 + 800 / 2, 400);
-    const цел = moveTargetAt(scene(wall), id, s.x, s.y, cam)!;
-    expect(цел.index).toBe(0);
-    expect(цел.gap).toBeGreaterThan(0);
+    const цел = slideTargetAt(scene(wall), id, s.x, s.y, cam)!;
+    expect(цел.slide).toBe(true);
     expect(цел.left).toBeGreaterThan(0);
   });
 

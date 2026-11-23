@@ -212,3 +212,24 @@ describe('прозорците в линка', () => {
     expect(encodeProject(kitchenWithWindows()).length).toBeLessThan(900);
   });
 });
+
+describe('другите стени в линка', () => {
+  it('Г-кухня се отваря със същите стени и шкафове', async () => {
+    const { reducer } = await import('@/components/configurator/state');
+    let k: ReturnType<typeof emptyKitchen> = { ...emptyKitchen(4200), room: { width: 4200, depth: 3200 } };
+    k = reducer(k, { type: 'add', wallId: k.walls[0].id!, row: 'base', kind: 'door' });
+    k = reducer(k, { type: 'addWall', side: 'right' });
+    k = reducer(k, { type: 'add', wallId: k.walls[1].id!, row: 'base', kind: 'drawers' });
+    const back = decodeProject(encodeProject(k))!;
+    expect(back.walls).toHaveLength(2);
+    expect(back.walls[1].side).toBe('right');
+    expect(back.walls[1].base.map((m) => m.kind)).toEqual(['drawers']);
+  });
+
+  it('само главната стена — линкът е същият като преди', () => {
+    const k = emptyKitchen(3600);
+    const withEmpty = { ...k, walls: [...k.walls, { id: 'x', side: 'right' as const, length: 3200, base: [], upper: [] }] };
+    expect(encodeProject(withEmpty)).toBe(encodeProject(k));
+  });
+});
+

@@ -1,127 +1,163 @@
 /**
- * Шкаф, плъзнат на място по стената.
+ * Шкаф, плъзнат по стената до точно място — по решетка.
  *
- * Редът е плътен: шкафовете си допират страниците и позицията им е
- * място в редица, не свободно число. Това е вярно за мебелта, но
- * оставяше един шкаф на празна стена без къде да отиде — човек го
- * влачеше и нищо не се случваше, защото в редица от едно има само
- * едно място.
+ * Редът си остава редица: правилата подреждат модулите един след друг
+ * и така ги режат, номерират и пращат в цеха. Свободното място пред
+ * преместения шкаф става невидима ниша — същото, което е „Свободна ниша"
+ * от палитрата. Затова разкроят, цената и линкът не знаят нищо ново.
  *
- * Отговорът не е шкафът да увисне на средата на стената. В истинска
- * кухня между корпуса и ъгъла има ниша — тя се мери, плаща се и влиза
- * в разбивката. Затова плъзгането не мести шкафа в празното, а слага
- * ниши пред него. Каквото се вижда в обема, съществува и в заявката.
- *
- * Нишите са каталожни ширини, не кое да е число. Затова не всяко
- * място е достижимо и шкафът ляга на най-близкото, което се сглобява
- * от наличните — както би станало и в цеха.
+ * Шкафът прилепва към решетката и към ръбовете на съседите си. Решетката
+ * е по-ситна в къса стена и по-едра в дълга — около четирийсет клетки,
+ * колкото окото различава. Заето ли е мястото, местенето се връща към
+ * разместване, както беше досега (виж `drop3d`).
  */
 
 import {
-  MODULES,
   type KitchenModule,
   type ModuleKind,
-  isGap,
+  type RoomKind,
+  type RowId,
+  type Wall,
+  type WallOpening,
+  GAP_KINDS,
+  isGapKind,
+  placeWall,
+  systemFor,
 } from './cabinet-rules';
-import { fillWidths } from './furniture/system';
+import { freeAround, rowBlocks } from './furniture/system';
+import type { Room, WallSide } from './furniture/room';
+import type { Vec3 } from './scene3d';
 
-/** Колко празно наистина може да се сглоби от нишите в този ред. */
-export function gapWidths(gapKind: ModuleKind | null): readonly number[] {
-  return gapKind ? MODULES[gapKind].widths : [];
+/** Празните места по системи — те пълнят разстоянието до шкафа. */
+export function isGap(kind: ModuleKind): boolean {
+  return isGapKind(kind);
+}
+
+/** С какво се пълни празното в този ред — или нищо, ако редът няма ниша. */
+export function gapKindFor(roomKind: RoomKind, row: RowId): ModuleKind | null {
+  const system = systemFor(roomKind);
+  return GAP_KINDS.find((k) => system.modules[k] && system.modules[k].row === row) ?? null;
 }
 
 /**
- * Какво празно се постига най-близо до поисканото.
- *
- * Връща ширините на нишите и колко прави това общо. Поиска ли се
- * по-малко от най-тясната ниша, се връща нищо — въздух под една ниша
- * не е изделие и не бива да влиза в заявката.
+ * Стъпката на решетката според дължината на стената: около четирийсет
+ * клетки. Къса стена — по 50 мм, обичайна кухня — по 100, дълга — по 150.
  */
-export function gapFill(want: number, gapKind: ModuleKind | null): {
-  widths: number[];
-  total: number;
-} {
-  const widths = gapWidths(gapKind);
-  if (!widths.length || want < Math.min(...widths)) return { widths: [], total: 0 };
-  const filled = fillWidths(want, widths);
-  return { widths: filled, total: filled.reduce((s, w) => s + w, 0) };
+export function gridStep(wallLength: number): number {
+  for (const step of [50, 100, 150, 200]) if (wallLength / step <= 48) return step;
+  return 250;
 }
 
-/**
- * Къде в редицата застава шкафът и колко празно остава пред него.
- *
- * `index` се брои само сред същинските шкафове: нишите са подвижни и
- * да се брои през тях значи мястото да се мени според това колко
- * въздух е останал отстрани.
- */
-export function slideTarget(
-  placed: readonly { id: string; kind: ModuleKind; x: number; width: number }[],
-  id: string,
-  desiredLeft: number,
-  gapKind: ModuleKind | null,
-): { index: number; gap: number; left: number } | null {
-  const me = placed.find((m) => m.id === id);
-  if (!me) return null;
-
-  const others = placed.filter((m) => m.id !== id && !isGap(m.kind));
-
-  /*
-   * Колко шкафа остават вляво от мен. Брои се по левия ми ръб срещу
-   * плътно наредените други — не по центрове: широк шкаф, влачен към
-   * ъгъла, има център по-надясно от съседа си и по центрове никога не
-   * можеше да стане пръв.
-   */
-  let packedEnd = 0;
-  let index = 0;
-  for (const m of others) {
-    if (packedEnd + m.width > desiredLeft + 1) break;
-    packedEnd += m.width;
-    index += 1;
+/** Точка от стената в стаята: `along` по стената, `out` навътре от нея. */
+export function wallPoint(room: Room, side: WallSide, along: number, out: number, y: number): Vec3 {
+  switch (side) {
+    case 'top':
+      return { x: along, y, z: out };
+    case 'bottom':
+      return { x: room.width - along, y, z: room.depth - out };
+    case 'left':
+      return { x: out, y, z: room.depth - along };
+    case 'right':
+      return { x: room.width - out, y, z: along };
   }
-  const { total } = gapFill(Math.max(0, Math.round(desiredLeft - packedEnd)), gapKind);
+}
 
-  return { index, gap: total, left: packedEnd + total };
+let counter = 0;
+const gapId = (kind: ModuleKind) => `${kind}-plazg-${Date.now().toString(36)}-${++counter}`;
+
+export interface Slide {
+  row: RowId;
+  /** Където шкафът ще легне — левият му ръб от началото на стената. */
+  left: number;
+  width: number;
+  /** Новият ред, с нишите пред шкафовете. */
+  modules: KitchenModule[];
 }
 
 /**
- * Редът, както ще изглежда след плъзгането.
- *
- * Нишите точно пред влачения шкаф са негови — те са това, което го е
- * изтласкало дотам — и се правят наново. Ниша другаде в реда (за
- * прозорец, за хладилник) не се пипа: тя е нечие решение, не остатък.
+ * Шкафът плъзнат така, че левият му ръб да е възможно най-близо до
+ * `wanted` — по решетката или до ръба на съсед. Връща null, ако наблизо
+ * няма свободно място: тогава местенето е разместване.
  */
 export function slideRow(
-  row: readonly KitchenModule[],
-  id: string,
-  index: number,
-  gap: number,
-  gapKind: ModuleKind | null,
-  newModule: (kind: ModuleKind, width: number) => KitchenModule,
-): KitchenModule[] | null {
-  const at = row.findIndex((m) => m.id === id);
-  if (at < 0) return null;
+  wall: Wall,
+  roomKind: RoomKind,
+  openings: WallOpening[],
+  moduleId: string,
+  wanted: number,
+): Slide | null {
+  const row: RowId | null = wall.base.some((m) => m.id === moduleId)
+    ? 'base'
+    : wall.upper.some((m) => m.id === moduleId)
+      ? 'upper'
+      : null;
+  if (!row) return null;
+  const gap = gapKindFor(roomKind, row);
+  if (!gap) return null;
 
-  // Назад през нишите точно пред него — те идват с него.
-  let from = at;
-  while (from > 0 && isGap(row[from - 1].kind)) from -= 1;
+  const system = systemFor(roomKind);
+  const placed = placeWall(wall, {}, roomKind, openings)[row];
+  const self = placed.find((m) => m.id === moduleId);
+  if (!self) return null;
+  const others = placed.filter((m) => m.id !== moduleId && !isGap(m.kind));
+  const intervals = freeAround(rowBlocks(system, row, wall.base, openings), wall.length);
+  const w = self.width;
+  const step = gridStep(wall.length);
 
-  const rest = [...row.slice(0, from), ...row.slice(at + 1)];
+  const fits = (x: number) =>
+    intervals.some((i) => x >= i.x - 0.5 && x + w <= i.x + i.width + 0.5) &&
+    others.every((o) => x + w <= o.x + 0.5 || x >= o.x + o.width - 0.5);
 
-  /*
-   * Мястото се намира чрез броене на същински шкафове. Нишите, които
-   * са останали в `rest`, се прескачат — те вървят със своя шкаф.
-   */
-  let seen = 0;
-  let put = rest.length;
-  for (let i = 0; i < rest.length; i += 1) {
-    if (seen === index && !isGap(rest[i].kind)) {
-      put = i;
-      break;
-    }
-    if (!isGap(rest[i].kind)) seen += 1;
+  // Решетката и ръбовете — до ръб се прилепва по-охотно, отколкото до черта.
+  const edges = [
+    0,
+    wall.length - w,
+    ...others.flatMap((o) => [o.x + o.width, o.x - w]),
+    ...intervals.flatMap((i) => [i.x, i.x + i.width - w]),
+  ];
+  const grid: number[] = [];
+  for (let x = 0; x <= wall.length - w + 0.5; x += step) grid.push(x);
+  const reach = Math.max(step * 3, w * 0.6);
+  // Показалец отвъд края държи шкафа на края — не го пуска извън стената.
+  wanted = Math.max(0, Math.min(wall.length - w, wanted));
+  let best: { x: number; score: number } | null = null;
+  for (const [x, pull] of [...edges.map((x) => [x, step * 0.45]), ...grid.map((x) => [x, 0])]) {
+    if (!fits(x)) continue;
+    const d = Math.abs(x - wanted);
+    if (d > reach) continue;
+    const score = d - pull;
+    if (!best || score < best.score) best = { x, score };
   }
-  if (seen === index && index === 0 && rest.length === 0) put = 0;
+  if (!best) return null;
+  const left = Math.round(best.x);
 
-  const fill = gapFill(gap, gapKind).widths.map((w) => newModule(gapKind!, w));
-  return [...rest.slice(0, put), ...fill, row[at], ...rest.slice(put)];
+  // Редът наново: ниша от предишния ръб до всеки шкаф. Шкаф в следващ
+  // свободен участък иска остатъкът на този да е запълнен — иначе
+  // подреждането би го сложило още тук.
+  const solids = [...others.map((o) => ({ m: wall[row].find((x) => x.id === o.id)!, x: o.x })), { m: wall[row].find((x) => x.id === moduleId)!, x: left }]
+    .sort((a, b) => a.x - b.x);
+  const modules: KitchenModule[] = [];
+  let k = 0;
+  for (const [n, interval] of intervals.entries()) {
+    let cursor = interval.x;
+    while (k < solids.length && solids[k].x < interval.x + interval.width - 0.5) {
+      const s = solids[k];
+      if (s.x > cursor + 0.5) modules.push({ id: gapId(gap), kind: gap, width: s.x - cursor, hingeSide: 'right' });
+      modules.push(s.m);
+      cursor = s.x + s.m.width;
+      k += 1;
+    }
+    const later = k < solids.length && n < intervals.length - 1;
+    const rest = interval.x + interval.width - cursor;
+    if (later && rest > 0.5) modules.push({ id: gapId(gap), kind: gap, width: rest, hingeSide: 'right' });
+  }
+  if (k < solids.length) return null;
+
+  // Проверка с истинското подреждане: всеки шкаф е там, където трябва.
+  const check = placeWall({ ...wall, [row]: modules }, {}, roomKind, openings)[row];
+  for (const s of solids) {
+    const at = check.find((m) => m.id === s.m.id);
+    if (!at || Math.abs(at.x - s.x) > 0.5) return null;
+  }
+  return { row, left, width: w, modules };
 }

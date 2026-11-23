@@ -15,6 +15,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Flat } from '@/lib/flat';
 import { FLAT_ROOM_LABEL, roomName } from '@/lib/flat';
 import { flatDistance, flatScene, flatTarget } from '@/lib/flat-scene';
+import { furnitureBoxes, roomOfKey, roomProject } from '@/lib/flat-furniture';
+import { floorById } from '@/config/floor-finishes';
+import { paletteFor } from '@/components/configurator/Scene3D';
 import {
   type Camera,
   type Face,
@@ -69,9 +72,25 @@ function litColor(hex: string, amount: number): string {
   return `#${to2(channel(16))}${to2(channel(8))}${to2(channel(0))}`;
 }
 
-function fillOf(face: Face): string {
+/** Цветовете на готовите стаи — от проектите им. */
+interface Done {
+  palettes: Map<string, Record<string, string>>;
+  floors: Map<string, string>;
+}
+
+function fillOf(face: Face, rooms: Done): string {
+  // Мебелта на готова стая — с цветовете, избрани в проекта ѝ.
+  const owner = roomOfKey(face.key);
+  const palette = owner ? rooms.palettes.get(owner) : undefined;
+  if (palette) {
+    const base = face.role === 'handle' ? '#8e8a84' : (palette[face.role] ?? palette.carcass);
+    return litColor(base, shade(face.normal));
+  }
   if (face.role === 'wall') return litColor(WALL_COLOR, shade(face.normal));
   if (face.code === 'current') return litColor(HERE, shade(face.normal));
+  // Подът на готова стая е такъв, какъвто е избран в проекта.
+  const floor = face.role === 'floor' && face.moduleId ? rooms.floors.get(face.moduleId) : undefined;
+  if (floor) return litColor(floor, shade(face.normal));
 
   const stuff = face.code ? STUFF[face.code] : undefined;
   if (stuff) return litColor(stuff, shade(face.normal));
@@ -134,7 +153,26 @@ export function FlatScene({
     target: { x: eye.x, y: 0, z: eye.z },
   };
 
-  const boxes = flatScene(flat, currentId);
+  /*
+   * Готовите стаи носят мебелта си: проектът се отваря и правилата я
+   * нареждат както в самата стая. Смята се при промяна на чертежа, не
+   * при всяка стрелка.
+   */
+  const done = useMemo(() => {
+    const palettes = new Map<string, Record<string, string>>();
+    const floors = new Map<string, string>();
+    const furniture = flat.rooms.flatMap((room) => {
+      const kitchen = roomProject(room);
+      if (!kitchen) return [];
+      palettes.set(room.id, paletteFor(kitchen));
+      const floor = floorById(kitchen.floorFinish);
+      if (floor) floors.set(room.id, floor.hex);
+      return furnitureBoxes(room, kitchen);
+    });
+    return { palettes, floors, furniture };
+  }, [flat]);
+
+  const boxes = [...flatScene(flat, currentId), ...done.furniture];
   const faces = visibleFaces(boxes, camera);
   const current = flat.rooms.find((r) => r.id === currentId);
 
@@ -192,7 +230,7 @@ export function FlatScene({
                   return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
                 })
                 .join(' ')}
-              fill={fillOf(face)}
+              fill={fillOf(face, done)}
               stroke={face.role === 'wall' ? 'none' : 'rgba(0,0,0,0.07)'}
               strokeWidth="1"
               vectorEffect="non-scaling-stroke"
@@ -214,9 +252,7 @@ export function FlatScene({
             : 'Изберете стая от плана'}
         </span>
         <span>
-          {flat.rooms.some((r) => r.project)
-            ? 'Зидовете са снижени, за да се вижда мебелта вътре.'
-            : 'Зидовете са снижени, за да се вижда вътре.'}
+          Зидовете са снижени, за да се вижда вътре. Готовите стаи са с мебелта си.
           {onPick ? ' Щракнете по помещение, за да отидете в него.' : ''}
         </span>
       </figcaption>

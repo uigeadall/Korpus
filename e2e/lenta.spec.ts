@@ -7,6 +7,16 @@ import { izbranoto, klipove, otvoriChisto, sredataNaKlip } from './pomoshtni';
  * Нито едно от тези не се доказва с unit тест — всичко е въпрос на
  * какво хваща показалецът и какво стои върху какво.
  */
+/**
+ * Примерната стена е пълна до милиметър, а шкаф отвъд стената вече не
+ * минава. Тестовете, които добавят или разширяват, първо правят място.
+ */
+async function praviMyasto(page: import('@playwright/test').Page) {
+  await page.locator('summary', { hasText: 'Стая и стени' }).click();
+  await page.getByLabel('Дължина на стената в милиметри').fill('6000');
+  await page.waitForTimeout(300);
+}
+
 test.describe('лентата в конфигуратора', () => {
   test.beforeEach(async ({ page }) => {
     await otvoriChisto(page, '/konfigurator');
@@ -31,6 +41,7 @@ test.describe('лентата в конфигуратора', () => {
   });
 
   test('долната лента действа върху всички избрани, с едно връщане', async ({ page }) => {
+    await praviMyasto(page);
     const list = await klipove(page);
     const a = await sredataNaKlip(page, list[0]);
     await page.mouse.click(a.x, a.y);
@@ -51,6 +62,7 @@ test.describe('лентата в конфигуратора', () => {
   });
 
   test('ръбът опъва ширината до следващата каталожна', async ({ page }) => {
+    await praviMyasto(page);
     const id = await page.evaluate(
       () => (document.querySelector('[data-edge]') as HTMLElement | null)?.dataset.clip ?? null,
     );
