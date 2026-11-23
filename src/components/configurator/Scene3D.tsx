@@ -180,8 +180,13 @@ export function Scene3D({
   dropWallIndex?: number;
   onDropModule?: (kind: ModuleKind, row: RowId, index: number) => void;
   onDropCancel?: () => void;
-  /** Разместване на готов шкаф по стената. Без него той само се отваря. */
-  onMoveModule?: (moduleId: string, toIndex: number) => void;
+  /**
+   * Плъзгане на готов шкаф по стената. Без него той само се отваря.
+   *
+   * `gap` е празното, което остава пред него и става ниша — иначе шкаф,
+   * сам на стената, няма къде да отиде.
+   */
+  onMoveModule?: (moduleId: string, toIndex: number, gap: number) => void;
   /** Махане на шкаф. Без него щракнатият шкаф няма какво да предложи. */
   onRemoveModule?: (moduleId: string) => void;
 }) {
@@ -578,9 +583,15 @@ export function Scene3D({
     if (!moved) return false;
 
     if (target) {
+      /*
+       * Мести се само когато мястото наистина е друго: иначе всяко
+       * докосване влиза в историята и ⌘Z почва да връща нищо.
+       */
       const row = dropScene?.placed[target.row] ?? [];
-      const from = row.findIndex((m) => m.id === grabbed.id);
-      if (from !== target.index) onMoveModule?.(grabbed.id, target.index);
+      const me = row.find((m) => m.id === grabbed.id);
+      if (!me || me.x !== target.left) {
+        onMoveModule?.(grabbed.id, target.index, target.gap);
+      }
     }
     // Вярно значи „това беше влачене": щракването да не отваря шкафа.
     return true;

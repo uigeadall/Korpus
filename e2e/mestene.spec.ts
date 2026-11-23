@@ -143,6 +143,60 @@ test.describe('местене на шкаф в обема', () => {
     expect(await redicata(page)).toHaveLength(predi.length - 1);
   });
 
+  test('сам шкаф на стената се мести — с ниша пред себе си', async ({ page }) => {
+    /*
+     * Докладвано: „когато има само един модул, не мога да го местя".
+     * В плътна редица от едно няма второ място — затова плъзгането
+     * слага ниша пред шкафа, вместо да не прави нищо.
+     */
+    await otvoriChisto(page, '/proekt');
+    await page.waitForTimeout(500);
+    await page.getByRole('button', { name: /Кухня/ }).first().click();
+    await page.waitForTimeout(300);
+    for (let i = 0; i < 2; i++) {
+      await page.getByRole('button', { name: /Напред/ }).first().click();
+      await page.waitForTimeout(350);
+    }
+    await page.waitForTimeout(400);
+
+    // Един шкаф, сложен с щракване — влиза в началото на стената.
+    await page.getByRole('button', { name: /^Шкаф за мивка/ }).first().click();
+    await page.waitForTimeout(600);
+
+    const kade = () =>
+      page.evaluate(() => {
+        const a = JSON.parse(localStorage.getItem('korpus:proekt:v2') ?? '{}') as {
+          hand?: { base?: { kind: string; width: number }[] };
+        };
+        return (a.hand?.base ?? []).map((m) => m.kind);
+      });
+    expect(await kade()).toEqual(['sink']);
+
+    const red = await dolniyatRed(page);
+    expect(red.length).toBe(1);
+
+    const scene = await page.evaluate(() => {
+      const b = document
+        .querySelector('svg[role=group][aria-label^="Обемен изглед"]')!
+        .getBoundingClientRect();
+      return { x: b.x, y: b.y, w: b.width, h: b.height };
+    });
+
+    // Влачим го надясно по стената.
+    await page.mouse.move(red[0].x, red[0].y);
+    await page.mouse.down();
+    await page.mouse.move(scene.x + scene.w * 0.62, red[0].y, { steps: 18 });
+    await page.waitForTimeout(250);
+    await page.mouse.up();
+    await page.waitForTimeout(600);
+
+    const sled = await kade();
+    expect(sled.length).toBeGreaterThan(1);
+    expect(sled.at(-1)).toBe('sink');
+    // Пред него вече има ниша — тя се мери и влиза в заявката.
+    expect(sled.slice(0, -1).every((m) => m === 'lgap')).toBe(true);
+  });
+
   test('празното място още върти стаята', async ({ page }) => {
     const predi = await page.evaluate(
       () => document.querySelector('svg[aria-label^="Обемен"]')!.getAttribute('viewBox'),

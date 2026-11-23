@@ -6,7 +6,7 @@
  * Само добавянето и дължината трябва да им се каже коя стена.
  */
 
-import { defaultWidth } from '@/lib/cabinet-rules';
+import { defaultWidth, gapKindFor } from '@/lib/cabinet-rules';
 import {
   type HingeSide,
   type Kitchen,
@@ -40,6 +40,7 @@ import {
   wallStatus,
 } from '@/lib/cabinet-rules';
 import { fillWidths } from '@/lib/furniture/system';
+import { slideRow } from '@/lib/slide';
 
 export type Action =
   | { type: 'wallLength'; wallId: string; value: number }
@@ -66,6 +67,12 @@ export type Action =
   | { type: 'hinge'; id: string; value: HingeSide }
   | { type: 'move'; id: string; dir: -1 | 1 }
   | { type: 'reorder'; id: string; toIndex: number }
+  /**
+   * Плъзгане по стената: шкафът застава на място, а празното пред него
+   * се запълва с ниши. Различно от `reorder`, което само разменя места
+   * в плътна редица и затова не може да мести шкаф, който е сам.
+   */
+  | { type: 'slide'; id: string; toIndex: number; gap: number }
   | { type: 'moveToRow'; id: string; toIndex: number }
   | { type: 'addWall'; side?: WallSide }
   | { type: 'removeWall'; wallId: string }
@@ -326,6 +333,16 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
         list.splice(to, 0, moved);
       });
     }
+    case 'slide': {
+      const row = rowOfModule(kitchen, action.id);
+      if (!row) return kitchen;
+      const gapKind = gapKindFor(kitchen.roomKind ?? 'kitchen', row);
+      return withWallOf(kitchen, action.id, (base, upper) => {
+        const list = row === 'base' ? base : upper;
+        const next = slideRow(list, action.id, action.toIndex, action.gap, gapKind, newModule);
+        if (next) list.splice(0, list.length, ...next);
+      });
+    }
 
     case 'moveToRow': {
       const row = rowOfModule(kitchen, action.id);
@@ -495,6 +512,8 @@ function mergeKey(action: Action): string | null {
       return `shelves:${action.id}`;
     case 'reorder':
       return `reorder:${action.id}`;
+    case 'slide':
+      return `slide:${action.id}`;
     case 'room':
       return 'room';
     case 'door':

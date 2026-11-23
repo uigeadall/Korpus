@@ -9,10 +9,12 @@
  *
  * Показалецът не слага модула където и да е. Редът е плътен: шкафовете
  * си допират страниците и не висят на средата на стената. Затова
- * показалецът избира само мястото в редицата, а къде точно ще легне
- * модулът се пресмята с истинското подреждане — и призракът се показва
- * там, а не под пръста. Иначе човек пуска на едно място, а шкафът
- * застава на друго.
+ * къде точно ще легне се пресмята с истинското подреждане и призракът
+ * се показва там, а не под пръста. Иначе човек пуска на едно място, а
+ * шкафът застава на друго.
+ *
+ * Нов модул от палитрата влиза в редицата. Готов шкаф се плъзга по
+ * стената и празното пред него става ниша — виж `slide.ts`.
  *
  * Тук няма React и няма SVG. Влиза точка от кадъра, излиза място в
  * реда — толкова, колкото може да се провери с тест.
@@ -28,11 +30,13 @@ import {
   type Wall,
   type WallOpening,
   defaultWidth,
+  gapKindFor,
   placeWall,
 } from './cabinet-rules';
-import { dropIndex, insertIndexAt } from './drawing';
+import { insertIndexAt } from './drawing';
 import { type Room, type WallSide, alongFrom } from './furniture/room';
 import { type Camera, planePointAt } from './scene3d';
+import { slideTarget } from './slide';
 
 /** В коя равнина лежи зидът на дадена стена и къде по оста ѝ стои. */
 export function wallPlane(room: Room, side: WallSide): { axis: 'x' | 'z'; value: number } {
@@ -50,11 +54,18 @@ export function wallPlane(room: Room, side: WallSide): { axis: 'x' | 'z'; value:
 
 export interface DropTarget {
   row: RowId;
-  /** На коя позиция в реда влиза. */
+  /** На коя позиция в реда влиза — брои се само сред същинските шкафове. */
   index: number;
   /** Къде наистина ще легне — пресметнато с истинското подреждане. */
   left: number;
   width: number;
+  /**
+   * Празно място преди него, което ще се запълни с ниши.
+   *
+   * Нула при пускане на нов модул от палитрата: той влиза в редицата,
+   * не се плъзга по стената.
+   */
+  gap: number;
 }
 
 const GHOST_ID = '__prizrak__';
@@ -127,20 +138,24 @@ export function moveTargetAt(
   if (!hit) return null;
 
   const along = alongMm(scene, hit);
-  const index = dropIndex([...scene.placed[row]], moduleId, along - m.width / 2);
+  /*
+   * Левият ръб, стегнат в стената. Без това шкаф, влачен зад края ѝ,
+   * би поискал ниша, която няма къде да влезе.
+   */
+  const desiredLeft = Math.max(
+    0,
+    Math.min(scene.wall.length - m.width, along - m.width / 2),
+  );
 
-  // Същото разместване, прекарано през истинското подреждане.
-  const rows = { base: [...scene.wall.base], upper: [...scene.wall.upper] };
-  const at = rows[row].findIndex((x) => x.id === moduleId);
-  if (at < 0) return null;
-  const [carried] = rows[row].splice(at, 1);
-  rows[row].splice(Math.max(0, Math.min(rows[row].length, index)), 0, carried);
+  const target = slideTarget(
+    [...scene.placed[row]],
+    moduleId,
+    desiredLeft,
+    gapKindFor(scene.roomKind, row),
+  );
+  if (!target) return null;
 
-  const placed = placeWall({ ...scene.wall, ...rows }, {}, scene.roomKind, scene.openings);
-  const after = placed[row].find((x) => x.id === moduleId);
-  if (!after) return null;
-
-  return { row, index, left: after.x, width: after.width };
+  return { row, index: target.index, left: target.left, width: m.width, gap: target.gap };
 }
 
 export interface DropScene {
@@ -179,5 +194,5 @@ export function dropTargetAt(
   const ghost = ghostPlacement(scene.wall, scene.roomKind, scene.openings, kind, row, index);
   if (!ghost) return null;
 
-  return { row, index, left: ghost.x, width: ghost.width };
+  return { row, index, left: ghost.x, width: ghost.width, gap: 0 };
 }

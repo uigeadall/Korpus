@@ -515,6 +515,7 @@ export const MODULES: Record<ModuleKind, ModuleSpec> = {
     code: null,
     widths: [300, 450, 600, 900],
     hasCarcass: false,
+    gap: true,
   },
   upper: {
     kind: 'upper',
@@ -546,6 +547,7 @@ export const MODULES: Record<ModuleKind, ModuleSpec> = {
     code: null,
     widths: [300, 400, 600, 800, 1000, 1200],
     hasCarcass: false,
+    gap: true,
   },
 
   /* --- Спалня ------------------------------------------------------
@@ -608,6 +610,7 @@ export const MODULES: Record<ModuleKind, ModuleSpec> = {
     code: null,
     widths: [300, 450, 600, 900],
     hasCarcass: false,
+    gap: true,
     geometry: { y: DIM.LEG, height: DIM.WARDROBE_H, depth: DIM.WARDROBE_D },
   },
 
@@ -670,6 +673,7 @@ export const MODULES: Record<ModuleKind, ModuleSpec> = {
     code: null,
     widths: [300, 450, 600, 900],
     hasCarcass: false,
+    gap: true,
     geometry: { y: DIM.TV_LEG, height: DIM.TV_H, depth: DIM.TV_D },
   },
 
@@ -723,6 +727,7 @@ export const MODULES: Record<ModuleKind, ModuleSpec> = {
     code: null,
     widths: [200, 300, 450, 600],
     hasCarcass: false,
+    gap: true,
     geometry: { y: DIM.VANITY_BOTTOM, height: DIM.VANITY_H, depth: DIM.VANITY_D },
   },
   'bath-mirror': {
@@ -796,6 +801,7 @@ export const MODULES: Record<ModuleKind, ModuleSpec> = {
     code: null,
     widths: [200, 300, 450, 600, 900],
     hasCarcass: false,
+    gap: true,
     geometry: { y: DIM.LEG, height: DIM.HALL_H, depth: DIM.HALL_D },
   },
   'hall-attic': {
@@ -965,6 +971,17 @@ export function systemFor(room: RoomKind = 'kitchen'): FurnitureSystem<ModuleKin
   return SYSTEMS[room] ?? KITCHEN;
 }
 
+/**
+ * Празнина ли е този модул — чист въздух между шкафовете.
+ *
+ * Чете се от белега в каталога, не се извежда. Първият опит беше
+ * „няма корпус и няма чело" и хващаше нишата за пералня: тя също няма
+ * нито едното, но е място за уред, не въздух.
+ */
+export function isGap(kind: ModuleKind): boolean {
+  return MODULES[kind].gap === true;
+}
+
 /** Кои модули се предлагат в тази стая, в реда за показване. */
 const ROOM_MODULES: Record<RoomKind, Record<RowId, ModuleKind[]>> = {
   kitchen: {
@@ -995,6 +1012,17 @@ const ROOM_MODULES: Record<RoomKind, Record<RowId, ModuleKind[]>> = {
 
 export function modulesFor(room: RoomKind, row: RowId): ModuleKind[] {
   return ROOM_MODULES[room][row];
+}
+
+/**
+ * С какво се запълва празно място в този ред.
+ *
+ * Не всеки ред има с какво: над гардероба стои само антресол и празно
+ * място там не е изделие, а просто въздух. Тогава се връща `null` и
+ * който пита, трябва да се откаже, вместо да измисля.
+ */
+export function gapKindFor(room: RoomKind, row: RowId): ModuleKind | null {
+  return modulesFor(room, row).find(isGap) ?? null;
 }
 
 /* --- Материали ---------------------------------------------------- */
