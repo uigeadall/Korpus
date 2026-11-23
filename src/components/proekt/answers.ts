@@ -16,21 +16,31 @@ import {
   type RoomWindow,
   type WorktopType,
   clampDoor,
+  clampWallLength,
   clampWindow,
   defaultDoor,
   kitchenDoor,
+  kitchenWallOpenings,
   kitchenWindows,
+  emptyKitchen,
+  isGapKind,
+  type Wall,
+  wallStatus,
 } from '@/lib/cabinet-rules';
+import { gapKindFor } from '@/lib/slide';
 import { type RoomNeeds, DEFAULT_ROOM_NEEDS, layoutFor } from '@/lib/autolayout';
 import { CARCASS_COLORS } from '@/config/materials';
 import { type Furnishing, FURNISHINGS } from '@/lib/furnishings';
 import type { WallFinishChoice } from '@/lib/wall-finish';
+import { sideLength } from '@/lib/furniture/room';
 import { fitsNoWorse, keepInside } from '@/lib/fit';
 
 export interface Answers {
   room: RoomKind;
   roomWidth: number;
   roomDepth: number;
+  /** До тавана. Липсва в отговорите отпреди него — тогава 2,60 м. */
+  roomHeight?: number;
   wallLength: number;
   needs: RoomNeeds;
   facadeColor: string;
@@ -78,6 +88,12 @@ export interface Answers {
    */
   hand: { base: KitchenModule[]; upper: KitchenModule[] };
   /**
+   * Мебелта по другите стени — вдясно, долу, вляво. Горната е главната
+   * и е в `hand` (или я подреждат правилата); тези се нареждат на ръка.
+   * С тях стаята става Г- или П-образна; ъглите решават правилата.
+   */
+  extra?: ExtraWalls;
+  /**
    * Какво е оставено в другите стаи.
    *
    * Живите полета горе са на стаята, в която сме сега; тук чакат
@@ -92,13 +108,19 @@ export interface Answers {
   stash: Partial<Record<RoomKind, RoomSlice>>;
 }
 
+export type ExtraSide = 'right' | 'bottom' | 'left';
+export const EXTRA_SIDES: readonly ExtraSide[] = ['right', 'bottom', 'left'];
+export type ExtraWalls = Partial<Record<ExtraSide, { base: KitchenModule[]; upper: KitchenModule[] }>>;
+
 /** Онова от отговорите, което е на стаята, а не на целия проект. */
 export interface RoomSlice {
   roomWidth: number;
   roomDepth: number;
+  roomHeight?: number;
   wallLength: number;
   byHand: boolean;
   hand: { base: KitchenModule[]; upper: KitchenModule[] };
+  extra?: ExtraWalls;
   shelves: Record<string, number>;
   furnishings: Furnishing[];
   door?: RoomDoor;
@@ -110,9 +132,11 @@ export interface RoomSlice {
 const SLICE_KEYS = [
   'roomWidth',
   'roomDepth',
+  'roomHeight',
   'wallLength',
   'byHand',
   'hand',
+  'extra',
   'shelves',
   'furnishings',
   'door',
@@ -126,9 +150,11 @@ export function sliceOf(a: Answers): RoomSlice {
   return {
     roomWidth: a.roomWidth,
     roomDepth: a.roomDepth,
+    roomHeight: a.roomHeight,
     wallLength: a.wallLength,
     byHand: a.byHand,
     hand: a.hand,
+    extra: a.extra,
     shelves: a.shelves,
     furnishings: a.furnishings,
     door: a.door,
@@ -150,6 +176,7 @@ function freshSlice(a: Answers): RoomSlice {
     ...sliceOf(a),
     byHand: true,
     hand: { base: [], upper: [] },
+    extra: undefined,
     shelves: {},
     furnishings: [],
     // Стените и подът са на стаята: в нова стая те са голи, не като в предишната.
@@ -186,7 +213,11 @@ export function furnitureFrom(a: Answers): Kitchen {
   // В ръчен режим мебелта е това, което човек е сложил — празно в
   // началото. Иначе подреждат правилата.
   const layout = a.byHand ? a.hand : layoutFor(a.room, a.wallLength, a.needs);
-  const room = { width: a.roomWidth, depth: a.roomDepth };
+  const room = {
+    width: a.roomWidth,
+    depth: a.roomDepth,
+    ...(a.roomHeight !== undefined ? { height: a.roomHeight } : {}),
+  };
   const withShelves = (list: typeof layout.base) =>
     list.map((m) => (m.id in a.shelves ? { ...m, shelves: a.shelves[m.id] } : m));
   return {
@@ -196,15 +227,28 @@ export function furnitureFrom(a: Answers): Kitchen {
     // на съседна — вкарва се в зида при всяка промяна на стаята.
     door: clampDoor(room, a.door ?? defaultDoor(room, 'top')),
     windows: (a.windows ?? []).map((w) => clampWindow(room, w)),
-    walls: [
-      {
-        id: 'proekt-wall-1',
-        side: 'top',
-        length: a.wallLength,
-        base: withShelves(layout.base),
-        upper: withShelves(layout.upper),
-      },
-    ],
+    walls: (
+      [
+        {
+          id: 'proekt-wall-1',
+          side: 'top',
+          length: a.wallLength,
+          base: withShelves(layout.base),
+          upper: withShelves(layout.upper),
+        },
+        // Другите стени — по цялата си дължина; празните също, за да има
+        // накъде да се пусне първият шкаф.
+        ...EXTRA_SIDES.map((side) => ({
+          id: `proekt-wall-${side}`,
+          side,
+          length: clampWallLength(sideLength(room, side)),
+          base: withShelves(a.extra?.[side]?.base ?? []),
+          upper: withShelves(a.extra?.[side]?.upper ?? []),
+        })),
+      ] as Wall[]
+    ).map((wall, _i, all) =>
+      wall.side === 'left' ? towardsCorner(wall, all, a.room, room) : wall,
+    ),
     furnishings: a.furnishings,
     ...(a.wallFinish ? { wallFinish: a.wallFinish } : {}),
     ...(a.floorFinish ? { floorFinish: a.floorFinish } : {}),
@@ -229,6 +273,7 @@ export function fromKitchen(k: Kitchen): Partial<Answers> {
     room: k.roomKind ?? 'kitchen',
     roomWidth: k.room?.width ?? START.roomWidth,
     roomDepth: k.room?.depth ?? START.roomDepth,
+    roomHeight: k.room?.height,
     wallLength: wall.length,
     facadeColor: k.materials.facade.color,
     carcassColor: k.materials.carcassColor,
@@ -241,6 +286,7 @@ export function fromKitchen(k: Kitchen): Partial<Answers> {
     windows: kitchenWindows(k),
     wallFinish: k.wallFinish,
     floorFinish: k.floorFinish,
+    extra: extraOf(k.walls),
     shelves: Object.fromEntries(
       [...wall.base, ...wall.upper]
         .filter((m) => m.shelves !== undefined)
@@ -372,6 +418,56 @@ function freeSpot(a: Answers, kind: Furnishing['kind'], want: { x: number; z: nu
   return want;
 }
 
+/** Нишата, с която лявата стена се долепва до ъгъла — не е на човека. */
+const LEAD = 'proekt-lead-';
+
+/**
+ * Лявата стена се нарежда откъм ъгъла с главната.
+ *
+ * Правилата броят всяка стена от ъгъла, който е по часовника преди нея;
+ * за лявата това е предният ъгъл. Шкафове, сложени там, стоят далеч от
+ * горната стена и Г не се получава. Затова пред тях влиза ниша колкото
+ * свободното място и редът се долепва до ъгъла. Щом човек сам е
+ * наместил шкаф по решетката (в реда вече има ниши), неговото остава.
+ */
+function towardsCorner(
+  wall: Wall,
+  walls: Wall[],
+  roomKind: RoomKind,
+  room: { width: number; depth: number },
+): Wall {
+  const probe = { ...emptyKitchen(), roomKind, room, walls };
+  const index = walls.indexOf(wall);
+  const status = wallStatus(wall, roomKind, kitchenWallOpenings(probe, 'left'));
+  const fix = (row: 'base' | 'upper') => {
+    const list = wall[row];
+    if (!list.length || list.some((m) => isGapKind(m.kind))) return list;
+    const gap = gapKindFor(roomKind, row);
+    const free = status[row].state === 'left' ? status[row].diff : 0;
+    return gap && free > 0
+      ? [{ id: `${LEAD}${row}-${index}`, kind: gap, width: free, hingeSide: 'right' as const }, ...list]
+      : list;
+  };
+  return { ...wall, base: fix('base'), upper: fix('upper') };
+}
+
+/** Мебелта по другите стени на готова подредба — за `extra`. */
+export function extraOf(walls: Kitchen['walls']): ExtraWalls | undefined {
+  const out: ExtraWalls = {};
+  walls.forEach((w, i) => {
+    if (i === 0) return;
+    const side = w.side;
+    if (side === 'right' || side === 'bottom' || side === 'left') {
+      // Нишата, долепила реда до ъгъла, се смята наново — не се пази.
+      const own = (list: KitchenModule[]) => list.filter((m) => !m.id.startsWith(LEAD));
+      const base = own(w.base);
+      const upper = own(w.upper);
+      if (base.length || upper.length) out[side] = { base, upper };
+    }
+  });
+  return Object.keys(out).length ? out : undefined;
+}
+
 /** Рафтовете от отговорите, вписани в шкафовете на готова подредба. */
 function withShelvesIn(walls: Kitchen['walls'], shelves: Record<string, number>): Kitchen['walls'] {
   const fix = (list: KitchenModule[]) =>
@@ -457,7 +553,7 @@ export function answers(state: Answers, patch: AnswerPatch): Answers {
 }
 
 /** Промени по отговорите, които могат да избутат мебелта през стената. */
-const SQUEEZING = ['wallLength', 'roomWidth', 'roomDepth', 'door', 'windows'] as const;
+const SQUEEZING = ['wallLength', 'roomWidth', 'roomDepth', 'roomHeight', 'door', 'windows'] as const;
 
 /**
  * `answers`, но мебелта остава в стаята.
@@ -487,3 +583,28 @@ export function guardedAnswers(state: Answers, patch: AnswerPatch): Answers {
   const after = next.opened ?? furnitureFrom(next);
   return fitsNoWorse(before, after) ? next : state;
 }
+
+/**
+ * Подредбата с всичките четири стени. Донесен проект носи само стените,
+ * по които има мебел; празните се добавят, за да има накъде да се пусне
+ * първият шкаф на нова стена.
+ */
+export function withAllSides(k: Kitchen): Kitchen {
+  const room = { width: k.room?.width ?? START.roomWidth, depth: k.room?.depth ?? START.roomDepth };
+  const missing = EXTRA_SIDES.filter((side) => !k.walls.some((w) => w.side === side));
+  if (!missing.length) return k;
+  return {
+    ...k,
+    walls: [
+      ...k.walls,
+      ...missing.map((side) => ({
+        id: `proekt-wall-${side}`,
+        side,
+        length: clampWallLength(sideLength(room, side)),
+        base: [],
+        upper: [],
+      })),
+    ],
+  };
+}
+

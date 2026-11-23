@@ -21,10 +21,11 @@ import {
   MODULES,
   defaultWidth,
   kitchenWallOpenings,
+  moduleGeometry,
   wallSide,
   wallStatus,
 } from './cabinet-rules';
-import type { Room } from './furniture/room';
+import { type Room, ceilingOf } from './furniture/room';
 import { type Furnishing, halfExtent } from './furnishings';
 
 /** Колко мм е препълнен всеки ред на всяка стена, по името на стената. */
@@ -41,8 +42,26 @@ export function overflowOf(kitchen: Kitchen): Map<string, { base: number; upper:
   return out;
 }
 
+/**
+ * С колко мм мебелта стърчи над тавана, общо. Антресол над гардероба при
+ * ниска стая би минал през тавана така, както шкаф отвъд края на реда
+ * минава през страничния зид.
+ */
+export function aboveCeiling(kitchen: Kitchen): number {
+  const ceiling = ceilingOf(kitchen.room);
+  let over = 0;
+  for (const wall of kitchen.walls) {
+    for (const m of [...wall.base, ...wall.upper]) {
+      const g = moduleGeometry(m.kind);
+      over += Math.max(0, g.y + g.height - ceiling);
+    }
+  }
+  return over;
+}
+
 /** Не е препълнен нито един ред повече, отколкото беше преди. */
 export function fitsNoWorse(prev: Kitchen, next: Kitchen): boolean {
+  if (aboveCeiling(next) > aboveCeiling(prev) + 0.5) return false;
   const before = overflowOf(prev);
   for (const [id, after] of overflowOf(next)) {
     const was = before.get(id) ?? { base: 0, upper: 0 };

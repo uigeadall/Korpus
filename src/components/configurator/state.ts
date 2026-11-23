@@ -45,6 +45,7 @@ import { fillWidths } from '@/lib/furniture/system';
 import { chooseFinish } from '@/lib/wall-finish';
 import { fitsNoWorse } from '@/lib/fit';
 import { slideRow } from '@/lib/slide';
+import { clampCeiling } from '@/lib/furniture/room';
 
 export type Action =
   | { type: 'wallLength'; wallId: string; value: number }
@@ -415,6 +416,9 @@ function apply(kitchen: Kitchen, action: Action): Kitchen {
         room: {
           width: clampRoom(action.value.width ?? current.width),
           depth: clampRoom(action.value.depth ?? current.depth),
+          ...(action.value.height !== undefined || current.height !== undefined
+            ? { height: clampCeiling(action.value.height ?? current.height!) }
+            : {}),
         },
       };
     }

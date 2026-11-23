@@ -39,8 +39,11 @@ import {
   kitchenPlan,
   kitchenDoor,
   kitchenRoom,
+  isGapKind,
+  moduleGeometry,
   rulesNote,
 } from '@/lib/cabinet-rules';
+import { ROOM, ceilingOf } from '@/lib/furniture/room';
 import { DOOR_HINGE_LABEL, doorClashes } from '@/lib/openings';
 import { NEEDS_KEY, layoutFor } from '@/lib/autolayout';
 import { CARCASS_COLORS, FACADE_COLORS, WORKTOPS } from '@/config/materials';
@@ -58,6 +61,8 @@ import { FURNISHINGS, furnishingsFor } from '@/lib/furnishings';
 import { decodeProject, encodeProject } from '@/lib/share';
 import { MiniPlan } from './MiniPlan';
 import { PriceEstimate } from './PriceEstimate';
+import { ErgonomicsNotes } from '@/components/ErgonomicsNotes';
+import { ergonomics } from '@/lib/ergonomics';
 import { PhotoOverlay } from './PhotoOverlay';
 import { ScenePreview } from './ScenePreview';
 import { TEMPLATES, type Template, templateKitchen, templatePatch } from './templates';
@@ -66,8 +71,10 @@ import {
   type Answers,
   ANSWERS_KEY,
   START,
+  extraOf,
   fromKitchen,
   guardedAnswers,
+  withAllSides,
   furnitureFrom,
   place,
 } from './answers';
@@ -221,7 +228,16 @@ export function ProjectWizard() {
     }
   }, [a]);
 
-  const furniture = useMemo(() => a.opened ?? furnitureFrom(a), [a]);
+  const furniture = useMemo(() => withAllSides(a.opened ?? furnitureFrom(a)), [a]);
+
+  /**
+   * По коя стена се нарежда — палитрата, влаченето в обема и лентата
+   * работят с нея. С мебел по две или три стени стаята става Г- или
+   * П-образна; ъглите между тях решават правилата.
+   */
+  const [wallSel, setWallSel] = useState<WallSide>('top');
+  const selIndex = Math.max(0, furniture.walls.findIndex((w) => w.side === wallSel));
+  const selWall = furniture.walls[selIndex];
 
   /** Готовите стаи — картинките им се смятат веднъж. */
   const templates = useMemo(
@@ -273,9 +289,11 @@ export function ProjectWizard() {
      * оцелява; `opened` щеше да отпадне при първия пипнат въпрос.
      */
     const wall = next.walls[0];
-    set({ hand: { base: wall.base, upper: wall.upper } });
+    set({ hand: { base: wall.base, upper: wall.upper }, extra: extraOf(next.walls) });
   };
   const result = useMemo(() => computeKitchen(furniture), [furniture]);
+  /** Какво ще пречи в стаята — вратата удря, хладилникът не се отваря… */
+  const notes = useMemo(() => ergonomics(furniture, result), [furniture, result]);
   const layout = useMemo(
     () => layoutFor(a.room, a.wallLength, a.needs),
     [a.room, a.wallLength, a.needs],
@@ -337,7 +355,21 @@ export function ProjectWizard() {
     [room, door, furniture, result],
   );
 
-  const cabinets = furniture.walls[0].base.length + furniture.walls[0].upper.length;
+  // Шкафовете, не нишите — те са място, не мебел.
+  const cabinets = furniture.walls.reduce(
+    (n, w) => n + [...w.base, ...w.upper].filter((m) => !isGapKind(m.kind)).length,
+    0,
+  );
+  /** Най-високата точка на мебелта — колко остава до тавана. */
+  const furnitureTop = Math.max(
+    0,
+    ...furniture.walls.flatMap((w) =>
+      [...w.base, ...w.upper].map((m) => {
+        const g = moduleGeometry(m.kind);
+        return g.y + g.height;
+      }),
+    ),
+  );
   const worktopRun = furniture.walls[0].base
     .filter((m) => m.kind !== 'column')
     .reduce((sum, m) => sum + m.width, 0);
@@ -432,11 +464,14 @@ export function ProjectWizard() {
               focusSide={
                 step === 3 && wallTarget
                   ? wallTarget
-                  : (windows.find((w) => w.id === onTheMove)?.side ?? door.side)
+                  : wallSel !== 'top'
+                    ? wallSel
+                    : (windows.find((w) => w.id === onTheMove)?.side ?? door.side)
               }
               dropKind={dragKind}
+              dropWallIndex={selIndex}
               onDropModule={(kind, row, index) => {
-                edit({ type: 'add', wallId: 'proekt-wall-1', row, kind, atIndex: index });
+                edit({ type: 'add', wallId: selWall.id!, row, kind, atIndex: index });
                 setDragKind(null);
               }}
               onDropCancel={() => setDragKind(null)}
@@ -471,12 +506,40 @@ export function ProjectWizard() {
               `width=device-width` и сайтът се отваряше смален.
             */}
             <div className="min-w-0 border-t border-border bg-surface p-2.5 sm:max-h-none sm:min-h-0 sm:overflow-y-auto sm:border-t-0 sm:border-l">
+              <div className="mb-2.5">
+                <p className="mb-1 text-[11px] tracking-wide text-muted uppercase">Стена</p>
+                <div className="grid grid-cols-2 gap-1" role="group" aria-label="Стена за мебелта">
+                  {(['top', 'right', 'bottom', 'left'] as const).map((side) => {
+                    const count = (() => {
+                      const w = furniture.walls.find((x) => x.side === side);
+                      return w ? [...w.base, ...w.upper].filter((m) => !isGapKind(m.kind)).length : 0;
+                    })();
+                    return (
+                      <button
+                        key={side}
+                        type="button"
+                        aria-pressed={wallSel === side}
+                        onClick={() => setWallSel(side)}
+                        className={`rounded-field px-2 py-1 text-[12px] transition-colors ${
+                          wallSel === side
+                            ? 'bg-accent text-accent-contrast'
+                            : 'bg-surface-sunken text-muted hover:bg-border/60'
+                        }`}
+                      >
+                        {WALL_BUTTON[side]}
+                        {/* С истински интервал — иначе четецът чете „Вляво·6" слято. */}
+                        {count > 0 && <span className="tabular-nums">{` · ${count}`}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <ModulePalette
                 room={a.room}
                 dragging={dragKind}
                 onGrab={(kind) => setDragKind(kind)}
                 onAdd={(kind) =>
-                  edit({ type: 'add', wallId: 'proekt-wall-1', row: MODULES[kind].row, kind })
+                  edit({ type: 'add', wallId: selWall.id!, row: MODULES[kind].row, kind })
                 }
                 hint="Завлечете модул в стаята и го пуснете до стената. Щракване го слага в края."
                 where="в стаята"
@@ -496,9 +559,9 @@ export function ProjectWizard() {
             <>
               <Timeline
                 roomKind={a.room}
-                side="top"
-                wallLength={a.wallLength}
-                placed={result.placed[0]}
+                side={wallSel}
+                wallLength={selWall.length}
+                placed={result.placed[selIndex]}
                 selected={picked}
                 onSelect={setPicked}
                 onReorder={(id, toIndex) => edit({ type: 'reorder', id, toIndex })}
@@ -571,6 +634,14 @@ export function ProjectWizard() {
           // спира, вместо да повлече и обема.
           className="space-y-4 lg:h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-width:thin]"
         >
+          {/* Удобството стои най-горе, щом има мебел — пречи ли нещо, да се
+              види преди цветовете. */}
+          {step >= 2 && notes.length > 0 && (
+            <Card title="Удобство">
+              <ErgonomicsNotes notes={notes} />
+            </Card>
+          )}
+
           {step === 0 && (
             <Card title="Коя стая обзавеждаме?">
               <div className="space-y-2">
@@ -683,6 +754,22 @@ export function ProjectWizard() {
                   onChange={(roomDepth) => set({ roomDepth })}
                   compact
                 />
+              </div>
+
+              {/* Таванът решава дали антресол влиза и колко остава над него. */}
+              <div className="mt-4">
+                <Slider
+                  label="Височина до тавана"
+                  value={a.roomHeight ?? ROOM.HEIGHT}
+                  min={ROOM.HEIGHT_MIN}
+                  max={ROOM.HEIGHT_MAX}
+                  step={10}
+                  onChange={(roomHeight) => set({ roomHeight })}
+                  compact
+                />
+                <p className="mt-1 text-xs text-muted">
+                  Обикновено 2,50–2,70 м. Мебел, която не се побира под тавана, не влиза.
+                </p>
               </div>
 
               <OpeningControls
@@ -1010,6 +1097,12 @@ export function ProjectWizard() {
                 <dl className="space-y-2 text-sm">
                   <Line term="Стая" value={ROOM_KIND_LABEL[a.room]} />
                   <Line term="Стена" value={`${metres(a.wallLength)} м`} />
+                  <Line
+                    term="До тавана"
+                    value={`${metres(ceilingOf(room))} м${
+                      cabinets > 0 ? ` · над мебелта остават ${Math.round(ceilingOf(room) - furnitureTop)} мм` : ''
+                    }`}
+                  />
                   <Line
                     term="Врата"
                     value={`${WALL_SIDE_LABEL[door.side].toLowerCase()} стена, ${door.width} мм`}

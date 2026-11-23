@@ -36,13 +36,33 @@ export interface Room {
   width: number;
   /** По вертикалата — дължината на лявата и дясната. */
   depth: number;
+  /**
+   * От пода до тавана. Липсва в стаите отпреди нея — тогава е
+   * обичайните 2,60 м (`ROOM.HEIGHT`).
+   */
+  height?: number;
 }
 
 export const ROOM = {
   MIN: 1200,
   MAX: 12000,
   STEP: 10,
+  /** Обичайната височина до тавана и докъде може да се мени. */
+  HEIGHT: 2600,
+  HEIGHT_MIN: 2200,
+  HEIGHT_MAX: 3600,
 } as const;
+
+/** Височината до тавана — записаната или обичайната. */
+export function ceilingOf(room: Pick<Room, 'height'> | undefined): number {
+  return room?.height ?? ROOM.HEIGHT;
+}
+
+/** Височина до тавана, вкарана в допустимото и закръглена на стъпката. */
+export function clampCeiling(value: number): number {
+  const stepped = Math.round(value / ROOM.STEP) * ROOM.STEP;
+  return Math.min(ROOM.HEIGHT_MAX, Math.max(ROOM.HEIGHT_MIN, stepped));
+}
 
 export function clampRoom(value: number): number {
   const stepped = Math.round(value / ROOM.STEP) * ROOM.STEP;

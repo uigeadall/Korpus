@@ -18,7 +18,8 @@ import {
   NEEDS_KEY,
 } from '@/lib/autolayout';
 import type { WallFinishChoice } from '@/lib/wall-finish';
-import { type Answers, START, furnitureFrom } from './answers';
+import { type Answers, type ExtraWalls, START, furnitureFrom } from './answers';
+import type { KitchenModule } from '@/lib/cabinet-rules';
 
 export interface Template {
   /** Постоянен ключ — за тестовете и за адреса. */
@@ -38,7 +39,17 @@ export interface Template {
   wallFinish?: WallFinishChoice;
   /** Подът — ключ от `config/floor-finishes`. */
   floorFinish?: string;
+  /** Мебел и по другите стени — Г- и П-образни стаи. */
+  extra?: ExtraWalls;
 }
+
+/** Модул за шаблон — с постоянно име, за да се помнят рафтовете му. */
+const m = (id: string, kind: KitchenModule['kind'], width = 600): KitchenModule => ({
+  id,
+  kind,
+  width,
+  hingeSide: 'right',
+});
 
 export const TEMPLATES: readonly Template[] = [
   {
@@ -69,6 +80,26 @@ export const TEMPLATES: readonly Template[] = [
     worktop: 'sintered12',
     wallFinish: { all: 'boya-greige', sides: { top: 'tuhla-red-r' } },
     floorFinish: 'pod-parket-riba-walnut',
+  },
+  {
+    id: 'kuhnya-g',
+    name: 'Г-образна кухня',
+    note: 'горна и лява стена · сляп ъгъл · дъб',
+    room: 'kitchen',
+    roomWidth: 4200,
+    roomDepth: 3400,
+    wallLength: 4200,
+    facadeColor: 'RAL 9001 кремаво',
+    carcassColor: 'Светъл дъб',
+    worktop: 'quartz20',
+    wallFinish: { all: 'boya-default', sides: { top: 'plochki-metro-white', left: 'plochki-metro-white' } },
+    floorFinish: 'pod-laminat-natural',
+    extra: {
+      left: {
+        base: [m('g-l1', 'drawers'), m('g-l2', 'door'), m('g-l3', 'door', 450)],
+        upper: [m('g-u1', 'upper'), m('g-u2', 'upper'), m('g-u3', 'upper', 450)],
+      },
+    },
   },
   {
     id: 'kuhnya-malka',
@@ -182,6 +213,7 @@ export function templatePatch(t: Template): Partial<Answers> {
     worktop: t.worktop,
     wallFinish: t.wallFinish,
     floorFinish: t.floorFinish,
+    extra: t.extra,
     // Правилата подреждат — шаблонът е отговори, не готова мебел.
     byHand: false,
     hand: { base: [], upper: [] },

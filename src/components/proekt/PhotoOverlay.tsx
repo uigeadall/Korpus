@@ -47,7 +47,8 @@ export function PhotoOverlay({
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [corners, setCorners] = useState<Quad>(START);
   const [opacity, setOpacity] = useState(0.9);
-  const [ceiling, setCeiling] = useState(2600);
+  // Таванът на стаята — човек го е казал в „Размери".
+  const [ceiling, setCeiling] = useState(kitchen.room?.height ?? 2600);
   const [boxWidth, setBoxWidth] = useState(0);
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);

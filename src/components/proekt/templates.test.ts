@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeKitchen } from '@/lib/cabinet-rules';
+import { DIM, computeKitchen, isGapKind } from '@/lib/cabinet-rules';
 import { layoutFor } from '@/lib/autolayout';
 import { CARCASS_COLORS, FACADE_COLORS, WORKTOPS } from '@/config/materials';
 import { isKnownFinish } from '@/config/wall-finishes';
@@ -50,4 +50,17 @@ describe('готовите стаи', () => {
     // Спалнята си пази своето за после.
     expect(next.stash.bedroom?.hand.base).toHaveLength(1);
   });
+
+  it('Г-образната кухня е по две стени и не се застъпва в ъгъла', () => {
+    const t = TEMPLATES.find((x) => x.id === 'kuhnya-g')!;
+    const k = templateKitchen(t);
+    const result = computeKitchen(k);
+    const left = k.walls.findIndex((w) => w.side === 'left');
+    const cabinets = result.placed[left].base.filter((m) => !isGapKind(m.kind));
+    expect(cabinets).toHaveLength(3);
+    // Лявата стена е долепена до ъгъла с горната — точно до нейния ред, не в него.
+    const last = cabinets.at(-1)!;
+    expect(last.x + last.width).toBe(t.roomDepth - DIM.BASE_D);
+  });
 });
+

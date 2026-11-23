@@ -34,6 +34,7 @@ import {
   parseOgled,
 } from '@/lib/ogled';
 import { brand } from '@/config/brand';
+import { ceilingOf } from '@/lib/furniture/room';
 import { finishById } from '@/config/wall-finishes';
 import { floorById } from '@/config/floor-finishes';
 
@@ -55,6 +56,7 @@ export function summaryText(kitchen: Kitchen, link: string, ogled: Ogled | null 
     ``,
     `Стая: ${ROOM_KIND_LABEL[kitchen.roomKind ?? 'kitchen']}`,
     `Стена: ${metres(wall.length)} м`,
+    `До тавана: ${metres(ceilingOf(kitchen.room))} м`,
     `Врата: ${WALL_SIDE_LABEL[door.side].toLowerCase()} стена, ${door.width} мм, ` +
       `на ${door.x} мм от ъгъла`,
     ...(windows.length

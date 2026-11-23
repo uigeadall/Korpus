@@ -114,7 +114,11 @@ export interface Interval {
   width: number;
 }
 
-export type OpeningKind = 'door' | 'window';
+/**
+ * `corner` е ъгълът, зает от мебелта на съседната стена. Не е отвор в
+ * зида, но за реда е същото: участък, в който шкаф не може да застане.
+ */
+export type OpeningKind = 'door' | 'window' | 'corner';
 
 /**
  * Отвор в стената. Мебелта го заобикаля — но само редът, чиято

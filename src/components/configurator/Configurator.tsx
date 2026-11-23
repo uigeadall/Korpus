@@ -65,6 +65,8 @@ import { useFitToViewport } from '@/components/useFitToViewport';
 import { useFlash } from '@/components/useFlash';
 import { ScrollMore } from '@/components/ScrollMore';
 import { PriceEstimate } from '@/components/proekt/PriceEstimate';
+import { ErgonomicsNotes } from '@/components/ErgonomicsNotes';
+import { ergonomics } from '@/lib/ergonomics';
 import {
   type Action,
   NO_ROOM,
@@ -231,6 +233,7 @@ export function Configurator() {
   }, [changed, kitchen]);
 
   const result = useMemo(() => computeKitchen(kitchen), [kitchen]);
+  const notes = useMemo(() => ergonomics(kitchen, result), [kitchen, result]);
   const plan = useMemo(() => kitchenPlan(kitchen, result), [kitchen, result]);
   const room = kitchenRoom(kitchen);
   const door = kitchenDoor(kitchen);
@@ -779,6 +782,25 @@ export function Configurator() {
                     <span className="text-xs text-muted">мм</span>
                   </span>
                 </label>
+
+                <label className="block">
+                  <span className="text-sm text-muted">До тавана</span>
+                  <span className="mt-1 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={ROOM.HEIGHT_MIN}
+                      max={ROOM.HEIGHT_MAX}
+                      step={ROOM.STEP}
+                      value={room.height ?? ROOM.HEIGHT}
+                      onChange={(e) =>
+                        dispatch({ type: 'room', value: { height: Number(e.target.value) } })
+                      }
+                      className="field dim w-full text-sm"
+                      aria-label="Височина до тавана в милиметри"
+                    />
+                    <span className="text-xs text-muted">мм</span>
+                  </span>
+                </label>
               </div>
 
               <label className="mt-4 block border-t border-border pt-4">
@@ -871,24 +893,42 @@ export function Configurator() {
             <MaterialsPanel materials={kitchen.materials} dispatch={dispatch} />
           </Panel>
 
+          {notes.length > 0 && (
+            <Panel
+              title="Удобство"
+              badge={notes.length}
+              open={notes.some((n) => n.level === 'warn')}
+            >
+              <div className="px-5 pt-1 pb-5">
+                <ErgonomicsNotes notes={notes} />
+              </div>
+            </Panel>
+          )}
+
           <Panel title="Цена">
-            <PriceEstimate kitchen={kitchen} result={result} />
+            <div className="px-5 pt-1 pb-5">
+              <PriceEstimate kitchen={kitchen} result={result} />
+            </div>
           </Panel>
 
           <Panel title="Стени">
+            <div className="px-5 pt-1 pb-5">
             <WallFinishPanel
               choice={kitchen.wallFinish}
               onChoose={(side, id) => dispatch({ type: 'wallFinish', side, id })}
               focusSide={wallSide(kitchen.walls[0])}
               onTargetChange={(t) => setWallTarget(t === 'all' ? null : t)}
             />
+            </div>
           </Panel>
 
           <Panel title="Под">
-            <FloorFinishPanel
-              value={kitchen.floorFinish}
-              onChoose={(id) => dispatch({ type: 'floorFinish', id })}
-            />
+            <div className="px-5 pt-1 pb-5">
+              <FloorFinishPanel
+                value={kitchen.floorFinish}
+                onChoose={(id) => dispatch({ type: 'floorFinish', id })}
+              />
+            </div>
           </Panel>
 
           <section className="card p-5">

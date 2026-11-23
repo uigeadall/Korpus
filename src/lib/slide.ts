@@ -19,6 +19,8 @@ import {
   type RowId,
   type Wall,
   type WallOpening,
+  GAP_KINDS,
+  isGapKind,
   placeWall,
   systemFor,
 } from './cabinet-rules';
@@ -27,10 +29,8 @@ import type { Room, WallSide } from './furniture/room';
 import type { Vec3 } from './scene3d';
 
 /** Празните места по системи — те пълнят разстоянието до шкафа. */
-const GAP_KINDS: readonly ModuleKind[] = ['lgap', 'ugap', 'wgap', 'vgap', 'bgap', 'hgap'];
-
 export function isGap(kind: ModuleKind): boolean {
-  return GAP_KINDS.includes(kind);
+  return isGapKind(kind);
 }
 
 /** С какво се пълни празното в този ред — или нищо, ако редът няма ниша. */
