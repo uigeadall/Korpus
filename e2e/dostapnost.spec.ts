@@ -4,6 +4,11 @@ import { expect, test } from '@playwright/test';
 /**
  * Достъпност на всяка страница, в светла и тъмна тема.
  *
+ * Темата се задава както я задава човек — със записан избор, а не с
+ * настройката на системата: сайтът е светъл по подразбиране и не я
+ * следва. Емулирането на тъмна система тук би проверявало светлата
+ * тема два пъти.
+ *
  * Пази и нещо, което се чупи тихо: страница без `main` — тогава
  * връзката „към съдържанието" води наникъде, а axe го хваща.
  */
@@ -26,7 +31,13 @@ const STRANITSI = [
 for (const path of STRANITSI) {
   for (const scheme of ['light', 'dark'] as const) {
     test(`${path} няма нарушения (${scheme})`, async ({ page }) => {
-      await page.emulateMedia({ colorScheme: scheme });
+      await page.addInitScript((s) => {
+        try {
+          localStorage.setItem('korpus-tema', s);
+        } catch {
+          // частен режим — темата ще е светлата
+        }
+      }, scheme);
       await page.goto(path, { waitUntil: 'networkidle' });
       await page.waitForTimeout(500);
 

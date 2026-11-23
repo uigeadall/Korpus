@@ -1,13 +1,14 @@
 /**
  * Светла или тъмна тема — без React.
  *
- * Темата живее на `<html data-theme>` и в `localStorage`. Три състояния
- * биха били по-точни („по системата" е отделно от „светла"), но на един
- * бутон не се събират три; затова изборът е двоен и се помни, а докато
- * човек не е избрал, важи системата.
+ * Сайтът е светъл по подразбиране, независимо от системата. Мебелта се
+ * продава на бял лист; човек с тъмна система не иска кухнята си в
+ * полумрак, а и повечето хора не знаят, че системата им е тъмна.
+ * Тъмната тема си остава — но по избор, не по подразбиране.
  *
- * Прочитането минава през `useSyncExternalStore` в превключвателя, а не
- * през ефект: състоянието е в документа, не в React.
+ * Темата живее на `<html data-theme>` и в `localStorage`. Прочитането
+ * минава през `useSyncExternalStore` в превключвателя, а не през ефект:
+ * състоянието е в документа, не в React.
  */
 
 export type Tema = 'light' | 'dark';
@@ -20,15 +21,13 @@ export const KLYUCH = 'korpus-tema';
  * Без него страницата мига в системната тема и чак след това скача в
  * избраната. Затова е вграден в `<head>`, а не в компонент.
  */
-export const SKRIPT = `try{var t=localStorage.getItem('${KLYUCH}');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}`;
+export const SKRIPT = `try{var t=localStorage.getItem('${KLYUCH}');document.documentElement.dataset.theme=t==='dark'?'dark':'light'}catch(e){document.documentElement.dataset.theme='light'}`;
 
 const slushateli = new Set<() => void>();
 
-/** Коя тема се вижда в момента — избраната или системната. */
+/** Коя тема се вижда в момента. */
 export function tekushta(): Tema {
-  const izbrana = document.documentElement.dataset.theme;
-  if (izbrana === 'light' || izbrana === 'dark') return izbrana;
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
 }
 
 /** На сървъра няма как да се знае; светлата е по подразбиране. */
@@ -38,11 +37,8 @@ export function naSarvara(): Tema {
 
 export function abonirai(fn: () => void): () => void {
   slushateli.add(fn);
-  const mq = window.matchMedia('(prefers-color-scheme: dark)');
-  mq.addEventListener('change', fn);
   return () => {
     slushateli.delete(fn);
-    mq.removeEventListener('change', fn);
   };
 }
 

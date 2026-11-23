@@ -66,9 +66,10 @@
 /**
  * Тъмната тема е топъл въглен, не чисто черно: същата хартия, обърната.
  *
- * Стойностите стоят на едно място, а се включват от две: по системата
- * и с ръчния превключвател. `data-theme` на `<html>` взема връх в двете
- * посоки — човек с тъмна система, който иска светъл сайт, го получава.
+ * Включва се само с превключвателя, не по системата. Мебелта се продава
+ * на бял лист; човек с тъмна система не иска кухнята си в полумрак, а и
+ * повечето хора не знаят, че системата им е тъмна. Затова светлата е по
+ * подразбиране, а тъмната — по избор.
  */
 :root {
   --dark-background: #131210;
@@ -88,28 +89,6 @@
   --dark-grid-line-strong: rgba(242, 239, 233, 0.1);
   --dark-shadow-card: 0 1px 1px rgba(0, 0, 0, 0.4);
   --dark-shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.45);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --background: var(--dark-background);
-    --surface: var(--dark-surface);
-    --surface-sunken: var(--dark-surface-sunken);
-    --foreground: var(--dark-foreground);
-    --muted: var(--dark-muted);
-    --border: var(--dark-border);
-    --border-strong: var(--dark-border-strong);
-    --accent: var(--dark-accent);
-    --accent-strong: var(--dark-accent-strong);
-    --accent-wash: var(--dark-accent-wash);
-    --accent-contrast: var(--dark-accent-contrast);
-    --danger: var(--dark-danger);
-    --ok: var(--dark-ok);
-    --grid-line: var(--dark-grid-line);
-    --grid-line-strong: var(--dark-grid-line-strong);
-    --shadow-card: var(--dark-shadow-card);
-    --shadow-raised: var(--dark-shadow-raised);
-  }
 }
 
 :root[data-theme='dark'] {
