@@ -1,36 +1,97 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Корпус
 
-## Getting Started
+Сайт и конфигуратор за корпусна мебел по индивидуален проект. Клиентът чертае
+жилището си, избира стая и отговаря на няколко въпроса; правилата подреждат
+мебелта, смятат обкова и изкарват разбивка за цеха.
 
-First, run the development server:
+`Корпус` е работно име — марката още не е избрана. Сменя се на едно място:
+`src/config/brand.ts`.
+
+---
+
+## Пускане
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev          # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Нужен е Node 20 или по-нов. Няма ключове и няма база — всичко живее в браузъра,
+докато акаунтите на фирмата не влязат (виж `docs/PLAN.md`, етап 0).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Проверки
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run typecheck    # tsc
+npm run lint         # eslint
+npm test             # vitest — правилата
+npm run test:e2e     # playwright — браузър, десктоп и телефон
+npm run test:all     # двете наведнъж
+```
 
-## Learn More
+Първото пускане на `test:e2e` иска браузър: `npx playwright install chromium`.
+Сървърът се вдига сам; ако вече върти `npm run dev`, ползва него.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Как е устроено
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Правилата са чист TypeScript и се проверяват с тестове. React само рисува.**
+Това е първото правило на проекта и всичко останало следва от него.
 
-## Deploy on Vercel
+```
+src/lib/                 правилата — без React
+  cabinet-rules.ts       размери, каталог на модулите, обков, разбивка
+  furniture/             общият слой: система, кутии, детайли, стая
+  openings.ts            врата и прозорци на стаята
+  flat.ts                жилището: стаи, съседи, врати между тях
+  autolayout.ts          отговорите на въпросите → подредени модули
+  scene3d.ts             обемите на стаята; flat-scene.ts — на жилището
+  drawing.ts             геометрията на фронталния чертеж
+  share.ts               проектът, побран в линк
+  pdf/, xlsx.ts          файловете за клиента и за цеха
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+src/components/
+  proekt/                воденият поток — входната врата за клиента
+  flat/                  чертежът на жилището
+  configurator/          техническият инструмент (вътрешен)
+  site/                  общото за публичните страници
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+e2e/                     проверки с истински браузър
+docs/PLAN.md             какво има, какво липсва, какво чака решение
+```
+
+### Екраните
+
+| Адрес | За кого |
+|---|---|
+| `/` и статичните страници | публичният сайт |
+| `/jilishte` | клиентът чертае жилището и обикаля стаите |
+| `/proekt` | воденият поток за една стая |
+| `/konfigurator` | **вътрешен инструмент** — милиметри и разбивка за цеха; няма го в менюто и не се индексира |
+
+---
+
+## Правила, които спазваме
+
+1. Всичко, което трябва да е вярно, е чист TypeScript с тестове. React само рисува.
+2. Нова формула → първо контролна стойност от мебелиста, после код.
+3. `RULES_VERSION` се вдига при всяка промяна на формулите. Проект от по-стари
+   правила се отваря с бележка, че е пресметнат наново — старите формули не се
+   пазят и мълчаливото преизчисляване би било лъжа.
+4. Никакви тайни в git. Реални имейли и SMS само след изрично „да".
+5. Правните текстове стоят маркирани като чернови до преглед от юрист.
+6. Едно нещо се прави на едно място. Два бутона за едно и също се махат.
+
+### `// ПРОВЕРИ`
+
+Стойност с такава бележка е работна — предположение, което чака потвърждение от
+мебелиста. Днес са 46 на брой, най-вече за баня, коридор, спалня и хол. **Нищо с
+тези числа не бива да отива в цех.**
+
+---
+
+## Какво още липсва
+
+Накратко: контактите на фирмата, запитване, което стига до нас, снимки за
+портфолиото и ъгловата кухня. Подробно и подредено по важност — `docs/PLAN.md`.
