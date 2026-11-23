@@ -18,7 +18,7 @@ export default function NotFound() {
         <div className="flex flex-wrap gap-3">
           <Cta href="/">Към началото</Cta>
           <Cta href="/proekt" variant="outline">
-            Конфигуратор
+            Направете си проект
           </Cta>
           <Cta href="/kontakt" variant="outline">
             Контакт
