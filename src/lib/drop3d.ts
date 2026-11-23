@@ -30,7 +30,7 @@ import {
   defaultWidth,
   placeWall,
 } from './cabinet-rules';
-import { insertIndexAt } from './drawing';
+import { dropIndex, insertIndexAt } from './drawing';
 import { type Room, type WallSide, alongFrom } from './furniture/room';
 import { type Camera, planePointAt } from './scene3d';
 
@@ -60,6 +60,19 @@ export interface DropTarget {
 const GHOST_ID = '__prizrak__';
 
 /**
+ * Мястото по стената, закръглено до милиметър.
+ *
+ * Обратната проекция връща число с опашка от хилядни на милиметъра.
+ * Точно на средата между две места тази опашка решава на коя страна да
+ * падне модулът — и една и съща точка дава различен отговор според
+ * знаците след запетаята. Мебелта се мери в милиметри; под тях няма
+ * какво да се решава.
+ */
+function alongMm(scene: DropScene, hit: { x: number; z: number }): number {
+  return Math.round(alongFrom(scene.room, scene.side, { x: hit.x, y: hit.z }));
+}
+
+/**
  * Къде ще легне модулът, ако влезе на тази позиция в реда.
  *
  * Не се смята на ръка, а се пуска истинското подреждане с един
@@ -85,6 +98,49 @@ export function ghostPlacement(
 
   const placed = placeWall({ ...wall, ...rows }, {}, roomKind, openings);
   return placed[row].find((m) => m.id === GHOST_ID) ?? null;
+}
+
+/**
+ * Къде ще застане шкаф, който вече е в реда, ако го плъзнем другаде.
+ *
+ * Шкафът не се откача от стената — редът е плътен и местенето значи
+ * размяна на място с някой съсед. Затова резултатът е позиция в
+ * редицата, а не свободна координата.
+ */
+export function moveTargetAt(
+  scene: DropScene,
+  moduleId: string,
+  screenX: number,
+  screenY: number,
+  cam: Camera,
+): DropTarget | null {
+  const row: RowId | null = scene.placed.base.some((m) => m.id === moduleId)
+    ? 'base'
+    : scene.placed.upper.some((m) => m.id === moduleId)
+      ? 'upper'
+      : null;
+  if (!row) return null;
+
+  const m = scene.placed[row].find((x) => x.id === moduleId)!;
+  const plane = wallPlane(scene.room, scene.side);
+  const hit = planePointAt(screenX, screenY, cam, plane.axis, plane.value);
+  if (!hit) return null;
+
+  const along = alongMm(scene, hit);
+  const index = dropIndex([...scene.placed[row]], moduleId, along - m.width / 2);
+
+  // Същото разместване, прекарано през истинското подреждане.
+  const rows = { base: [...scene.wall.base], upper: [...scene.wall.upper] };
+  const at = rows[row].findIndex((x) => x.id === moduleId);
+  if (at < 0) return null;
+  const [carried] = rows[row].splice(at, 1);
+  rows[row].splice(Math.max(0, Math.min(rows[row].length, index)), 0, carried);
+
+  const placed = placeWall({ ...scene.wall, ...rows }, {}, scene.roomKind, scene.openings);
+  const after = placed[row].find((x) => x.id === moduleId);
+  if (!after) return null;
+
+  return { row, index, left: after.x, width: after.width };
 }
 
 export interface DropScene {
@@ -114,7 +170,7 @@ export function dropTargetAt(
   const hit = planePointAt(screenX, screenY, cam, plane.axis, plane.value);
   if (!hit) return null;
 
-  const along = alongFrom(scene.room, scene.side, { x: hit.x, y: hit.z });
+  const along = alongMm(scene, hit);
   const row = MODULES[kind].row;
   // Показалецът държи средата на модула, затова мястото се търси по
   // левия му ръб — както е и в чертежа.

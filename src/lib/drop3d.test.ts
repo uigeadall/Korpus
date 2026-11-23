@@ -7,7 +7,7 @@ import {
   defaultWidth,
   placeWall,
 } from './cabinet-rules';
-import { dropTargetAt, ghostPlacement, wallPlane } from './drop3d';
+import { dropTargetAt, ghostPlacement, moveTargetAt, wallPlane } from './drop3d';
 import { alongFrom, pointAlong, type Room, type WallSide } from './furniture/room';
 import { DEFAULT_CAMERA, floorPointAt, planePointAt, project } from './scene3d';
 
@@ -206,6 +206,89 @@ describe('къде влиза пуснатият модул', () => {
     for (const kind of Object.keys(MODULES) as ModuleKind[]) {
       expect(MODULES[kind].widths).toContain(defaultWidth(kind));
     }
+  });
+});
+
+describe('местене на шкаф по стената', () => {
+  const cam = DEFAULT_CAMERA(ROOM);
+
+  const scene = (wall: Wall, side: WallSide = 'top') => ({
+    room: ROOM,
+    roomKind: 'kitchen' as const,
+    side,
+    wall: { ...wall, side },
+    openings: [],
+    placed: placeWall({ ...wall, side }, {}, 'kitchen', []),
+  });
+
+  const кадър = (along: number, height: number) => {
+    const p = pointAlong(ROOM, 'top', along);
+    return project({ x: p.x, y: height, z: p.y }, cam);
+  };
+
+  /** Три шкафа: 600, 400, 800 — ясно различими по ширина. */
+  const три = () => wallOf([mod('door', 600), mod('drawers', 400), mod('sink', 800)]);
+
+  it('първият, плъзнат надясно, си сменя мястото с втория', () => {
+    const wall = три();
+    const id = wall.base[0].id;
+    // Към средата на втория шкаф: 600 + 200 = 800.
+    const s = кадър(800 + 600 / 2, 400);
+    const цел = moveTargetAt(scene(wall), id, s.x, s.y, cam);
+    expect(цел).not.toBeNull();
+    expect(цел!.index).toBe(1);
+    // След размяната първият почва там, където свършва вторият.
+    expect(цел!.left).toBe(400);
+  });
+
+  it('плъзнат до левия край се връща най-отпред', () => {
+    const wall = три();
+    const id = wall.base[2].id;
+    const s = кадър(0, 400);
+    const цел = moveTargetAt(scene(wall), id, s.x, s.y, cam);
+    expect(цел!.index).toBe(0);
+    expect(цел!.left).toBe(0);
+  });
+
+  it('плъзнат до десния край отива най-отзад', () => {
+    const wall = три();
+    const id = wall.base[0].id;
+    const s = кадър(3500, 400);
+    const цел = moveTargetAt(scene(wall), id, s.x, s.y, cam);
+    expect(цел!.index).toBe(2);
+    expect(цел!.left).toBe(400 + 800);
+  });
+
+  it('на старото си място не се мести никъде', () => {
+    const wall = три();
+    const m = wall.base[1];
+    // Средата на втория шкаф е на 600 + 200.
+    const s = кадър(800, 400);
+    const цел = moveTargetAt(scene(wall), m.id, s.x, s.y, cam);
+    expect(цел!.index).toBe(1);
+    expect(цел!.left).toBe(600);
+  });
+
+  it('горният ред се мести отделно от долния', () => {
+    const wall = wallOf([mod('door', 600)], [mod('upper', 600), mod('upper', 400)]);
+    const id = wall.upper[1].id;
+    const s = кадър(0, 1800);
+    const цел = moveTargetAt(scene(wall), id, s.x, s.y, cam);
+    expect(цел!.row).toBe('upper');
+    expect(цел!.index).toBe(0);
+    expect(цел!.left).toBe(0);
+  });
+
+  it('непознат модул не дава цел', () => {
+    const s = кадър(1000, 400);
+    expect(moveTargetAt(scene(три()), 'няма-такъв', s.x, s.y, cam)).toBeNull();
+  });
+
+  it('ширината си остава неговата, не на каталога', () => {
+    const wall = три();
+    const m = wall.base[2]; // мивка 800
+    const s = кадър(0, 400);
+    expect(moveTargetAt(scene(wall), m.id, s.x, s.y, cam)!.width).toBe(800);
   });
 });
 

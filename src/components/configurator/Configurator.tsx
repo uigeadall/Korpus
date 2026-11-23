@@ -526,6 +526,7 @@ export function Configurator() {
                   setDragKind(null);
                 }}
                 onDropCancel={() => setDragKind(null)}
+                onMoveModule={(id, toIndex) => dispatch({ type: 'reorder', id, toIndex })}
               />
             </div>
           ) : (

@@ -9,7 +9,7 @@
  * рафтове се влачат вътре. Рафтът не е картинка — влиза в разкроя.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   acceptsShelves,
   canOpen,
@@ -24,7 +24,7 @@ import {
   shelfCount,
   wallSide,
 } from '@/lib/cabinet-rules';
-import { type DropTarget, dropTargetAt } from '@/lib/drop3d';
+import { type DropTarget, dropTargetAt, moveTargetAt } from '@/lib/drop3d';
 import { footprint, type Room, type WallSide } from '@/lib/furniture/room';
 import {
   type Box,
@@ -152,6 +152,7 @@ export function Scene3D({
   dropWallIndex = 0,
   onDropModule,
   onDropCancel,
+  onMoveModule,
 }: {
   kitchen: Kitchen;
   room: Room;
@@ -175,6 +176,8 @@ export function Scene3D({
   dropWallIndex?: number;
   onDropModule?: (kind: ModuleKind, row: RowId, index: number) => void;
   onDropCancel?: () => void;
+  /** Разместване на готов шкаф по стената. Без него той само се отваря. */
+  onMoveModule?: (moduleId: string, toIndex: number) => void;
 }) {
   const [camera, setCamera] = useState<Camera>(() => DEFAULT_CAMERA(room));
 
@@ -327,37 +330,61 @@ export function Scene3D({
    */
   const [dropAt, setDropAt] = useState<DropTarget | null>(null);
 
+  /*
+   * Шкаф, хванат в обема. `carried` помни кога и откъде е хванат —
+   * докато показалецът не се е отместил достатъчно, това още е
+   * щракване и шкафът се отваря, вместо да се мести.
+   */
+  const carried = useRef<{ id: string; x: number; y: number } | null>(null);
+  const [carriedId, setCarriedId] = useState<string | null>(null);
+
   const dropWall = kitchen.walls[dropWallIndex];
   const dropRows = placed[dropWallIndex];
 
-  useEffect(() => {
-    if (!dropKind || !dropWall || !dropRows) return;
+  /** Стената, по която се нарежда — една и съща за пускане и за местене. */
+  const dropSide = dropWall ? wallSide(dropWall, dropWallIndex) : null;
+  const dropScene = useMemo(
+    () =>
+      dropWall && dropRows && dropSide
+        ? {
+            room,
+            roomKind: kitchen.roomKind ?? 'kitchen',
+            side: dropSide,
+            wall: dropWall,
+            openings: kitchenWallOpenings(kitchen, dropSide),
+            placed: dropRows,
+          }
+        : null,
+    [dropWall, dropRows, dropSide, room, kitchen],
+  );
 
-    const side = wallSide(dropWall, dropWallIndex);
-    const scene = {
-      room,
-      roomKind: kitchen.roomKind ?? 'kitchen',
-      side,
-      wall: dropWall,
-      openings: kitchenWallOpenings(kitchen, side),
-      placed: dropRows,
-    };
+  /** Екранна точка → точка в кадъра на сцената, или нищо извън нея. */
+  const inScene = useCallback(
+    (clientX: number, clientY: number): { x: number; y: number } | null => {
+      const svg = svgRef.current;
+      if (!svg) return null;
+      const box = svg.getBoundingClientRect();
+      if (clientX < box.left || clientX > box.right || clientY < box.top || clientY > box.bottom) {
+        return null;
+      }
+      const ctm = svg.getScreenCTM();
+      if (!ctm) return null;
+      const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+      return { x: p.x, y: p.y };
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!dropKind || !dropScene) return;
+
     // Камерата се сглобява тук, а не отвън: отвън тя е нов обект при
     // всеки рендер и следенето би се пренавързвало без причина.
     const at: Camera = { ...camera, target: { ...DEFAULT_CAMERA(room).target } };
 
     const where = (clientX: number, clientY: number) => {
-      const svg = svgRef.current;
-      if (!svg) return null;
-      const box = svg.getBoundingClientRect();
-      const inside =
-        clientX >= box.left && clientX <= box.right && clientY >= box.top && clientY <= box.bottom;
-      if (!inside) return null;
-
-      const ctm = svg.getScreenCTM();
-      if (!ctm) return null;
-      const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
-      return dropTargetAt(scene, dropKind, p.x, p.y, at);
+      const p = inScene(clientX, clientY);
+      return p ? dropTargetAt(dropScene, dropKind, p.x, p.y, at) : null;
     };
 
     const onMove = (e: PointerEvent) => setDropAt(where(e.clientX, e.clientY));
@@ -376,17 +403,7 @@ export function Scene3D({
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
     };
-  }, [
-    dropKind,
-    dropWall,
-    dropWallIndex,
-    dropRows,
-    kitchen,
-    room,
-    camera,
-    onDropModule,
-    onDropCancel,
-  ]);
+  }, [dropKind, dropScene, inScene, room, camera, onDropModule, onDropCancel]);
 
   /**
    * Сянката на модула, който ще падне — истински обем на мястото си, не
@@ -394,9 +411,13 @@ export function Scene3D({
    * застане до съседа си, а не пред него.
    */
   const ghostFaces: Face[] = (() => {
-    if (!dropKind || !dropAt || !dropWall) return [];
+    if (!dropAt || !dropWall) return [];
+    // Призрак има и при двете влачения: нов модул от палитрата и
+    // готов шкаф, хванат в самата стая.
+    const kind = dropKind ?? (carriedId ? moduleById.get(carriedId)?.kind : undefined);
+    if (!kind) return [];
     const side = wallSide(dropWall, dropWallIndex);
-    const g = moduleGeometry(dropKind);
+    const g = moduleGeometry(kind);
     const rect = footprint(room, side, dropAt.left, dropAt.width, g.depth);
     const box: Box = {
       x: rect.x,
@@ -423,6 +444,16 @@ export function Scene3D({
       const at = floorAt(e.clientX, e.clientY);
       moving.current = at ? { id: f.id, dx: at.x - f.x, dz: at.z - f.z } : null;
       setPicked(f.id);
+      return;
+    }
+
+    /*
+     * Натиснато върху шкаф: взема се наум, но още не се мести. Ако
+     * показалецът не помръдне, това си е щракване и шкафът ще се
+     * отвори; помръдне ли — почва местене, не въртене на стаята.
+     */
+    if (hit.id && moduleById.has(hit.id) && onMoveModule && dropScene) {
+      carried.current = { id: hit.id, x: e.clientX, y: e.clientY };
       return;
     }
 
@@ -460,6 +491,17 @@ export function Scene3D({
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     carryMove(e);
 
+    const grabbed = carried.current;
+    if (grabbed && dropScene) {
+      // Шест пиксела: под тях пръстът трепери, а не влачи.
+      if (!carriedId && Math.hypot(e.clientX - grabbed.x, e.clientY - grabbed.y) < 6) return;
+      e.preventDefault();
+      setCarriedId(grabbed.id);
+      const p = inScene(e.clientX, e.clientY);
+      setDropAt(p ? moveTargetAt(dropScene, grabbed.id, p.x, p.y, cam) : null);
+      return;
+    }
+
     const held = moving.current;
     if (held) {
       e.preventDefault();
@@ -493,6 +535,27 @@ export function Scene3D({
       // Не се обръща надолу с главата и не пада под пода.
       pitch: Math.max(-0.12, Math.min(1.1, start.pitch + (e.clientY - start.y) * 0.004)),
     }));
+  };
+
+  /** Пускане на носения шкаф: разместване само ако мястото му е друго. */
+  const dropCarried = () => {
+    const grabbed = carried.current;
+    carried.current = null;
+    if (!grabbed) return false;
+
+    const moved = Boolean(carriedId);
+    const target = dropAt;
+    setCarriedId(null);
+    setDropAt(null);
+    if (!moved) return false;
+
+    if (target) {
+      const row = dropScene?.placed[target.row] ?? [];
+      const from = row.findIndex((m) => m.id === grabbed.id);
+      if (from !== target.index) onMoveModule?.(grabbed.id, target.index);
+    }
+    // Вярно значи „това беше влачене": щракването да не отваря шкафа.
+    return true;
   };
 
   const endDrag = () => {
@@ -558,11 +621,18 @@ export function Scene3D({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={(e) => {
+          const wasCarrying = dropCarried();
           endDrag();
           if (carrying) carryDrop(e);
-          else tap(e);
+          else if (!wasCarrying) tap(e);
+          else press.current = null;
         }}
-        onPointerCancel={endDrag}
+        onPointerCancel={() => {
+          carried.current = null;
+          setCarriedId(null);
+          setDropAt(null);
+          endDrag();
+        }}
         onKeyDown={onKeyDown}
       >
         <defs>
@@ -594,7 +664,10 @@ export function Scene3D({
               cam={cam}
               palette={palette}
               highlight={Boolean(
-                face.moduleId && (face.moduleId === hover || face.moduleId === pickedItem?.id),
+                face.moduleId &&
+                  (face.moduleId === hover ||
+                    face.moduleId === pickedItem?.id ||
+                    face.moduleId === carriedId),
               )}
               module={m}
               gradientId={gradients.idOf(face)}
