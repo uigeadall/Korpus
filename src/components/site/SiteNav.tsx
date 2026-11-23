@@ -26,17 +26,19 @@ export function SiteNav() {
   const pathname = usePathname();
 
   return (
-    <nav aria-label="Основна навигация" className="-mr-2 overflow-x-auto">
-      <ul className="flex items-center gap-1">
+    <nav aria-label="Основна навигация" className="nav-fade -mr-2 min-w-0 overflow-x-auto">
+      <ul className="flex items-center gap-0.5">
         {NAV.map((item) => {
           const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <li key={item.href}>
+              {/* Текущата страница се бележи с линия под нея, не с хапче:
+                  подчертаването е знакът на документ, хапчето — на ап. */}
               <Link
                 href={item.href}
                 aria-current={active ? 'page' : undefined}
-                className={`block rounded-pill px-3 py-1.5 text-[13px] whitespace-nowrap transition-colors hover:text-foreground sm:text-sm ${
-                  active ? 'bg-surface-sunken text-foreground' : 'text-muted'
+                className={`block border-b px-2.5 py-1 text-[13px] whitespace-nowrap transition-colors hover:text-foreground ${
+                  active ? 'border-foreground text-foreground' : 'border-transparent text-muted'
                 }`}
               >
                 {item.label}

@@ -1,71 +1,135 @@
 @import "tailwindcss";
 
 /**
- * Светъл, спокоен интерфейс: почти бял фон, едри заглавия с плътна
- * буквена сбивка, меки заоблени плоскости без рамки, един син акцент.
+ * Светло и сдържано — като лист от проект, не като приложение.
  *
- * Чертежът нарочно остава технически — милиметрова мрежа, тънки линии,
- * моноспейс размери. Спокойната обвивка и точният чертеж вървят заедно:
- * едното продава, другото доказва.
+ * Три решения носят целия вид:
+ *
+ * 1. Хартията е топла, не студено сива. Мебелта е дърво; синкаво бялото
+ *    под нея изглежда като екран, топлото — като лист.
+ * 2. Разделя се с косъм линия, не със сянка. Размазаната сянка прави
+ *    всичко меко и приблизително; линията е точна и затова спокойна.
+ * 3. Заглавията са светли и дребни. Едрият черен текст вика; проектът
+ *    се продава с тишина и с чертежа под нея.
+ *
+ * Акцентът е тъмно петролено — работи и като мастило на чертежа, и под
+ * бял текст в бутон. Пази се за действия; надписите над секциите са тихи.
  */
 
 :root {
-  /* Сивите: фон на страницата, вдлъбнати плоскости, разделител. */
-  --grey-0: #ffffff;
-  --grey-50: #fbfbfd;
-  --grey-100: #f5f5f7;
-  --grey-200: #e8e8ed;
-  --grey-300: #d2d2d7;
+  /* Хартията: топло бяло, не синкаво. */
+  --paper-0: #ffffff;
+  --paper-50: #fbfaf8;
+  --paper-100: #f4f2ee;
+  --paper-200: #e8e4dc;
+  --paper-300: #d6d0c5;
 
-  --ink-900: #1d1d1f;
-  --ink-600: #6e6e73;
-  --ink-400: #86868b;
+  /* Мастилото е меко графитено. Чисто черното под едро заглавие сече. */
+  --ink-900: #23211e;
+  --ink-700: #4a4640;
+  --ink-500: #6f6a62;
 
-  /* Синьото е по-тъмно от обичайното, за да минава 4.5:1 и като текст
-     върху бяло, и като фон под бял текст. */
-  --blue-600: #0066cc;
-  --blue-500: #0071e3;
+  /* Тъмно петролено: 7.7:1 върху бяло и в двете посоки. */
+  --petrol-700: #14455b;
+  --petrol-600: #1c5873;
+  --petrol-50: #eef4f7;
 
-  --background: var(--grey-50);
-  --surface: var(--grey-0);
-  --surface-sunken: var(--grey-100);
+  --background: var(--paper-50);
+  --surface: var(--paper-0);
+  --surface-sunken: var(--paper-100);
   --foreground: var(--ink-900);
-  --muted: var(--ink-600);
-  --border: var(--grey-200);
-  --accent: var(--blue-600);
+  --muted: var(--ink-500);
+  --border: var(--paper-200);
+  --border-strong: var(--paper-300);
+  --accent: var(--petrol-600);
+  --accent-strong: var(--petrol-700);
+  --accent-wash: var(--petrol-50);
   --accent-contrast: #ffffff;
-  --danger: #c7000b;
-  --ok: #1d7a3e;
+  --danger: #9f2416;
+  --ok: #2f6a42;
 
   /* Милиметрова хартия */
-  --grid-line: rgba(29, 29, 31, 0.05);
-  --grid-line-strong: rgba(29, 29, 31, 0.1);
+  --grid-line: rgba(35, 33, 30, 0.045);
+  --grid-line-strong: rgba(35, 33, 30, 0.09);
 
-  --radius: 14px;
-  --radius-sm: 10px;
+  /* Ъглите са малко заоблени. Силно заоблено изглежда дружелюбно, а тук
+     се продава точност. Хапчето остава само за етикетите. */
+  --radius: 10px;
+  --radius-sm: 7px;
   --radius-pill: 980px;
 
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.05);
-  --shadow-raised: 0 2px 6px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.08);
+  /* Сянката само повдига с косъм — отделянето го върши линията. */
+  --shadow-card: 0 1px 1px rgba(35, 33, 30, 0.03);
+  --shadow-raised: 0 1px 2px rgba(35, 33, 30, 0.05), 0 8px 24px rgba(35, 33, 30, 0.07);
+}
+
+/**
+ * Тъмната тема е топъл въглен, не чисто черно: същата хартия, обърната.
+ *
+ * Стойностите стоят на едно място, а се включват от две: по системата
+ * и с ръчния превключвател. `data-theme` на `<html>` взема връх в двете
+ * посоки — човек с тъмна система, който иска светъл сайт, го получава.
+ */
+:root {
+  --dark-background: #131210;
+  --dark-surface: #1b1a17;
+  --dark-surface-sunken: #0e0d0c;
+  --dark-foreground: #f2efe9;
+  --dark-muted: #a39d93;
+  --dark-border: #2b2925;
+  --dark-border-strong: #3a3732;
+  --dark-accent: #7fb6cf;
+  --dark-accent-strong: #a0cde1;
+  --dark-accent-wash: #16303c;
+  --dark-accent-contrast: #0b2430;
+  --dark-danger: #e8897c;
+  --dark-ok: #6fbb87;
+  --dark-grid-line: rgba(242, 239, 233, 0.05);
+  --dark-grid-line-strong: rgba(242, 239, 233, 0.1);
+  --dark-shadow-card: 0 1px 1px rgba(0, 0, 0, 0.4);
+  --dark-shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #000000;
-    --surface: #1c1c1e;
-    --surface-sunken: #141416;
-    --foreground: #f5f5f7;
-    --muted: #a1a1a6;
-    --border: #2c2c2e;
-    --accent: #4da3ff;
-    --accent-contrast: #00172e;
-    --danger: #ff6961;
-    --ok: #4cc26a;
-    --grid-line: rgba(245, 245, 247, 0.06);
-    --grid-line-strong: rgba(245, 245, 247, 0.12);
-    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 16px rgba(0, 0, 0, 0.4);
-    --shadow-raised: 0 2px 6px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.5);
+  :root:not([data-theme='light']) {
+    --background: var(--dark-background);
+    --surface: var(--dark-surface);
+    --surface-sunken: var(--dark-surface-sunken);
+    --foreground: var(--dark-foreground);
+    --muted: var(--dark-muted);
+    --border: var(--dark-border);
+    --border-strong: var(--dark-border-strong);
+    --accent: var(--dark-accent);
+    --accent-strong: var(--dark-accent-strong);
+    --accent-wash: var(--dark-accent-wash);
+    --accent-contrast: var(--dark-accent-contrast);
+    --danger: var(--dark-danger);
+    --ok: var(--dark-ok);
+    --grid-line: var(--dark-grid-line);
+    --grid-line-strong: var(--dark-grid-line-strong);
+    --shadow-card: var(--dark-shadow-card);
+    --shadow-raised: var(--dark-shadow-raised);
   }
+}
+
+:root[data-theme='dark'] {
+  --background: var(--dark-background);
+  --surface: var(--dark-surface);
+  --surface-sunken: var(--dark-surface-sunken);
+  --foreground: var(--dark-foreground);
+  --muted: var(--dark-muted);
+  --border: var(--dark-border);
+  --border-strong: var(--dark-border-strong);
+  --accent: var(--dark-accent);
+  --accent-strong: var(--dark-accent-strong);
+  --accent-wash: var(--dark-accent-wash);
+  --accent-contrast: var(--dark-accent-contrast);
+  --danger: var(--dark-danger);
+  --ok: var(--dark-ok);
+  --grid-line: var(--dark-grid-line);
+  --grid-line-strong: var(--dark-grid-line-strong);
+  --shadow-card: var(--dark-shadow-card);
+  --shadow-raised: var(--dark-shadow-raised);
 }
 
 @theme inline {
@@ -75,20 +139,21 @@
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-wash: var(--accent-wash);
   --color-accent-contrast: var(--accent-contrast);
   --color-danger: var(--danger);
   --color-ok: var(--ok);
 
   /*
-   * На Apple устройство това е същинският системен шрифт; другаде пада
-   * на заредените Onest и Geologica, които са в същия дух.
+   * Inter Tight за заглавията, Inter за текста — един глас, две ширини.
+   * Без характерни букви: характерът е в подредбата и в чертежа, не в
+   * шрифта. Кирилицата е изрязана както трябва и в двата.
    */
-  --font-display:
-    -apple-system, BlinkMacSystemFont, "SF Pro Display", var(--font-geologica), var(--font-onest),
-    system-ui, sans-serif;
-  --font-sans:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-onest), system-ui, sans-serif;
+  --font-display: var(--font-inter-tight), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", monospace;
 
   --radius-sheet: var(--radius);
@@ -104,36 +169,52 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  font-size: 0.9375rem;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  letter-spacing: -0.01em;
 }
 
 /*
- * Едрите заглавия искат плътна сбивка, дребният текст — не. Затова
- * сбивката намалява с размера, а не стои една за всички.
+ * Дебелината расте надолу по нивата, не нагоре. Едрото заглавие е с
+ * нормална дебелина — на 50 px тя сама по себе си тежи достатъчно и
+ * полудебелото започва да вика. Дребните заглавия нямат този лукс и
+ * им трябва средна дебелина, за да се отделят от текста.
+ *
+ * Сбивката върви по същата логика: едрото иска плътно, дребното — не.
  */
 h1,
 h2,
 h3,
 h4 {
   font-family: var(--font-display);
-  font-weight: 600;
-  letter-spacing: -0.022em;
-  line-height: 1.08;
+  letter-spacing: -0.018em;
+  line-height: 1.14;
+}
+
+h1,
+h2 {
+  font-weight: 400;
 }
 
 h1 {
-  letter-spacing: -0.032em;
+  letter-spacing: -0.028em;
+  line-height: 1.06;
+}
+
+h3,
+h4 {
+  font-weight: 500;
+  letter-spacing: -0.01em;
 }
 
 p {
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
-/** Плоскост: мек фон, заоблени ъгли, сянка вместо рамка. */
+/** Плоскост: бяло, косъм линия, едва доловимо повдигане. */
 .card {
   background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-card);
 }
@@ -144,20 +225,35 @@ p {
   border-radius: var(--radius-sm);
 }
 
-/** Бутон-хапче. Основният е плътно син, другият — тих. */
+/**
+ * Надписът над секция: тих, разреден, с главни букви. Цветът се пази за
+ * действията — ако и надписите са цветни, нищо не води окото.
+ */
+.eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/** Бутон. Правоъгълник с малък радиус — хапчето беше твърде дружелюбно. */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4em;
-  border-radius: var(--radius-pill);
-  font-size: 0.9375rem;
+  gap: 0.45em;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
   line-height: 1.2;
-  padding: 0.7em 1.25em;
+  padding: 0.68em 1.1em;
   transition:
-    background-color 0.2s ease,
-    color 0.2s ease,
-    box-shadow 0.2s ease;
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
 }
 
 .btn-primary {
@@ -166,27 +262,28 @@ p {
 }
 
 .btn-primary:hover {
-  filter: brightness(0.92);
+  background: var(--accent-strong);
 }
 
+/** Вторият бутон е само линия — не се състезава с първия. */
 .btn-quiet {
-  background: var(--surface-sunken);
+  background: var(--surface);
+  border-color: var(--border-strong);
   color: var(--foreground);
 }
 
 .btn-quiet:hover {
-  background: var(--border);
+  background: var(--surface-sunken);
 }
 
 .btn:disabled {
   opacity: 0.4;
-  filter: none;
 }
 
-/** Поле за въвеждане: без рамка, вдлъбнато. */
+/** Поле за въвеждане: бяло с линия, за да се вижда докъде стига. */
 .field {
-  background: var(--surface-sunken);
-  border: 1px solid transparent;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 0.5em 0.7em;
   color: var(--foreground);
@@ -195,6 +292,18 @@ p {
 .field:focus {
   border-color: var(--accent);
   outline: none;
+}
+
+/**
+ * На телефон менюто не се побира и се плъзга настрани. Без знак за това
+ * последната точка стои рязко отрязана и изглежда като дефект, вместо
+ * като „има още". Затова десният край избледнява — само там, където
+ * преливането е сигурно; над 640 px менюто се събира цяло.
+ */
+@media (max-width: 639px) {
+  .nav-fade {
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  }
 }
 
 /** Милиметрова мрежа — фон под чертежи и hero. */
@@ -212,18 +321,18 @@ p {
 }
 
 /**
- * Фокусът от клавиатурата се вижда навсякъде с един и същ знак — син
- * контур встрани от елемента. Важи и за групите в SVG чертежа.
+ * Фокусът от клавиатурата се вижда навсякъде с един и същ знак — контур
+ * встрани от елемента. Важи и за групите в SVG чертежа.
  */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 /**
  * Размери и номера — винаги моноспейс и в тих цвят. Акцентът е запазен
- * за действията; ако и числата са сини, нищо не води окото.
+ * за действията; ако и числата са цветни, нищо не води окото.
  */
 .dim {
   font-family: var(--font-mono);

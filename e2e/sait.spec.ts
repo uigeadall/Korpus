@@ -43,6 +43,32 @@ test.describe('клиентският сайт', () => {
     });
   }
 
+  /**
+   * Човек с тъмна система трябва да може да види светлия сайт — и то
+   * да си остане светъл след презареждане. Проверява се по истинския
+   * фон, а не по атрибута: атрибутът може да се сложи и без CSS да го
+   * хване.
+   */
+  test('темата се сменя на ръка и се помни', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.goto('/', { waitUntil: 'networkidle' });
+    await page.evaluate(() => localStorage.clear());
+    await page.reload({ waitUntil: 'networkidle' });
+
+    const fon = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    const svetlina = (rgb: string) =>
+      (rgb.match(/\d+/g) ?? ['0']).slice(0, 3).reduce((a, n) => a + Number(n), 0);
+
+    expect(svetlina(await fon())).toBeLessThan(200);
+
+    await page.getByRole('button', { name: 'Включете светлата тема' }).click();
+    await page.waitForTimeout(250);
+    expect(svetlina(await fon())).toBeGreaterThan(600);
+
+    await page.reload({ waitUntil: 'networkidle' });
+    expect(svetlina(await fon())).toBeGreaterThan(600);
+  });
+
   test('инструментът още се отваря с адреса си и не се индексира', async ({ page }) => {
     await page.goto('/konfigurator', { waitUntil: 'networkidle' });
     await page.waitForTimeout(600);

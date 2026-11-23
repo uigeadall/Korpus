@@ -12,34 +12,39 @@ export const metadata: Metadata = {
 export default function Home() {
   return (
     <Shell>
-      {/* Едро заглавие, центрирано, много въздух — после чертежът. */}
-      <section className="py-16 text-center sm:py-24">
-        <p className="text-sm font-medium text-accent">Корпусна мебел по индивидуален проект</p>
-        <h1 className="font-display mx-auto mt-4 max-w-4xl text-[2.75rem] sm:text-7xl">
-          Мебел по мярка на жилището.
-          <br />
-          <span className="text-muted">Не по каталог.</span>
-        </h1>
-        <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-muted">
-          Отговорете на няколко въпроса и вижте мебелта си в обем за пет минути. После
-          измерваме на място, проектираме, произвеждаме и монтираме.
-        </p>
-        <div className="mt-9 flex flex-wrap justify-center gap-3">
-          <Cta href="/proekt">Направете си проект</Cta>
-          <Cta href="/kak-rabotim" variant="outline">
-            Как работим
-          </Cta>
+      {/*
+        Заглавието вляво и чертежът вдясно: първото нещо, което се вижда,
+        е работата, а не обещанието. На тесен екран падат едно под друго.
+      */}
+      <section className="grid items-center gap-10 py-14 sm:py-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-14">
+        <div>
+          <p className="eyebrow">Корпусна мебел по индивидуален проект</p>
+          <h1 className="font-display mt-4 text-[2.125rem] sm:text-[3.25rem]">
+            Мебел по мярка на жилището.
+            <br />
+            <span className="text-muted">Не по каталог.</span>
+          </h1>
+          <p className="mt-5 max-w-lg text-[1.0625rem] leading-relaxed text-muted">
+            Отговорете на няколко въпроса и вижте мебелта си в обем за пет минути. После
+            измерваме на място, проектираме, произвеждаме и монтираме.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Cta href="/proekt">Направете си проект</Cta>
+            <Cta href="/kak-rabotim" variant="outline">
+              Как работим
+            </Cta>
+          </div>
+          <p className="mt-5 text-sm text-muted">
+            Имате цяло жилище?{' '}
+            {/* Подчертана е постоянно: цветът сам не стига за човек, който
+                не различава цветове. */}
+            <a href="/jilishte" className="text-accent underline underline-offset-4">
+              Начертайте го стая по стая
+            </a>
+          </p>
         </div>
-        <p className="mt-5 text-sm text-muted">
-          Имате цяло жилище?{' '}
-          {/* Подчертана е постоянно: цветът сам не стига за човек, който
-              не различава цветове. */}
-          <a href="/jilishte" className="text-accent underline underline-offset-4">
-            Начертайте го стая по стая
-          </a>
-        </p>
 
-        <div className="card mt-16 overflow-hidden p-4 sm:p-8">
+        <div className="card overflow-hidden p-4 sm:p-6">
           <HeroDrawing />
         </div>
       </section>
@@ -86,11 +91,11 @@ export default function Home() {
         </div>
       </Section>
 
-      <section className="well px-6 py-16 text-center sm:px-12 sm:py-24">
-        <h2 className="font-display mx-auto max-w-2xl text-3xl sm:text-[2.5rem]">
+      <section className="mt-10 flex flex-col gap-8 border-t border-border py-14 sm:flex-row sm:items-end sm:justify-between">
+        <h2 className="font-display max-w-xl text-[1.625rem] sm:text-[2.125rem]">
           Направете си проекта сега. Отнема пет минути и не ви задължава с нищо.
         </h2>
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
+        <div className="flex flex-wrap gap-3">
           <Cta href="/proekt">Към проекта</Cta>
           <Cta href="/kontakt" variant="outline">
             Запитване

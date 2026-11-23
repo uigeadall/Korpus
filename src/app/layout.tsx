@@ -1,20 +1,26 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import { Geologica, JetBrains_Mono, Onest } from 'next/font/google';
+import { Inter, Inter_Tight, JetBrains_Mono } from 'next/font/google';
 import { brand } from '@/config/brand';
 import { SiteFooter } from '@/components/site/SiteFooter';
 import { SiteHeader } from '@/components/site/SiteHeader';
+import { SKRIPT } from '@/components/site/tema';
 import './globals.css';
 
-const geologica = Geologica({
-  variable: '--font-geologica',
+/*
+ * Един глас в две ширини: Inter Tight за заглавията, Inter за текста.
+ * И двата са изрязани за кирилица и нямат характерни букви — тук не
+ * шрифтът трябва да личи, а чертежът.
+ */
+const interTight = Inter_Tight({
+  variable: '--font-inter-tight',
   subsets: ['cyrillic', 'latin'],
   weight: ['400', '500', '600'],
   display: 'swap',
 });
 
-const onest = Onest({
-  variable: '--font-onest',
+const inter = Inter({
+  variable: '--font-inter',
   subsets: ['cyrillic', 'latin'],
   display: 'swap',
 });
@@ -38,8 +44,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="bg"
-      className={`${geologica.variable} ${onest.variable} ${jetbrains.variable} h-full`}
+      className={`${interTight.variable} ${inter.variable} ${jetbrains.variable} h-full`}
+      suppressHydrationWarning
     >
+      <head>
+        {/* Темата се нанася преди първото рисуване — иначе страницата
+            мига в системната и чак после скача в избраната. */}
+        <script dangerouslySetInnerHTML={{ __html: SKRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col">
         {/* Първото нещо под Tab: прескача менюто и отива в съдържанието. */}
         <a

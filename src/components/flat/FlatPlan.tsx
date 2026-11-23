@@ -34,9 +34,9 @@ const metres = (mm: number) => (mm / 1000).toFixed(2).replace('.', ',');
 
 /** Цвят на всеки вид — за да се чете планът без да се четат надписите. */
 const FILL: Record<string, string> = {
-  kitchen: 'color-mix(in srgb, var(--accent) 16%, var(--surface))',
-  living: 'color-mix(in srgb, var(--accent) 10%, var(--surface))',
-  bedroom: 'color-mix(in srgb, var(--accent) 6%, var(--surface))',
+  kitchen: 'color-mix(in srgb, var(--accent) 11%, var(--surface))',
+  living: 'color-mix(in srgb, var(--accent) 7%, var(--surface))',
+  bedroom: 'color-mix(in srgb, var(--accent) 4%, var(--surface))',
   corridor: 'var(--surface-sunken)',
   bath: 'var(--surface-sunken)',
   hall: 'var(--surface-sunken)',
