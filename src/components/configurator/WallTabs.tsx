@@ -22,7 +22,7 @@ export function WallTabs({ walls, activeWallId, onSelect, onAdd, onRemove }: Pro
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs uppercase tracking-[0.12em] text-muted">Стени</span>
+      <span className="text-sm text-muted">Стени</span>
 
       {walls.map((wall, i) => {
         const side = wallSide(wall, i);
@@ -35,9 +35,9 @@ export function WallTabs({ walls, activeWallId, onSelect, onAdd, onRemove }: Pro
             aria-pressed={active}
             onClick={() => wall.id && onSelect(wall.id)}
             className={`border px-3 py-1.5 text-xs transition-colors ${
-              active
+ active
                 ? 'border-accent text-accent'
-                : 'border-border text-muted hover:border-accent hover:text-accent'
+                : 'border-border text-muted hover:bg-border'
             }`}
           >
             {WALL_SIDE_LABEL[side]} <span className="dim">{formatMm(wall.length)}</span>
@@ -51,7 +51,7 @@ export function WallTabs({ walls, activeWallId, onSelect, onAdd, onRemove }: Pro
           key={side}
           type="button"
           onClick={() => onAdd(side)}
-          className="border border-dashed border-border px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent hover:text-accent"
+          className="border border-dashed border-border px-3 py-1.5 text-xs text-muted transition-colors hover:bg-border"
         >
           + {WALL_SIDE_LABEL[side].toLowerCase()}
         </button>

@@ -12,7 +12,13 @@ const NAV = [
   { href: '/kak-rabotim', label: 'Как работим' },
   { href: '/produkti', label: 'Продукти' },
   { href: '/portfolio', label: 'Портфолио' },
-  { href: '/konfigurator', label: 'Конфигуратор' },
+  /*
+   * Клиентът минава по два екрана: чертае жилището и прави проект за
+   * всяка стая. Конфигураторът не е тук — той е техническият
+   * инструмент на цеха, не нещо, което клиент отваря сам.
+   */
+  { href: '/jilishte', label: 'Жилището' },
+  { href: '/proekt', label: 'Направи проект' },
   { href: '/kontakt', label: 'Контакт' },
 ];
 
@@ -29,8 +35,8 @@ export function SiteNav() {
               <Link
                 href={item.href}
                 aria-current={active ? 'page' : undefined}
-                className={`block whitespace-nowrap px-2.5 py-1.5 text-xs transition-colors hover:text-accent sm:text-sm ${
-                  active ? 'text-accent' : 'text-muted'
+                className={`block rounded-pill px-3 py-1.5 text-[13px] whitespace-nowrap transition-colors hover:text-foreground sm:text-sm ${
+                  active ? 'bg-surface-sunken text-foreground' : 'text-muted'
                 }`}
               >
                 {item.label}

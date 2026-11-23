@@ -28,6 +28,25 @@ export interface SystemRow {
   depth: number;
 }
 
+/**
+ * Как изглежда лицето на модула. Това е данни, не код: кухнята,
+ * гардеробът и всекидневната се различават точно по него, а
+ * разположението на панелите се смята на едно място.
+ */
+export type FacadeSpec =
+  /** Една или две врати според ширината. */
+  | { style: 'doors' }
+  /** Чела едно над друго: с дадени височини или поравно. */
+  | { style: 'drawers'; fronts?: readonly number[]; count?: number }
+  /** Едно цяло лице — панел на уред, челна плоскост. */
+  | { style: 'panel'; appliance?: boolean }
+  /** Уред отгоре, бленда отдолу. */
+  | { style: 'appliance'; fillerBelow: number }
+  /** Врати една над друга с дадени височини, отгоре надолу. */
+  | { style: 'split'; heights: readonly number[] }
+  /** Без лице — отворена секция с видими рафтове. */
+  | { style: 'open'; shelves: number };
+
 export interface SystemModule<Kind extends string = string, Row extends string = string> {
   kind: Kind;
   row: Row;
@@ -41,6 +60,8 @@ export interface SystemModule<Kind extends string = string, Row extends string =
   fullHeight?: boolean;
   /** Своя вертикална геометрия, когато модулът не следва реда си. */
   geometry?: { y: number; height: number; depth: number };
+  /** Какво се вижда отпред. Липсва при ниши и празни места. */
+  facade?: FacadeSpec;
 }
 
 /** Един модул в конфигурацията на клиента. */
@@ -50,6 +71,11 @@ export interface SystemModuleInstance<Kind extends string = string> {
   width: number;
   /** Страна на пантите при единична врата. */
   hingeSide?: HingeSide;
+  /**
+   * Колко рафта да има вътре. Липсва = колкото казва видът му.
+   * Клиентът ги мести в обемния изглед и те влизат в разкроя.
+   */
+  shelves?: number;
 }
 
 export interface FurnitureSystem<Kind extends string = string, Row extends string = string> {
@@ -292,4 +318,59 @@ export function wallStatus<K extends string, R extends string>(
   }
 
   return out;
+}
+
+/**
+ * Застила `space` с модули от каталога: първо колкото може по-плътно,
+ * после с колкото може по-малко модула. Връща само ширините — кой вид
+ * модул ги носи решава викащият.
+ *
+ * Лакомото „най-широкото първо" не върши работа: за 1000 мм то взима 900
+ * и оставя 100 мм дупка, макар 600+400 да ляга точно. Затова се смятат
+ * всички достижими суми наведнъж (разновидност на задачата за рестото) —
+ * при седем ширини и стена под 12 метра това са няколко десетки хиляди
+ * стъпки, тоест нищо.
+ *
+ * Използва се и от „запълни остатъка" в конфигуратора, и от
+ * автоматичното подреждане, за да дават двете едно и също.
+ */
+export function fillWidths(space: number, widths: readonly number[]): number[] {
+  const size = Math.floor(space);
+  if (size <= 0) return [];
+
+  const usable = [...new Set(widths)]
+    .filter((w) => w > 0 && w <= size)
+    .sort((a, b) => b - a);
+  if (!usable.length) return [];
+
+  // count[s] = най-малко модула, които дават точно s; -1 = недостижимо.
+  const count = new Int32Array(size + 1).fill(-1);
+  const pick = new Int32Array(size + 1);
+  count[0] = 0;
+
+  for (let s = 1; s <= size; s++) {
+    for (const w of usable) {
+      if (w > s) continue;
+      const previous = count[s - w];
+      if (previous < 0) continue;
+      if (count[s] < 0 || previous + 1 < count[s]) {
+        count[s] = previous + 1;
+        pick[s] = w;
+      }
+    }
+  }
+
+  // Най-плътното покритие; при равен брой модули по-широките печелят,
+  // защото `usable` се обхожда отгоре надолу.
+  let best = 0;
+  for (let s = size; s >= 0; s--) {
+    if (count[s] >= 0) {
+      best = s;
+      break;
+    }
+  }
+
+  const out: number[] = [];
+  for (let s = best; s > 0; s -= pick[s]) out.push(pick[s]);
+  return out.sort((a, b) => b - a);
 }

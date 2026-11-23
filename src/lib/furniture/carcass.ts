@@ -257,3 +257,17 @@ export function drawerBoxParts(
   });
   return out;
 }
+
+/**
+ * Равни чела, които запълват височината заедно с фугите между тях.
+ * Ползва се, докато мебелистът не даде свои контролни височини.
+ */
+export function evenFronts(space: number, count: number, between: number): number[] {
+  if (count <= 0) return [];
+  const usable = space - between * (count - 1);
+  const each = Math.floor(usable / count);
+  const fronts = Array.from({ length: count }, () => each);
+  // Остатъкът от закръглянето отива в най-долното чело.
+  fronts[fronts.length - 1] += usable - each * count;
+  return fronts;
+}

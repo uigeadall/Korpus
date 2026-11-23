@@ -13,41 +13,66 @@ import {
   MODULES,
   type Materials,
   type ModuleKind,
-  OPENING_DEFAULT,
-  clampOpening,
-  type OpeningKind,
   type Room,
+  type RoomDoor,
+  type RoomWindow,
+  WINDOW,
+  clampWindow,
+  defaultWindow,
+  kitchenWindows,
   type RowId,
-  type WallOpening,
   RULES_VERSION,
   type Wall,
   type WallSide,
   WALL_SIDES,
+  clampDoor,
   clampRoom,
+  kitchenDoor,
   clampWallLength,
   emptyKitchen,
   freeSides,
   kitchenRoom,
+  nearestWidth,
   sideLength,
   toOtherRow,
   wallSide,
+  wallStatus,
 } from '@/lib/cabinet-rules';
+import { fillWidths } from '@/lib/furniture/system';
 
 export type Action =
   | { type: 'wallLength'; wallId: string; value: number }
-  | { type: 'add'; wallId: string; row: RowId; kind: ModuleKind }
+  /**
+   * `afterId` вмъква веднага след посочения модул, `atIndex` — на точно
+   * това място в реда (оттам идва влаченото от палитрата). Без нито
+   * едното новият застава най-отзад.
+   */
+  | { type: 'add'; wallId: string; row: RowId; kind: ModuleKind; afterId?: string; atIndex?: number }
+  | { type: 'duplicate'; id: string }
+  | { type: 'fill'; wallId: string; row: RowId }
   | { type: 'remove'; id: string }
   | { type: 'width'; id: string; value: number }
+  | { type: 'nudgeWidth'; id: string; dir: -1 | 1 }
+  | { type: 'shelves'; id: string; value: number }
+  /*
+   * Действия върху няколко модула наведнъж. Отделни са, а не цикъл от
+   * единичните, защото едно дръпване трябва да е една стъпка назад —
+   * иначе ⌘Z маха избраните един по един.
+   */
+  | { type: 'removeMany'; ids: string[] }
+  | { type: 'widthMany'; ids: string[]; value: number }
+  | { type: 'duplicateMany'; ids: string[] }
   | { type: 'hinge'; id: string; value: HingeSide }
   | { type: 'move'; id: string; dir: -1 | 1 }
   | { type: 'reorder'; id: string; toIndex: number }
   | { type: 'moveToRow'; id: string; toIndex: number }
   | { type: 'addWall'; side?: WallSide }
   | { type: 'removeWall'; wallId: string }
-  | { type: 'addOpening'; wallId: string; kind: OpeningKind }
-  | { type: 'opening'; id: string; value: Partial<Omit<WallOpening, 'id' | 'kind'>> }
-  | { type: 'removeOpening'; id: string }
   | { type: 'room'; value: Partial<Room> }
+  | { type: 'door'; value: Partial<RoomDoor> }
+  | { type: 'addWindow' }
+  | { type: 'window'; id: string; value: Partial<RoomWindow> }
+  | { type: 'removeWindow'; id: string }
   | { type: 'materials'; value: Partial<Materials> }
   | { type: 'load'; value: Kitchen }
   | { type: 'reset' };
@@ -63,12 +88,10 @@ export function wallId(): string {
   return `wall-${Date.now().toString(36)}-${counter}`;
 }
 
-export function openingId(kind: OpeningKind): string {
+export function windowId(): string {
   counter += 1;
-  return `${kind}-${Date.now().toString(36)}-${counter}`;
+  return `win-${Date.now().toString(36)}-${counter}`;
 }
-
-export { OPENING_LIMITS } from '@/lib/cabinet-rules';
 
 export { clampWallLength as clampWall } from '@/lib/cabinet-rules';
 
@@ -80,6 +103,27 @@ export function defaultWidth(kind: ModuleKind): number {
 
 function rowOf(kind: ModuleKind): RowId {
   return MODULES[kind].row;
+}
+
+/** Нов модул от каталога, с панти там, където има смисъл. */
+function newModule(kind: ModuleKind, width: number): KitchenModule {
+  const spec = MODULES[kind];
+  return {
+    id: moduleId(kind),
+    kind,
+    width,
+    hingeSide: spec.hasCarcass || kind === 'dw' ? 'right' : undefined,
+  };
+}
+
+/**
+ * Вмъква веднага след посочения модул. Ако го няма в този ред (нищо не е
+ * избрано или избраното е в другия ред), новият застава най-отзад.
+ */
+function insertAfter(list: KitchenModule[], m: KitchenModule, afterId?: string): void {
+  const i = afterId ? list.findIndex((x) => x.id === afterId) : -1;
+  if (i < 0) list.push(m);
+  else list.splice(i + 1, 0, m);
 }
 
 /** Стената, в чийто ред стои модулът с този идентификатор. */
@@ -115,6 +159,21 @@ function withWallOf(
   return withWall(kitchen, wallOfModule(kitchen, moduleId)?.id, fn);
 }
 
+/** Къде стои модулът в своя ред — за подреждане на групови действия. */
+function indexOfModule(kitchen: Kitchen, id: string): number {
+  const wall = wallOfModule(kitchen, id);
+  if (!wall) return -1;
+  const base = wall.base.findIndex((m) => m.id === id);
+  return base >= 0 ? base : wall.upper.findIndex((m) => m.id === id);
+}
+
+/** Най-близката допустима ширина за този модул, какъвто и да е видът му. */
+function nearestWidthFor(kitchen: Kitchen, id: string, width: number): number {
+  const wall = wallOfModule(kitchen, id);
+  const m = wall && [...wall.base, ...wall.upper].find((x) => x.id === id);
+  return m ? nearestWidth(m.kind, width) : width;
+}
+
 function rowOfModule(kitchen: Kitchen, id: string): RowId | null {
   const wall = wallOfModule(kitchen, id);
   if (!wall) return null;
@@ -133,15 +192,44 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
 
     case 'add': {
       const kind = action.kind;
-      const spec = MODULES[kind];
-      const m: KitchenModule = {
-        id: moduleId(kind),
-        kind,
-        width: defaultWidth(kind),
-        hingeSide: spec.hasCarcass || kind === 'dw' ? 'right' : undefined,
-      };
+      const m = newModule(kind, defaultWidth(kind));
       return withWall(kitchen, action.wallId, (base, upper) => {
-        (rowOf(kind) === 'base' ? base : upper).push(m);
+        const list = rowOf(kind) === 'base' ? base : upper;
+        if (action.atIndex !== undefined) {
+          list.splice(Math.max(0, Math.min(list.length, action.atIndex)), 0, m);
+          return;
+        }
+        insertAfter(list, m, action.afterId);
+      });
+    }
+
+    case 'duplicate': {
+      const row = rowOfModule(kitchen, action.id);
+      if (!row) return kitchen;
+      return withWallOf(kitchen, action.id, (base, upper) => {
+        const list = row === 'base' ? base : upper;
+        const i = list.findIndex((m) => m.id === action.id);
+        if (i < 0) return;
+        list.splice(i + 1, 0, { ...list[i], id: moduleId(list[i].kind) });
+      });
+    }
+
+    /**
+     * Застила свободното в реда с възможно най-малко шкафове — най-широкият
+     * от каталога, който се побира, после пак, докато има място.
+     */
+    case 'fill': {
+      const wall = kitchen.walls.find((w) => w.id === action.wallId);
+      if (!wall) return kitchen;
+      const status = wallStatus(wall)[action.row];
+      if (status.state !== 'left') return kitchen;
+
+      const kind: ModuleKind = action.row === 'base' ? 'door' : 'upper';
+      const added = fillWidths(status.diff, MODULES[kind].widths).map((w) => newModule(kind, w));
+      if (!added.length) return kitchen;
+
+      return withWall(kitchen, action.wallId, (base, upper) => {
+        (action.row === 'base' ? base : upper).push(...added);
       });
     }
 
@@ -158,6 +246,52 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
         for (const list of [base, upper]) {
           const i = list.findIndex((m) => m.id === action.id);
           if (i >= 0) list[i] = { ...list[i], width: action.value };
+        }
+      });
+
+    /*
+     * Многото наведнъж. Всяко действие минава през своя единичен
+     * случай, но резултатът е една стъпка в историята.
+     */
+    case 'removeMany':
+      return action.ids.reduce((k, id) => reducer(k, { type: 'remove', id }), kitchen);
+
+    case 'widthMany':
+      return action.ids.reduce(
+        (k, id) => reducer(k, { type: 'width', id, value: nearestWidthFor(k, id, action.value) }),
+        kitchen,
+      );
+
+    /*
+     * Копията се правят отзад напред: вмъкването мести това, което е
+     * след него, и при обратен ред вторият избран вече не е на своето
+     * място.
+     */
+    case 'duplicateMany':
+      return [...action.ids]
+        .map((id) => ({ id, at: indexOfModule(kitchen, id) }))
+        .sort((a, b) => b.at - a.at)
+        .reduce((k, { id }) => reducer(k, { type: 'duplicate', id }), kitchen);
+
+    /** Колко рафта вътре — клиентът ги влачи в обемния изглед. */
+    case 'shelves':
+      return withWallOf(kitchen, action.id, (base, upper) => {
+        for (const list of [base, upper]) {
+          const i = list.findIndex((m) => m.id === action.id);
+          if (i >= 0) list[i] = { ...list[i], shelves: Math.max(0, Math.min(10, action.value)) };
+        }
+      });
+
+    /** Следващата ширина от каталога — за −/+ върху самия чертеж. */
+    case 'nudgeWidth':
+      return withWallOf(kitchen, action.id, (base, upper) => {
+        for (const list of [base, upper]) {
+          const i = list.findIndex((m) => m.id === action.id);
+          if (i < 0) continue;
+          const widths = MODULES[list[i].kind].widths;
+          const at = widths.indexOf(list[i].width);
+          const next = widths[Math.min(widths.length - 1, Math.max(0, at + action.dir))];
+          if (next !== undefined) list[i] = { ...list[i], width: next };
         }
       });
 
@@ -238,56 +372,6 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
       return walls.length === kitchen.walls.length ? kitchen : { ...kitchen, walls };
     }
 
-    case 'addOpening': {
-      const index = kitchen.walls.findIndex((w) => w.id === action.wallId);
-      if (index < 0) return kitchen;
-      const wall = kitchen.walls[index];
-      const spec = OPENING_DEFAULT[action.kind];
-      const used = wall.openings ?? [];
-      // Новият отвор застава след последния, за да не се застъпват.
-      const x = used.length ? Math.max(...used.map((o) => o.x + o.width)) + 100 : 0;
-      const walls = [...kitchen.walls];
-      walls[index] = {
-        ...wall,
-        openings: [
-          ...used,
-          {
-            id: openingId(action.kind),
-            kind: action.kind,
-            x: Math.max(0, Math.min(x, Math.max(0, wall.length - spec.width))),
-            ...spec,
-          },
-        ],
-      };
-      return { ...kitchen, walls };
-    }
-
-    case 'opening': {
-      const index = kitchen.walls.findIndex((w) => w.openings?.some((o) => o.id === action.id));
-      if (index < 0) return kitchen;
-      const wall = kitchen.walls[index];
-      const walls = [...kitchen.walls];
-      walls[index] = {
-        ...wall,
-        openings: (wall.openings ?? []).map((o) =>
-          o.id === action.id ? clampOpening({ ...o, ...action.value }, wall.length) : o,
-        ),
-      };
-      return { ...kitchen, walls };
-    }
-
-    case 'removeOpening': {
-      const index = kitchen.walls.findIndex((w) => w.openings?.some((o) => o.id === action.id));
-      if (index < 0) return kitchen;
-      const wall = kitchen.walls[index];
-      const walls = [...kitchen.walls];
-      walls[index] = {
-        ...wall,
-        openings: (wall.openings ?? []).filter((o) => o.id !== action.id),
-      };
-      return { ...kitchen, walls };
-    }
-
     case 'room': {
       const current = kitchenRoom(kitchen);
       return {
@@ -298,6 +382,43 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
         },
       };
     }
+
+    /*
+     * Вратата. Стаята ѝ се дава отвън, за да се вкара в зида още тук —
+     * иначе човек я избутва извън стената и после я вижда да виси.
+     */
+    case 'door': {
+      const room = kitchenRoom(kitchen);
+      return { ...kitchen, door: clampDoor(room, { ...kitchenDoor(kitchen), ...action.value }) };
+    }
+
+    /*
+     * Прозорците. Нов отива на стена, която още няма такъв; повече от
+     * шепа в една стая е грешка, не желание, затова има таван.
+     */
+    case 'addWindow': {
+      const room = kitchenRoom(kitchen);
+      const windows = kitchenWindows(kitchen);
+      if (windows.length >= WINDOW.MAX_COUNT) return kitchen;
+      // Вратата също заема стена — нов прозорец не отива върху нея.
+      return {
+        ...kitchen,
+        windows: [...windows, defaultWindow(room, [kitchenDoor(kitchen), ...windows], windowId())],
+      };
+    }
+
+    case 'window': {
+      const room = kitchenRoom(kitchen);
+      return {
+        ...kitchen,
+        windows: kitchenWindows(kitchen).map((w) =>
+          w.id === action.id ? clampWindow(room, { ...w, ...action.value }) : w,
+        ),
+      };
+    }
+
+    case 'removeWindow':
+      return { ...kitchen, windows: kitchenWindows(kitchen).filter((w) => w.id !== action.id) };
 
     case 'materials':
       return { ...kitchen, materials: { ...kitchen.materials, ...action.value } };
@@ -328,6 +449,104 @@ export function migrate(kitchen: Kitchen): Kitchen {
     room: kitchen.room ?? kitchenRoom({ ...kitchen, walls }),
     walls,
     rulesVersion: kitchen.rulesVersion || RULES_VERSION,
+  };
+}
+
+/* --- Връщане назад -------------------------------------------------
+ *
+ * Конфигураторът е инструмент: всичко, което се троши с един клик,
+ * трябва да се връща с един клик. Историята стои около редуктора, за
+ * да не знае самият той за нея.
+ */
+
+export const HISTORY_LIMIT = 50;
+
+export interface History {
+  past: Kitchen[];
+  present: Kitchen;
+  future: Kitchen[];
+  /** Ключът на последното сливаемо действие — виж `mergeKey`. */
+  lastKey: string | null;
+}
+
+export type HistoryAction = Action | { type: 'undo' } | { type: 'redo' };
+
+export function initHistory(kitchen: Kitchen): History {
+  return { past: [], present: kitchen, future: [], lastKey: null };
+}
+
+export const canUndo = (h: History): boolean => h.past.length > 0;
+export const canRedo = (h: History): boolean => h.future.length > 0;
+
+/**
+ * Влаченето и плъзгачите пращат десетки действия в секунда. Поредните с
+ * един и същ ключ се сливат в една стъпка, иначе едно дръпване на
+ * стената изяжда цялата история.
+ */
+function mergeKey(action: Action): string | null {
+  switch (action.type) {
+    case 'wallLength':
+      return `wallLength:${action.wallId}`;
+    case 'width':
+    case 'nudgeWidth':
+      return `width:${action.id}`;
+    case 'widthMany':
+      return `width:${action.ids.join(',')}`;
+    case 'shelves':
+      return `shelves:${action.id}`;
+    case 'reorder':
+      return `reorder:${action.id}`;
+    case 'room':
+      return 'room';
+    case 'door':
+      return 'door';
+    case 'window':
+      return `window:${action.id}`;
+    default:
+      return null;
+  }
+}
+
+export function historyReducer(state: History, action: HistoryAction): History {
+  if (action.type === 'undo') {
+    const previous = state.past.at(-1);
+    if (!previous) return state;
+    return {
+      past: state.past.slice(0, -1),
+      present: previous,
+      future: [state.present, ...state.future],
+      lastKey: null,
+    };
+  }
+
+  if (action.type === 'redo') {
+    const [next, ...rest] = state.future;
+    if (!next) return state;
+    return {
+      past: [...state.past, state.present],
+      present: next,
+      future: rest,
+      lastKey: null,
+    };
+  }
+
+  // Конфигурация отвън (върната от браузъра, „започни от примера") е нов
+  // лист — историята на предишната няма към какво да се върне.
+  if (action.type === 'load') return initHistory(reducer(state.present, action));
+
+  const present = reducer(state.present, action);
+  // Действие, което не е променило нищо, не заслужава стъпка назад.
+  if (present === state.present) return state;
+
+  const key = mergeKey(action);
+  if (key && key === state.lastKey) {
+    return { past: state.past, present, future: [], lastKey: key };
+  }
+  return {
+    past: [...state.past, state.present].slice(-HISTORY_LIMIT),
+    present,
+    future: [],
+    lastKey: key,
   };
 }
 

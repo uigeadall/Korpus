@@ -23,7 +23,7 @@ export function MaterialsPanel({
   return (
     <section className="border border-border bg-surface">
       <header className="border-b border-border px-4 py-3">
-        <h2 className="font-display text-sm uppercase tracking-wide">Материали</h2>
+        <h2 className="font-display text-sm ">Материали</h2>
       </header>
 
       <div className="space-y-5 px-4 py-4">
@@ -119,7 +119,7 @@ export function MaterialsPanel({
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-2 text-xs uppercase tracking-[0.12em] text-muted">{label}</p>
+      <p className="mb-2 text-sm text-muted">{label}</p>
       {children}
     </div>
   );
@@ -145,9 +145,9 @@ function Chip({
       title={title}
       aria-pressed={active}
       className={`flex items-center gap-2 border px-2.5 py-1.5 text-xs transition-colors ${
-        active
+ active
           ? 'border-accent text-accent'
-          : 'border-border text-muted hover:border-accent hover:text-accent'
+          : 'border-border text-muted hover:bg-border'
       }`}
     >
       {hex && (

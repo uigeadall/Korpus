@@ -80,7 +80,7 @@ export default async function ProjectPage({ params }: Params) {
 
       <section className="py-12">
         <div className="flex flex-wrap items-center gap-3">
-          <Cta href="/konfigurator">Нареди своята кухня</Cta>
+          <Cta href="/proekt">Направи си проект</Cta>
           <Cta href="/kontakt" variant="outline">
             Запитване
           </Cta>

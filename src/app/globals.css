@@ -1,62 +1,70 @@
 @import "tailwindcss";
 
 /**
- * Стил на чертожно бюро: светъл „каменен" фон, графитен текст,
- * месингов акцент за размерите, милиметрова мрежа зад чертежите.
- * Стойностите са по описанието в SPEC раздел 10 и подлежат на сверяване
- * с прототипа, когато стане достъпен.
+ * Светъл, спокоен интерфейс: почти бял фон, едри заглавия с плътна
+ * буквена сбивка, меки заоблени плоскости без рамки, един син акцент.
+ *
+ * Чертежът нарочно остава технически — милиметрова мрежа, тънки линии,
+ * моноспейс размери. Спокойната обвивка и точният чертеж вървят заедно:
+ * едното продава, другото доказва.
  */
 
 :root {
-  --stone-50: #f7f6f3;
-  --stone-100: #efede8;
-  --stone-200: #e2dfd7;
-  --stone-300: #cfcabd;
+  /* Сивите: фон на страницата, вдлъбнати плоскости, разделител. */
+  --grey-0: #ffffff;
+  --grey-50: #fbfbfd;
+  --grey-100: #f5f5f7;
+  --grey-200: #e8e8ed;
+  --grey-300: #d2d2d7;
 
-  --graphite-900: #1c1d1f;
-  --graphite-700: #3a3c40;
-  /* Минава 4.5:1 и върху вдлъбнатия фон, не само върху основния. */
-  --graphite-500: #656870;
-  --graphite-300: #a3a6ac;
+  --ink-900: #1d1d1f;
+  --ink-600: #6e6e73;
+  --ink-400: #86868b;
 
-  /* Тъмнината е избрана така, че да минава 4.5:1 и като текст върху
-     камъка, и като фон под бяло. */
-  --brass-600: #8a6a2f;
-  --brass-500: #b48c45;
-  --brass-400: #c9a55c;
+  /* Синьото е по-тъмно от обичайното, за да минава 4.5:1 и като текст
+     върху бяло, и като фон под бял текст. */
+  --blue-600: #0066cc;
+  --blue-500: #0071e3;
 
-  --background: var(--stone-50);
-  --surface: #ffffff;
-  --surface-sunken: var(--stone-100);
-  --foreground: var(--graphite-900);
-  --muted: var(--graphite-500);
-  --border: var(--stone-200);
-  --accent: var(--brass-600);
+  --background: var(--grey-50);
+  --surface: var(--grey-0);
+  --surface-sunken: var(--grey-100);
+  --foreground: var(--ink-900);
+  --muted: var(--ink-600);
+  --border: var(--grey-200);
+  --accent: var(--blue-600);
   --accent-contrast: #ffffff;
-  --danger: #a8372a;
-  --ok: #3f6b48;
+  --danger: #c7000b;
+  --ok: #1d7a3e;
 
   /* Милиметрова хартия */
-  --grid-line: rgba(28, 29, 31, 0.06);
-  --grid-line-strong: rgba(28, 29, 31, 0.12);
+  --grid-line: rgba(29, 29, 31, 0.05);
+  --grid-line-strong: rgba(29, 29, 31, 0.1);
 
-  --radius: 2px;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --radius-pill: 980px;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.05);
+  --shadow-raised: 0 2px 6px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.08);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #151618;
-    --surface: #1c1d20;
-    --surface-sunken: #121315;
-    --foreground: #ece9e2;
-    --muted: #9b9ea4;
-    --border: #2d2f33;
-    --accent: #cda45f;
-    --accent-contrast: #151618;
-    --danger: #d4766a;
-    --ok: #7fa98a;
-    --grid-line: rgba(236, 233, 226, 0.06);
-    --grid-line-strong: rgba(236, 233, 226, 0.12);
+    --background: #000000;
+    --surface: #1c1c1e;
+    --surface-sunken: #141416;
+    --foreground: #f5f5f7;
+    --muted: #a1a1a6;
+    --border: #2c2c2e;
+    --accent: #4da3ff;
+    --accent-contrast: #00172e;
+    --danger: #ff6961;
+    --ok: #4cc26a;
+    --grid-line: rgba(245, 245, 247, 0.06);
+    --grid-line-strong: rgba(245, 245, 247, 0.12);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 16px rgba(0, 0, 0, 0.4);
+    --shadow-raised: 0 2px 6px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.5);
   }
 }
 
@@ -72,26 +80,121 @@
   --color-danger: var(--danger);
   --color-ok: var(--ok);
 
-  --font-display: var(--font-geologica);
-  --font-sans: var(--font-onest);
-  --font-mono: var(--font-jetbrains);
+  /*
+   * На Apple устройство това е същинският системен шрифт; другаде пада
+   * на заредените Onest и Geologica, които са в същия дух.
+   */
+  --font-display:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", var(--font-geologica), var(--font-onest),
+    system-ui, sans-serif;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-onest), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", monospace;
 
   --radius-sheet: var(--radius);
+  --radius-card: var(--radius);
+  --radius-field: var(--radius-sm);
+  --radius-pill: var(--radius-pill);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-raised: var(--shadow-raised);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.01em;
 }
 
+/*
+ * Едрите заглавия искат плътна сбивка, дребният текст — не. Затова
+ * сбивката намалява с размера, а не стои една за всички.
+ */
 h1,
 h2,
 h3,
 h4 {
-  font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
-  letter-spacing: -0.01em;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  line-height: 1.08;
+}
+
+h1 {
+  letter-spacing: -0.032em;
+}
+
+p {
+  line-height: 1.5;
+}
+
+/** Плоскост: мек фон, заоблени ъгли, сянка вместо рамка. */
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+/** Вдлъбната плоскост — за групи вътре в карта. */
+.well {
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+}
+
+/** Бутон-хапче. Основният е плътно син, другият — тих. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  border-radius: var(--radius-pill);
+  font-size: 0.9375rem;
+  line-height: 1.2;
+  padding: 0.7em 1.25em;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.btn-primary:hover {
+  filter: brightness(0.92);
+}
+
+.btn-quiet {
+  background: var(--surface-sunken);
+  color: var(--foreground);
+}
+
+.btn-quiet:hover {
+  background: var(--border);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  filter: none;
+}
+
+/** Поле за въвеждане: без рамка, вдлъбнато. */
+.field {
+  background: var(--surface-sunken);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 0.5em 0.7em;
+  color: var(--foreground);
+}
+
+.field:focus {
+  border-color: var(--accent);
+  outline: none;
 }
 
 /** Милиметрова мрежа — фон под чертежи и hero. */
@@ -109,19 +212,24 @@ h4 {
 }
 
 /**
- * Фокусът от клавиатурата се вижда навсякъде с един и същ знак — месингов
+ * Фокусът от клавиатурата се вижда навсякъде с един и същ знак — син
  * контур встрани от елемента. Важи и за групите в SVG чертежа.
  */
 :focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline-offset: 3px;
+  border-radius: 4px;
 }
 
-/** Размери и номера — винаги моноспейс. */
+/**
+ * Размери и номера — винаги моноспейс и в тих цвят. Акцентът е запазен
+ * за действията; ако и числата са сини, нищо не води окото.
+ */
 .dim {
-  font-family: var(--font-mono), ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  color: var(--accent);
+  color: var(--muted);
+  letter-spacing: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

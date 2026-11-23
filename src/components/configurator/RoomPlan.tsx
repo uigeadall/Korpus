@@ -12,17 +12,245 @@
  */
 
 import { useRef, useState } from 'react';
-import type { ModuleKind, PlanWall, Room, RowId, Wall } from '@/lib/cabinet-rules';
+import type { ModuleKind, PlanWall, Room, RoomDoor, RoomWindow, RowId, Wall } from '@/lib/cabinet-rules';
 import { WALL_SIDE_LABEL, cornerClashes, sideLength } from '@/lib/cabinet-rules';
+import {
+  clampDoor,
+  clampWindow,
+  doorPlan,
+  doorSpan,
+  placeDoorAt,
+  placeWindowAt,
+  windowSpan,
+} from '@/lib/openings';
 import type { Point, UnderlayRect } from '@/lib/furniture/underlay';
 import { formatMm } from '@/lib/drawing';
 import { useElementWidth } from './useElementWidth';
+import { capturePointer } from '@/components/pointer';
 
 /** Дебелина на зида в разрез и отстояние на размерните линии. */
 const WALL_T = 120;
 const MARGIN = 700;
 
 export type PlanMode = 'select' | 'calibrate' | 'move';
+
+/**
+ * Вратата в план: отворът прекъсва зида, крилото стои отворено на прав
+ * ъгъл и дъгата показва докъде мете. Това е знакът, с който се чете
+ * всеки архитектурен план — затова не се измисля друг.
+ */
+function PlanDoor({
+  room,
+  door,
+  onChange,
+}: {
+  room: Room;
+  door: RoomDoor;
+  onChange?: (door: RoomDoor) => void;
+}) {
+  const ref = useRef<SVGGElement>(null);
+  const dragging = useRef(false);
+  const span = doorSpan(room, door);
+  const sym = doorPlan(room, door);
+  const a =
+    span.axis === 'x' ? { x: span.from, y: span.at } : { x: span.at, y: span.from };
+  const b = span.axis === 'x' ? { x: span.to, y: span.at } : { x: span.at, y: span.to };
+
+  const place = (clientX: number, clientY: number) => {
+    const ctm = ref.current?.getScreenCTM();
+    if (!ctm || !onChange) return;
+    const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+    onChange(placeDoorAt(room, door, { x: p.x, y: p.y }));
+  };
+
+  const slide = (by: number) =>
+    onChange?.(clampDoor(room, { ...door, x: door.x + by }));
+
+  return (
+    <g ref={ref}>
+      {/* отворът изяжда зида */}
+      <line
+        x1={a.x}
+        y1={a.y}
+        x2={b.x}
+        y2={b.y}
+        stroke="var(--background)"
+        strokeWidth={WALL_T * 0.9}
+        vectorEffect="non-scaling-stroke"
+        style={{ pointerEvents: 'none' }}
+      />
+      <path
+        d={`M ${sym.closed.x} ${sym.closed.y} A ${sym.radius} ${sym.radius} 0 0 ${sym.sweep} ${sym.open.x} ${sym.open.y}`}
+        fill="none"
+        stroke="var(--muted)"
+        strokeWidth="1"
+        strokeDasharray="18 14"
+        vectorEffect="non-scaling-stroke"
+        style={{ pointerEvents: 'none' }}
+      />
+      <line
+        x1={sym.hinge.x}
+        y1={sym.hinge.y}
+        x2={sym.open.x}
+        y2={sym.open.y}
+        stroke="var(--foreground)"
+        strokeWidth="2"
+        vectorEffect="non-scaling-stroke"
+        style={{ pointerEvents: 'none' }}
+      />
+
+      {/*
+        Дебела прозрачна лента върху отвора — за хващане с пръст и за
+        фокус от клавиатурата. Стрелките я плъзгат по стената; за друга
+        стена има бутони в панела отстрани.
+      */}
+      {onChange && (
+        <line
+          x1={a.x}
+          y1={a.y}
+          x2={b.x}
+          y2={b.y}
+          stroke="transparent"
+          strokeWidth={WALL_T * 2.4}
+          strokeLinecap="round"
+          className="cursor-grab"
+          role="button"
+          tabIndex={0}
+          aria-label={`Врата на ${WALL_SIDE_LABEL[door.side].toLowerCase()} стена, ${formatMm(
+            door.x,
+          )} мм от ъгъла, ${formatMm(door.width)} мм широка. Стрелките я местят.`}
+          onPointerDown={(e) => {
+            capturePointer(e.currentTarget, e.pointerId);
+            dragging.current = true;
+            e.stopPropagation();
+          }}
+          onPointerMove={(e) => {
+            if (!dragging.current) return;
+            e.stopPropagation();
+            place(e.clientX, e.clientY);
+          }}
+          onPointerUp={() => {
+            dragging.current = false;
+          }}
+          onPointerCancel={() => {
+            dragging.current = false;
+          }}
+          onKeyDown={(e) => {
+            const by = e.shiftKey ? 100 : 10;
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+              e.preventDefault();
+              slide(-by);
+            } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+              e.preventDefault();
+              slide(by);
+            }
+          }}
+        />
+      )}
+    </g>
+  );
+}
+
+/**
+ * Прозорецът в план: тънка двойна черта в прекъснатия зид — знакът, с
+ * който се чете всеки архитектурен план.
+ */
+function PlanWindow({
+  room,
+  win,
+  onChange,
+}: {
+  room: Room;
+  win: RoomWindow;
+  onChange?: (win: RoomWindow) => void;
+}) {
+  const ref = useRef<SVGGElement>(null);
+  const dragging = useRef(false);
+  const span = windowSpan(room, win);
+  const a = span.axis === 'x' ? { x: span.from, y: span.at } : { x: span.at, y: span.from };
+  const b = span.axis === 'x' ? { x: span.to, y: span.at } : { x: span.at, y: span.to };
+  // Двете стъкла стоят навътре и навън от средата на зида.
+  const off = span.axis === 'x' ? { x: 0, y: WALL_T / 4 } : { x: WALL_T / 4, y: 0 };
+
+  const place = (clientX: number, clientY: number) => {
+    const ctm = ref.current?.getScreenCTM();
+    if (!ctm || !onChange) return;
+    const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+    onChange(placeWindowAt(room, win, { x: p.x, y: p.y }));
+  };
+
+  return (
+    <g ref={ref}>
+      <line
+        x1={a.x}
+        y1={a.y}
+        x2={b.x}
+        y2={b.y}
+        stroke="var(--background)"
+        strokeWidth={WALL_T * 0.9}
+        vectorEffect="non-scaling-stroke"
+        style={{ pointerEvents: 'none' }}
+      />
+      {[-1, 1].map((s) => (
+        <line
+          key={s}
+          x1={a.x + off.x * s}
+          y1={a.y + off.y * s}
+          x2={b.x + off.x * s}
+          y2={b.y + off.y * s}
+          stroke="var(--foreground)"
+          strokeWidth="1.5"
+          vectorEffect="non-scaling-stroke"
+          style={{ pointerEvents: 'none' }}
+        />
+      ))}
+
+      {onChange && (
+        <line
+          x1={a.x}
+          y1={a.y}
+          x2={b.x}
+          y2={b.y}
+          stroke="transparent"
+          strokeWidth={WALL_T * 2.4}
+          strokeLinecap="round"
+          className="cursor-grab"
+          role="button"
+          tabIndex={0}
+          aria-label={`Прозорец на ${WALL_SIDE_LABEL[win.side].toLowerCase()} стена, ${formatMm(
+            win.x,
+          )} мм от ъгъла, ${formatMm(win.width)} мм широк. Стрелките го местят.`}
+          onPointerDown={(e) => {
+            capturePointer(e.currentTarget, e.pointerId);
+            dragging.current = true;
+            e.stopPropagation();
+          }}
+          onPointerMove={(e) => {
+            if (!dragging.current) return;
+            e.stopPropagation();
+            place(e.clientX, e.clientY);
+          }}
+          onPointerUp={() => {
+            dragging.current = false;
+          }}
+          onPointerCancel={() => {
+            dragging.current = false;
+          }}
+          onKeyDown={(e) => {
+            const by = e.shiftKey ? 100 : 10;
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+              e.preventDefault();
+              onChange(clampWindow(room, { ...win, x: win.x - by }));
+            } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+              e.preventDefault();
+              onChange(clampWindow(room, { ...win, x: win.x + by }));
+            }
+          }}
+        />
+      )}
+    </g>
+  );
+}
 
 export interface PlanUnderlay {
   src: string;
@@ -32,6 +260,12 @@ export interface PlanUnderlay {
 
 interface Props {
   room: Room;
+  /** Къде се влиза — отворът прекъсва зида, крилото мете по пода. */
+  door: RoomDoor;
+  /** Липсва ли, вратата само се показва. */
+  onDoorChange?: (door: RoomDoor) => void;
+  windows?: RoomWindow[];
+  onWindowChange?: (win: RoomWindow) => void;
   walls: Wall[];
   plan: PlanWall<ModuleKind, RowId>[];
   activeWallId?: string;
@@ -55,6 +289,10 @@ function toPoint(svg: SVGSVGElement, clientX: number, clientY: number): Point {
 
 export function RoomPlan({
   room,
+  door,
+  onDoorChange,
+  windows = [],
+  onWindowChange,
   walls,
   plan,
   activeWallId,
@@ -82,7 +320,7 @@ export function RoomPlan({
       return;
     }
     if (mode === 'move' && underlay) {
-      svgRef.current.setPointerCapture(e.pointerId);
+      capturePointer(svgRef.current, e.pointerId);
       dragFrom.current = p;
       setDragging(true);
     }
@@ -306,6 +544,16 @@ export function RoomPlan({
             vectorEffect="non-scaling-stroke"
           />
         )}
+        <PlanDoor room={room} door={door} onChange={mode === 'select' ? onDoorChange : undefined} />
+        {windows.map((win) => (
+          <PlanWindow
+            key={win.id}
+            room={room}
+            win={win}
+            onChange={mode === 'select' ? onWindowChange : undefined}
+          />
+        ))}
+
         {points.map((p, i) => (
           <g key={`${p.x}-${p.y}-${i}`} style={{ pointerEvents: 'none' }}>
             <circle cx={p.x} cy={p.y} r={60} fill="none" stroke="var(--accent)" strokeWidth="2" vectorEffect="non-scaling-stroke" />

@@ -6,9 +6,13 @@ import {
   type KitchenModule,
   type ModuleKind,
   type RawPart,
+  ROOM,
+  clampRoom,
+  type RoomWindow,
   carcassParts,
   computeKitchen,
   doorLayout,
+  emptyRoom,
   drawerBoxParts,
   facadeParts,
   freeBaseIntervals,
@@ -17,6 +21,14 @@ import {
   MODULES,
   mergeParts,
   modulePartsRaw,
+  modulesFor,
+  RULES_VERSION,
+  rulesAreCurrent,
+  rulesNote,
+  kitchenDoor,
+  kitchenRoom,
+  kitchenWallOpenings,
+  kitchenWindows,
   nearestWidth,
   toOtherRow,
   placeWall,
@@ -547,5 +559,233 @@ describe('Преместване между редовете', () => {
 describe('Версия на правилата', () => {
   it('резултатът носи версията', () => {
     expect(computeKitchen(exampleKitchen()).rulesVersion).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+});
+
+describe('отворите на стаята стигат до правилата', () => {
+  const kitchenWith = (windows: RoomWindow[]) => ({
+    room: { width: 4200, depth: 3200 },
+    door: {
+      side: 'bottom' as const,
+      x: 300,
+      width: 800,
+      height: 2040,
+      hinge: 'left' as const,
+      swing: 'in' as const,
+    },
+    windows,
+    walls: [
+      {
+        id: 'w1',
+        side: 'top' as const,
+        length: 3600,
+        base: [],
+        upper: [mod('upper', 600), mod('upper', 600)],
+      },
+    ],
+    materials: { ...DEFAULT_MATERIALS },
+    rulesVersion: '1.0.0',
+  });
+
+  it('горният ред заобикаля прозорец на стаята', () => {
+    const k = kitchenWith([
+      { id: 'win1', side: 'top', x: 600, width: 1200, sill: 900, height: 1400 },
+    ]);
+    const placed = computeKitchen(k).placed[0].upper;
+    // Първият се събира преди прозореца, вторият минава след него.
+    expect(placed.map((m) => m.x)).toEqual([0, 1800]);
+  });
+
+  it('прозорец на друга стена не пречи на никого', () => {
+    const k = kitchenWith([
+      { id: 'win1', side: 'left', x: 600, width: 1200, sill: 900, height: 1400 },
+    ]);
+    expect(computeKitchen(k).placed[0].upper.map((m) => m.x)).toEqual([0, 600]);
+  });
+
+  it('висок прозорец не пречи на долния ред, нисък — пречи', () => {
+    const high = { id: 'w', side: 'top' as const, x: 600, width: 1200, sill: 1500, height: 900 };
+    const low = { ...high, sill: 200, height: 1600 };
+    const withBase = (win: RoomWindow) => ({
+      ...kitchenWith([win]),
+      walls: [
+        {
+          id: 'w1',
+          side: 'top' as const,
+          length: 3600,
+          base: [mod('door', 600), mod('door', 600)],
+          upper: [],
+        },
+      ],
+    });
+    expect(computeKitchen(withBase(high)).placed[0].base.map((m) => m.x)).toEqual([0, 600]);
+    expect(computeKitchen(withBase(low)).placed[0].base.map((m) => m.x)).toEqual([0, 1800]);
+  });
+
+  it('стар прозорец, закачен за стената, още се чете', () => {
+    const k = {
+      walls: [
+        {
+          id: 'w1',
+          side: 'top' as const,
+          length: 3600,
+          base: [],
+          upper: [mod('upper', 600), mod('upper', 600)],
+          openings: [
+            { id: 'o1', kind: 'window' as const, x: 600, width: 1200, bottom: 900, height: 1400 },
+          ],
+        },
+      ],
+      materials: { ...DEFAULT_MATERIALS },
+      rulesVersion: '1.0.0',
+    };
+    expect(kitchenWindows(k)).toHaveLength(1);
+    expect(computeKitchen(k).placed[0].upper.map((m) => m.x)).toEqual([0, 1800]);
+  });
+
+  it('стар прозорец не се брои два пъти', () => {
+    const k = {
+      windows: [{ id: 'o1', side: 'top' as const, x: 600, width: 1200, sill: 900, height: 1400 }],
+      walls: [
+        {
+          id: 'w1',
+          side: 'top' as const,
+          length: 3600,
+          base: [],
+          upper: [],
+          openings: [
+            { id: 'o1', kind: 'window' as const, x: 600, width: 1200, bottom: 900, height: 1400 },
+          ],
+        },
+      ],
+      materials: { ...DEFAULT_MATERIALS },
+      rulesVersion: '1.0.0',
+    };
+    expect(kitchenWallOpenings(k, 'top')).toHaveLength(1);
+  });
+});
+
+describe('празна стая от чертежа на жилището', () => {
+  it('няма нито един модул — човекът си ги слага сам', () => {
+    const k = emptyRoom('kitchen', 3600, 3000);
+    expect(k.walls[0].base).toEqual([]);
+    expect(k.walls[0].upper).toEqual([]);
+    expect(computeKitchen(k).parts).toEqual([]);
+  });
+
+  it('носи своя вид и своите размери', () => {
+    const k = emptyRoom('bath', 2200, 1800);
+    expect(k.roomKind).toBe('bath');
+    expect(kitchenRoom(k)).toEqual({ width: 2200, depth: 1800 });
+  });
+
+  it('мебелта върви по дългата стена — и стената е онази, която е дълга', () => {
+    const deep = emptyRoom('bedroom', 2000, 4000);
+    expect(deep.walls[0].length).toBe(4000);
+    expect(deep.walls[0].side).toBe('left');
+
+    const wide = emptyRoom('bedroom', 4000, 2000);
+    expect(wide.walls[0].length).toBe(4000);
+    expect(wide.walls[0].side).toBe('top');
+  });
+
+  it('стаята не се надува, за да побере собствената си стена', () => {
+    for (const [w, d] of [[2000, 3400], [3400, 2000], [1500, 1500], [900, 6000]]) {
+      const k = emptyRoom('corridor', w, d);
+      expect(kitchenRoom(k), `${w}×${d}`).toEqual({ width: clampRoom(w), depth: clampRoom(d) });
+    }
+  });
+
+  it('и в нея се влиза — вратата е там от самото начало', () => {
+    const door = kitchenDoor(emptyRoom('corridor', 2000, 3400));
+    expect(door.width).toBeGreaterThan(0);
+    expect(door.x).toBeGreaterThanOrEqual(0);
+  });
+
+  it('невъзможни размери се вкарват в допустимото', () => {
+    const k = emptyRoom('living', 50, 99_999);
+    expect(kitchenRoom(k).width).toBeGreaterThanOrEqual(ROOM.MIN);
+    expect(k.walls[0].length).toBeLessThanOrEqual(DIM.WALL_MAX);
+  });
+
+  it('става за всеки вид стая, който знаем да обзавеждаме', () => {
+    for (const kind of ['kitchen', 'bedroom', 'living', 'bath', 'corridor', 'hall'] as const) {
+      const k = emptyRoom(kind, 3000, 2600);
+      expect(computeKitchen(k).placed[0].base, kind).toEqual([]);
+      expect(modulesFor(kind, 'base').length, kind).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('подразбиращата се врата не разбутва заварена мебел', () => {
+  const wall = (side: 'top' | 'right' | 'bottom' | 'left', n: number) => ({
+    id: `w-${side}`,
+    side,
+    length: 3000,
+    base: Array.from({ length: n }, () => mod('door', 600)),
+    upper: [],
+  });
+
+  it('две пълни стени си остават пълни, без надвишаване', () => {
+    const k: Kitchen = {
+      walls: [wall('top', 5), wall('right', 5)],
+      materials: { ...DEFAULT_MATERIALS },
+      rulesVersion: '1.0.0',
+    };
+    const r = computeKitchen(k);
+    for (const [i, status] of r.rowStatus.entries()) {
+      expect(status.base.state, `стена ${i}`).not.toBe('over');
+    }
+    expect(r.placed[1].base.map((m) => m.x)).toEqual([0, 600, 1200, 1800, 2400]);
+  });
+
+  it('вратата отива на стена без мебел', () => {
+    const k: Kitchen = {
+      walls: [wall('top', 5), wall('right', 5)],
+      materials: { ...DEFAULT_MATERIALS },
+      rulesVersion: '1.0.0',
+    };
+    expect(['bottom', 'left']).toContain(kitchenDoor(k).side);
+  });
+
+  it('и когато всички стени са заети, стаята пак има врата', () => {
+    const k: Kitchen = {
+      walls: [wall('top', 1), wall('right', 1), wall('bottom', 1), wall('left', 1)],
+      materials: { ...DEFAULT_MATERIALS },
+      rulesVersion: '1.0.0',
+    };
+    expect(kitchenDoor(k).width).toBeGreaterThan(0);
+  });
+
+  it('своя врата се уважава, каквото и да има по стените', () => {
+    const k: Kitchen = {
+      walls: [wall('top', 5)],
+      door: { side: 'top', x: 600, width: 800, height: 2040, hinge: 'left', swing: 'in' },
+      materials: { ...DEFAULT_MATERIALS },
+      rulesVersion: '1.0.0',
+    };
+    expect(kitchenDoor(k).side).toBe('top');
+  });
+});
+
+describe('версия на правилата', () => {
+  it('конфигурация без версия минава за днешна', () => {
+    expect(rulesAreCurrent({})).toBe(true);
+    expect(rulesNote({})).toBeNull();
+  });
+
+  it('днешната версия не казва нищо', () => {
+    expect(rulesAreCurrent({ rulesVersion: RULES_VERSION })).toBe(true);
+    expect(rulesNote({ rulesVersion: RULES_VERSION })).toBeNull();
+  });
+
+  it('по-стара версия се обажда и назовава и двете', () => {
+    const note = rulesNote({ rulesVersion: '1.0.0' });
+    expect(note).toContain('1.0.0');
+    expect(note).toContain(RULES_VERSION);
+  });
+
+  it('версията расте, а не стои', () => {
+    expect(RULES_VERSION).not.toBe('1.0.0');
   });
 });

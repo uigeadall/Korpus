@@ -31,6 +31,23 @@ function exampleKitchen(): Kitchen {
 }
 
 describe('PDF за клиента', () => {
+  it('излиза истински PDF и с врата на стената с мебелта', async () => {
+    const kitchen = exampleKitchen();
+    kitchen.room = { width: 4200, depth: 3200 };
+    kitchen.walls[0].side = 'top';
+    kitchen.door = {
+      side: 'top',
+      x: 2800,
+      width: 800,
+      height: 2040,
+      hinge: 'left',
+      swing: 'in',
+    };
+    const pdf = await renderOffer(kitchen, computeKitchen(kitchen));
+    expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    expect(pdf.length).toBeGreaterThan(8_000);
+  }, 60_000);
+
   it('излиза истински PDF', async () => {
     const kitchen = exampleKitchen();
     const pdf = await renderOffer(kitchen, computeKitchen(kitchen));

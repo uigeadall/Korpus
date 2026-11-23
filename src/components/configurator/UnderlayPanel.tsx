@@ -56,7 +56,7 @@ export function UnderlayPanel({
   return (
     <section className="border border-border bg-surface">
       <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3">
-        <h2 className="font-display text-sm uppercase tracking-wide">План на жилището</h2>
+        <h2 className="font-display text-sm ">План на жилището</h2>
         {underlay && (
           <p className="dim text-xs">
             {formatMm(Math.round(underlay.rect.width))} × {formatMm(Math.round(underlay.rect.height))}
@@ -83,7 +83,7 @@ export function UnderlayPanel({
             <button
               type="button"
               onClick={() => input.current?.click()}
-              className="w-full border border-border px-4 py-2.5 text-sm transition-colors hover:border-accent hover:text-accent"
+              className="w-full border border-border px-4 py-2.5 text-sm transition-colors hover:bg-border"
             >
               Избери снимка на плана
             </button>
@@ -105,9 +105,9 @@ export function UnderlayPanel({
                 aria-pressed={mode === 'move'}
                 onClick={() => onMode(mode === 'move' ? 'select' : 'move')}
                 className={`border px-3 py-1.5 text-xs transition-colors ${
-                  mode === 'move'
+ mode === 'move'
                     ? 'border-accent text-accent'
-                    : 'border-border text-muted hover:border-accent hover:text-accent'
+                    : 'border-border text-muted hover:bg-border'
                 }`}
               >
                 Мести
@@ -120,9 +120,9 @@ export function UnderlayPanel({
                   onMode(mode === 'calibrate' ? 'select' : 'calibrate');
                 }}
                 className={`border px-3 py-1.5 text-xs transition-colors ${
-                  mode === 'calibrate'
+ mode === 'calibrate'
                     ? 'border-accent text-accent'
-                    : 'border-border text-muted hover:border-accent hover:text-accent'
+                    : 'border-border text-muted hover:bg-border'
                 }`}
               >
                 Калибрирай
@@ -131,7 +131,7 @@ export function UnderlayPanel({
                 type="button"
                 onClick={() => onScale(1.05)}
                 aria-label="Увеличи плана с 5 на сто"
-                className="border border-border px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent hover:text-accent"
+                className="border border-border px-3 py-1.5 text-xs text-muted transition-colors hover:bg-border"
               >
                 +
               </button>
@@ -139,7 +139,7 @@ export function UnderlayPanel({
                 type="button"
                 onClick={() => onScale(1 / 1.05)}
                 aria-label="Намали плана с 5 на сто"
-                className="border border-border px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent hover:text-accent"
+                className="border border-border px-3 py-1.5 text-xs text-muted transition-colors hover:bg-border"
               >
                 −
               </button>
@@ -153,7 +153,7 @@ export function UnderlayPanel({
             </div>
 
             {mode === 'calibrate' && (
-              <div className="border border-border bg-surface-sunken px-3 py-3">
+              <div className="well px-3 py-3">
                 <p className="text-xs leading-relaxed text-muted">
                   {points.length === 0 && 'Посочете първата точка върху известен размер в плана.'}
                   {points.length === 1 && 'Сега посочете втората точка.'}
@@ -172,13 +172,13 @@ export function UnderlayPanel({
                       step={10}
                       value={realMm}
                       onChange={(e) => onRealMm(e.target.value)}
-                      className="dim w-28 border border-border bg-surface px-2 py-1 text-sm"
+                      className="dim w-28 field py-1 text-sm"
                     />
                     <span className="text-xs text-muted">мм</span>
                     <button
                       type="button"
                       onClick={onApplyCalibration}
-                      className="border border-accent bg-accent px-3 py-1.5 text-xs text-accent-contrast transition-opacity hover:opacity-90"
+                      className="border border-accent bg-accent px-3 py-1.5 text-xs text-accent-contrast transition-[filter] hover:brightness-90"
                     >
                       Приложи
                     </button>
@@ -195,7 +195,7 @@ export function UnderlayPanel({
             )}
 
             <label className="block">
-              <span className="text-[10px] uppercase tracking-[0.12em] text-muted">
+              <span className="text-[11px] text-muted">
                 Прозрачност
               </span>
               <input

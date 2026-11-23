@@ -8,7 +8,6 @@
 
 import {
   DIM,
-  DRAWER_FRONT_H,
   type HingeSide,
   type ModuleKind,
   type OpeningKind,
@@ -17,10 +16,10 @@ import {
   type RowId,
   type WallOpening,
   MODULES,
-  doorLayout,
   mm,
   moduleGeometry,
 } from './cabinet-rules';
+import { facadePanels } from './facade';
 
 /** Полета около чертежа — място за размерните вериги и височините. */
 export const PAD = {
@@ -227,115 +226,28 @@ export interface FacadeRect {
 }
 
 /**
- * Фасадите на един модул в координатите на чертежа, заедно с
- * триъгълниците на отваряне. Използва същите фуги като формулите.
+ * Лицата в координатите на чертежа. Разположението им идва от
+ * `facadePanels`, за да съвпада с обемния изглед — тук се прибавя само
+ * дъгата на отваряне, която е нещо чертежно.
  */
 export function facadeRects(view: ViewBox, m: PlacedModule): FacadeRect[] {
   const g = moduleGeometry(m.kind);
   const top = toSvgY(view, g.y + g.height);
-  const gap = DIM.GAP_EDGE;
-  const inner = { x: m.x + gap, width: m.width - 2 * gap };
 
-  const doors = (height: number, offsetFromTop: number): FacadeRect[] => {
-    const layout = doorLayout(m.width, m.hingeSide);
-    const y = top + offsetFromTop;
-    if (layout.count === 1) {
-      const side = layout.sides[0];
-      return [
-        {
-          x: inner.x,
-          y,
-          width: layout.width,
-          height,
-          swing: swingTriangle(inner.x, y, layout.width, height, side),
-        },
-      ];
-    }
-    const second = inner.x + layout.width + DIM.GAP_BETWEEN;
-    return [
-      {
-        x: inner.x,
-        y,
-        width: layout.width,
-        height,
-        swing: swingTriangle(inner.x, y, layout.width, height, 'left'),
-      },
-      {
-        x: second,
-        y,
-        width: layout.width,
-        height,
-        swing: swingTriangle(second, y, layout.width, height, 'right'),
-      },
-    ];
-  };
-
-  switch (m.kind) {
-    case 'door':
-    case 'sink':
-    case 'upper':
-      return doors(g.height - 2 * gap, gap);
-
-    case 'dw':
-      return [{ x: inner.x, y: top + gap, width: inner.width, height: g.height - 2 * gap }];
-
-    case 'hood':
-      return [{ x: inner.x, y: top + gap, width: inner.width, height: g.height - 2 * gap }];
-
-    case 'oven': {
-      // Фурната е уред; под нея има бленда.
-      const fillerH = DIM.OVEN_FILLER_H;
-      const applianceH = g.height - 2 * gap - fillerH - DIM.GAP_BETWEEN;
-      return [
-        { x: inner.x, y: top + gap, width: inner.width, height: applianceH },
-        {
-          x: inner.x,
-          y: top + gap + applianceH + DIM.GAP_BETWEEN,
-          width: inner.width,
-          height: fillerH,
-        },
-      ];
-    }
-
-    case 'drawers': {
-      const out: FacadeRect[] = [];
-      let y = top + gap;
-      for (const h of DRAWER_FRONT_H) {
-        out.push({ x: inner.x, y, width: inner.width, height: h });
-        y += h + DIM.GAP_BETWEEN;
-      }
-      return out;
-    }
-
-    case 'column': {
-      const layout = doorLayout(m.width, m.hingeSide);
-      const side = layout.sides[0];
-      // Малката врата е отгоре, над нишата за хладилника.
-      const upperH = 209;
-      const lowerH = 1814;
-      const upperY = top + gap;
-      const lower = upperY + upperH + DIM.GAP_BETWEEN;
-      return [
-        {
-          x: inner.x,
-          y: upperY,
-          width: layout.width,
-          height: upperH,
-          swing: swingTriangle(inner.x, upperY, layout.width, upperH, side),
-        },
-        {
-          x: inner.x,
-          y: lower,
-          width: layout.width,
-          height: lowerH,
-          swing: swingTriangle(inner.x, lower, layout.width, lowerH, side),
-        },
-      ];
-    }
-
-    default:
-      return [];
-  }
+  return facadePanels(m).map((panel) => {
+    const x = m.x + panel.dx;
+    // Местното `dy` е от долния ръб нагоре; чертежът брои отгоре надолу.
+    const y = top + (g.height - panel.dy - panel.height);
+    return {
+      x,
+      y,
+      width: panel.width,
+      height: panel.height,
+      swing: panel.hinge
+        ? swingTriangle(x, y, panel.width, panel.height, panel.hinge)
+        : undefined,
+    };
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -380,6 +292,16 @@ export function dropIndex(
     if (i < others.length) slot += others[i].width;
   }
   return best;
+}
+
+/**
+ * Къде да влезе нов модул, довлечен от палитрата.
+ *
+ * Същата сметка като при преподреждане, само че нищо не се маха от
+ * реда — новият още го няма в него.
+ */
+export function insertIndexAt(row: PlacedModule[], left: number): number {
+  return dropIndex(row, '', left);
 }
 
 /* ------------------------------------------------------------------ */

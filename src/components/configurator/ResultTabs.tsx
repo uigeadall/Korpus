@@ -48,7 +48,7 @@ export function ResultTabs({
             aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
             className={`px-4 py-3 text-xs uppercase tracking-[0.1em] transition-colors ${
-              tab === t.id
+ tab === t.id
                 ? 'border-b-2 border-accent text-accent'
                 : 'border-b-2 border-transparent text-muted hover:text-foreground'
             }`}
@@ -166,9 +166,9 @@ function CuttingTab({
               onClick={() => onViewChange(o.id)}
               aria-pressed={view === o.id}
               className={`border px-3 py-1.5 text-xs transition-colors ${
-                view === o.id
+ view === o.id
                   ? 'border-accent text-accent'
-                  : 'border-border text-muted hover:border-accent hover:text-accent'
+                  : 'border-border text-muted hover:bg-border'
               }`}
             >
               {o.label}
@@ -284,14 +284,14 @@ function HardwareTab({ result, materials }: { result: KitchenResult; materials: 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-[0.12em] text-muted">{label}</dt>
+      <dt className="text-sm text-muted">{label}</dt>
       <dd className="dim mt-1 text-base">{value}</dd>
     </div>
   );
 }
 
 function Caption({ children }: { children: React.ReactNode }) {
-  return <p className="mb-2 text-xs uppercase tracking-[0.12em] text-muted">{children}</p>;
+  return <p className="mb-2 text-sm text-muted">{children}</p>;
 }
 
 function Table({ head, children }: { head: string[]; children: React.ReactNode }) {

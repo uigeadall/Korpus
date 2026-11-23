@@ -72,7 +72,7 @@ export default function PortfolioPage() {
 
       <section className="py-12">
         <div className="flex flex-wrap gap-3">
-          <Cta href="/konfigurator">Нареди кухнята си</Cta>
+          <Cta href="/proekt">Направи си проект</Cta>
           <Cta href="/kontakt" variant="outline">
             Запитване
           </Cta>

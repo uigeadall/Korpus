@@ -8,17 +8,21 @@
  * и на телефон (виж `fontSizeMm`).
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useElementWidth } from './useElementWidth';
 import {
   DIM,
+  MODULES,
+  type ModuleKind,
   clampWallLength,
   type PlacedModule,
   toOtherRow,
   type RowId,
   type RowStatus,
   WORKTOP_THICKNESS,
+  moduleGeometry,
   type Wall,
+  type WallOpening,
   type WorktopType,
 } from '@/lib/cabinet-rules';
 import {
@@ -29,6 +33,7 @@ import {
   WALL_T,
   chainForModules,
   dropIndex,
+  insertIndexAt,
   facadeRects,
   rowAtHeight,
   fontSizeMm,
@@ -43,6 +48,11 @@ import {
 
 interface Props {
   wall: Wall;
+/**
+   * Отворите на тази стена — вратата и прозорците на стаята, слети със
+   * собствените ѝ. Идват готови, защото ги знае стаята, не стената.
+   */
+  openings?: WallOpening[];
   placed: { base: PlacedModule[]; upper: PlacedModule[] };
   status: { base: RowStatus; upper: RowStatus };
   worktop: WorktopType;
@@ -54,6 +64,21 @@ interface Props {
   onWallLength?: (value: number) => void;
   /** Преместване в другия ред. */
   onMoveToRow?: (id: string, toIndex: number) => void;
+  /* --- Лентата върху избрания шкаф ---------------------------------
+   * Редактира се там, където се гледа. Без тези подавки чертежът си
+   * остава както преди — лентата просто не се показва.
+   */
+  /**
+   * Модул, довлечен от палитрата. Докато го има, чертежът следи
+   * показалеца и показва къде ще влезе.
+   */
+  dropKind?: ModuleKind | null;
+  onDropModule?: (kind: ModuleKind, row: RowId, index: number) => void;
+  onDropCancel?: () => void;
+  onNudgeWidth?: (id: string, dir: -1 | 1) => void;
+  onHinge?: (id: string) => void;
+  onDuplicate?: (id: string) => void;
+  onRemove?: (id: string) => void;
 }
 
 /** Какво се влачи в момента. */
@@ -96,6 +121,10 @@ function toPoint(svg: SVGSVGElement, clientX: number, clientY: number): { x: num
 
 export function KitchenDrawing({
   wall,
+  openings,
+  dropKind = null,
+  onDropModule,
+  onDropCancel,
   placed,
   status,
   worktop,
@@ -104,6 +133,10 @@ export function KitchenDrawing({
   onReorder,
   onWallLength,
   onMoveToRow,
+  onNudgeWidth,
+  onHinge,
+  onDuplicate,
+  onRemove,
 }: Props) {
   const { ref, width: pxWidth } = useElementWidth<HTMLDivElement>();
   const svgRef = useRef<SVGSVGElement>(null);
@@ -218,6 +251,57 @@ export function KitchenDrawing({
 
   const endDrag = () => setDrag(null);
 
+  /*
+   * Пускане от палитрата. Влаченето започва извън чертежа, затова
+   * показалецът се следи на прозореца — pointer capture върху <svg>
+   * хваща само това, което е тръгнало от него.
+   */
+  const [dropAt, setDropAt] = useState<{ row: RowId; index: number; x: number } | null>(null);
+
+  useEffect(() => {
+    // Без вдигнат модул няма какво да се следи. Старото място остава
+    // в състоянието, но не се рисува — маркерът иска и двете.
+    if (!dropKind) return;
+
+    const where = (clientX: number, clientY: number) => {
+      const svg = svgRef.current;
+      if (!svg) return null;
+      const box = svg.getBoundingClientRect();
+      const inside =
+        clientX >= box.left && clientX <= box.right && clientY >= box.top && clientY <= box.bottom;
+      if (!inside) return null;
+
+      const point = toPoint(svg, clientX, clientY);
+      // Редът на модула решава къде може да влезе — горен шкаф не
+      // отива долу, колкото и ниско да е пуснат.
+      const row = MODULES[dropKind].row;
+      const index = insertIndexAt(placed[row], point.x);
+      const list = placed[row];
+      const edge =
+        index === 0
+          ? (list[0]?.x ?? 0)
+          : (list[index - 1]?.x ?? 0) + (list[index - 1]?.width ?? 0);
+      return { row, index, x: edge };
+    };
+
+    const onMove = (e: PointerEvent) => setDropAt(where(e.clientX, e.clientY));
+    const onUp = (e: PointerEvent) => {
+      const at = where(e.clientX, e.clientY);
+      if (at) onDropModule?.(dropKind, at.row, at.index);
+      else onDropCancel?.();
+      setDropAt(null);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [dropKind, placed, onDropModule, onDropCancel]);
+
   /** Стрелки на клавиатурата — същото преподреждане без мишка. */
   const onModuleKeyDown = (m: PlacedModule, row: RowId, e: React.KeyboardEvent) => {
     const index = placed[row].indexOf(m);
@@ -242,8 +326,17 @@ export function KitchenDrawing({
   const dragged = moduleDrag ? placed[moduleDrag.row].find((m) => m.id === moduleDrag.id) : undefined;
   const resizing = drag?.kind === 'wall';
 
+  // Избраният модул и редът му — за лентата, която стои върху него.
+  const selectedRow: RowId | null = placed.base.some((m) => m.id === selectedId)
+    ? 'base'
+    : placed.upper.some((m) => m.id === selectedId)
+      ? 'upper'
+      : null;
+  const selected = selectedRow ? placed[selectedRow].find((m) => m.id === selectedId) : undefined;
+  const toolbarFor = drag ? undefined : selected;
+
   return (
-    <div ref={ref} className="w-full overflow-hidden">
+    <div ref={ref} className="relative w-full overflow-hidden">
       <svg
         ref={svgRef}
         viewBox={view.value}
@@ -334,7 +427,7 @@ export function KitchenDrawing({
         />
 
         {/* врати и прозорци — зад мебелта, за да личи, че тя ги заобикаля */}
-        {(wall.openings ?? []).map((o) => (
+        {(openings ?? wall.openings ?? []).map((o) => (
           <Opening key={o.id} box={openingBox(view, o)} fs={fs} />
         ))}
 
@@ -445,6 +538,33 @@ export function KitchenDrawing({
           strong
         />
 
+        {/*
+          Къде ще влезе довлеченият модул. Черта на фугата плюс сянка
+          на самия шкаф — иначе човек не вижда дали ще е преди или
+          след съседа.
+        */}
+        {dropAt && dropKind && (
+          <g style={{ pointerEvents: 'none' }}>
+            <rect
+              x={dropAt.x}
+              y={toSvgY(view, moduleGeometry(dropKind).y + moduleGeometry(dropKind).height)}
+              width={MODULES[dropKind].widths.includes(600) ? 600 : MODULES[dropKind].widths[0]}
+              height={moduleGeometry(dropKind).height}
+              fill="var(--accent)"
+              opacity="0.16"
+            />
+            <line
+              x1={dropAt.x}
+              y1={toSvgY(view, moduleGeometry(dropKind).y + moduleGeometry(dropKind).height) - 80}
+              x2={dropAt.x}
+              y2={toSvgY(view, moduleGeometry(dropKind).y) + 80}
+              stroke="var(--accent)"
+              strokeWidth="3"
+              vectorEffect="non-scaling-stroke"
+            />
+          </g>
+        )}
+
         {/* височини вляво */}
         <g>
           <line
@@ -484,7 +604,180 @@ export function KitchenDrawing({
           ))}
         </g>
       </svg>
+
+      {toolbarFor && selectedRow && (
+        <ModuleToolbar
+          view={view}
+          m={toolbarFor}
+          row={selectedRow}
+          // На тесен екран лентата не се побира над шкафа и се реже в ръба
+          // на чертежа — там застава под него, на цял ред.
+          anchored={pxWidth >= 720}
+          index={placed[selectedRow].indexOf(toolbarFor)}
+          count={placed[selectedRow].length}
+          onNudgeWidth={onNudgeWidth}
+          onHinge={onHinge}
+          onDuplicate={onDuplicate}
+          onRemove={onRemove}
+          onReorder={onReorder}
+        />
+      )}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Лентата над избрания шкаф: ширина, панти, местене, копие, изтриване.
+ *
+ * Стои като HTML над SVG-то, защото копчета в `foreignObject` се
+ * мащабират заедно с чертежа и стават нечетими при дълга стена. SVG-то
+ * е `width:100%; height:auto`, тоест viewBox се изобразява линейно —
+ * проценти по двете оси стигат, за да стои лентата залепена за шкафа.
+ */
+function ModuleToolbar({
+  view,
+  m,
+  row,
+  anchored,
+  index,
+  count,
+  onNudgeWidth,
+  onHinge,
+  onDuplicate,
+  onRemove,
+  onReorder,
+}: {
+  view: ViewBox;
+  m: PlacedModule;
+  row: RowId;
+  anchored: boolean;
+  index: number;
+  count: number;
+  onNudgeWidth?: (id: string, dir: -1 | 1) => void;
+  onHinge?: (id: string) => void;
+  onDuplicate?: (id: string) => void;
+  onRemove?: (id: string) => void;
+  onReorder?: (id: string, toIndex: number) => void;
+}) {
+  const box = moduleBox(view, m);
+  const widths = MODULES[m.kind].widths;
+  const at = widths.indexOf(m.width);
+  const hinged = m.width <= 600 && ['door', 'sink', 'upper', 'column'].includes(m.kind);
+
+  const left = ((m.x + m.width / 2 - view.x) / view.width) * 100;
+  // Горният ред опира в тавана на чертежа — там лентата пада под шкафа.
+  const above = row === 'base';
+  const anchorY = above ? box.y : box.y + box.height;
+  const top = ((anchorY - view.y) / view.height) * 100;
+
+  return (
+    <div
+      // Центрирането е само в inline `transform`. Класът `-translate-x-1/2`
+      // тук би се събрал с него: Tailwind 4 пише в свойството `translate`,
+      // което е отделно от `transform`, и лентата отскача с цяла ширина.
+      className={
+        anchored
+          ? 'pointer-events-none absolute z-10 flex justify-center'
+          : 'mt-2 flex justify-center'
+      }
+      style={
+        anchored
+          ? {
+              left: `${Math.min(88, Math.max(12, left))}%`,
+              top: `${top}%`,
+              transform: `translate(-50%, ${above ? '-115%' : '15%'})`,
+            }
+          : undefined
+      }
+    >
+      <div className="pointer-events-auto flex items-center gap-0.5 rounded-pill bg-surface p-1 shadow-[0_2px_16px_rgba(0,0,0,0.14)] ring-1 ring-border">
+        <span className="px-1.5 font-mono text-[11px] text-muted">{m.code}</span>
+
+        <TinyButton
+          label="По-тесен"
+          disabled={at <= 0}
+          onClick={() => onNudgeWidth?.(m.id, -1)}
+        >
+          −
+        </TinyButton>
+        <span className="min-w-[3.25rem] text-center font-mono text-[11px] tabular-nums">
+          {m.width}
+        </span>
+        <TinyButton
+          label="По-широк"
+          disabled={at < 0 || at >= widths.length - 1}
+          onClick={() => onNudgeWidth?.(m.id, 1)}
+        >
+          +
+        </TinyButton>
+
+        <span className="mx-0.5 h-5 w-px bg-border" />
+
+        <TinyButton
+          label="Премести наляво"
+          disabled={index <= 0}
+          onClick={() => onReorder?.(m.id, index - 1)}
+        >
+          ←
+        </TinyButton>
+        <TinyButton
+          label="Премести надясно"
+          disabled={index < 0 || index >= count - 1}
+          onClick={() => onReorder?.(m.id, index + 1)}
+        >
+          →
+        </TinyButton>
+
+        {hinged && (
+          <TinyButton
+            label={`Панти ${m.hingeSide === 'left' ? 'вляво' : 'вдясно'} — обърни`}
+            onClick={() => onHinge?.(m.id)}
+          >
+            {m.hingeSide === 'left' ? '◀' : '▶'}
+          </TinyButton>
+        )}
+
+        <span className="mx-0.5 h-5 w-px bg-border" />
+
+        <TinyButton label="Копие (⌘D)" onClick={() => onDuplicate?.(m.id)}>
+          ⧉
+        </TinyButton>
+        <TinyButton label="Премахни (Delete)" danger onClick={() => onRemove?.(m.id)}>
+          ×
+        </TinyButton>
+      </div>
+    </div>
+  );
+}
+
+function TinyButton({
+  children,
+  label,
+  onClick,
+  disabled,
+  danger,
+}: {
+  children: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className={`h-7 w-7 rounded-full text-xs leading-none transition-colors disabled:opacity-25 ${
+        danger ? 'hover:bg-danger hover:text-accent-contrast' : 'hover:bg-surface-sunken'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 

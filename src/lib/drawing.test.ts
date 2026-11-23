@@ -7,6 +7,7 @@ import {
   WALL_T,
   chainFromRanges,
   dropIndex,
+  insertIndexAt,
   facadeRects,
   fontSizeMm,
   formatMm,
@@ -304,5 +305,38 @@ describe('отвори в стената', () => {
     expect(box.y).toBe(toSvgY(view, 2300));
     expect(box.sillY).toBe(toSvgY(view, 900));
     expect(box.label).toBe('Прозорец 1200');
+  });
+});
+
+describe('къде влиза нов модул от палитрата', () => {
+  const row = placeWall({
+    length: 3600,
+    base: [mod('door', 600), mod('drawers', 600), mod('sink', 800)],
+    upper: [],
+  }).base;
+
+  it('в празен ред — най-отпред', () => {
+    expect(insertIndexAt([], 0)).toBe(0);
+    expect(insertIndexAt([], 5000)).toBe(0);
+  });
+
+  it('преди всички, ако е пуснат вляво от тях', () => {
+    expect(insertIndexAt(row, -500)).toBe(0);
+  });
+
+  it('след всички, ако е пуснат вдясно от тях', () => {
+    expect(insertIndexAt(row, 99_999)).toBe(row.length);
+  });
+
+  it('между два модула — при по-близката фуга', () => {
+    // Редът е от модули по 600; фугите са на 0, 600, 1200, …
+    expect(insertIndexAt(row, row[0].width + 20)).toBe(1);
+  });
+
+  it('нищо не се маха от реда, за разлика от преподреждането', () => {
+    // При преподреждане влаченият излиза от сметката и позициите са с
+    // една по-малко; тук всички остават.
+    expect(insertIndexAt(row, 99_999)).toBe(row.length);
+    expect(dropIndex(row, row[0].id, 99_999)).toBe(row.length - 1);
   });
 });

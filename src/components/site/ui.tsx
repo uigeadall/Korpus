@@ -1,6 +1,9 @@
 /**
- * Малките градивни части на публичните страници. Стилът е на чертожно
- * бюро: тънки линии, разредени главни букви за надписите, месинг за числата.
+ * Малките градивни части на публичните страници.
+ *
+ * Стилът е спокоен и светъл: разделя се с въздух и с фон, не с линии;
+ * заглавията са едри и плътно сбити; бутоните са хапчета. Единствените
+ * останали линии са в чертежа, където значат нещо.
  */
 
 import Link from 'next/link';
@@ -8,7 +11,7 @@ import type { ReactNode } from 'react';
 
 export function Shell({ children }: { children: ReactNode }) {
   return (
-    <main id="sadarzhanie" className="mx-auto w-full max-w-[1200px] px-4 pb-20 sm:px-6 lg:px-8">
+    <main id="sadarzhanie" className="mx-auto w-full max-w-[1120px] px-5 pb-28 sm:px-8">
       {children}
     </main>
   );
@@ -24,10 +27,12 @@ export function PageHeader({
   lead?: string;
 }) {
   return (
-    <header className="border-b border-border py-10 sm:py-14">
-      <p className="text-xs uppercase tracking-[0.2em] text-muted">{eyebrow}</p>
-      <h1 className="font-display mt-3 max-w-3xl text-3xl leading-tight sm:text-4xl">{title}</h1>
-      {lead && <p className="mt-4 max-w-2xl text-muted">{lead}</p>}
+    <header className="py-16 text-center sm:py-24">
+      <p className="text-sm font-medium text-accent">{eyebrow}</p>
+      <h1 className="font-display mx-auto mt-3 max-w-3xl text-[2.6rem] sm:text-6xl">{title}</h1>
+      {lead && (
+        <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-muted">{lead}</p>
+      )}
     </header>
   );
 }
@@ -47,14 +52,12 @@ export function Section({
 }) {
   const Caption = title ? 'p' : 'h2';
   return (
-    <section className="border-b border-border py-10 sm:py-14">
+    <section className="py-14 sm:py-20">
       {caption && (
-        <Caption className="font-sans text-xs font-normal uppercase tracking-[0.2em] text-muted">
-          {caption}
-        </Caption>
+        <Caption className="font-sans text-sm font-medium text-accent">{caption}</Caption>
       )}
-      {title && <h2 className="font-display mt-2 text-xl sm:text-2xl">{title}</h2>}
-      <div className={caption || title ? 'mt-6' : undefined}>{children}</div>
+      {title && <h2 className="font-display mt-2 max-w-2xl text-3xl sm:text-[2.5rem]">{title}</h2>}
+      <div className={caption || title ? 'mt-8' : undefined}>{children}</div>
     </section>
   );
 }
@@ -68,22 +71,17 @@ export function Cta({
   children: ReactNode;
   variant?: 'solid' | 'outline';
 }) {
-  const base = 'inline-block px-5 py-3 text-sm transition-colors';
   return (
     <Link
       href={href}
-      className={
-        variant === 'solid'
-          ? `${base} border border-accent bg-accent text-accent-contrast hover:opacity-90`
-          : `${base} border border-border hover:border-accent hover:text-accent`
-      }
+      className={`btn ${variant === 'solid' ? 'btn-primary' : 'btn-quiet'} px-6 py-3`}
     >
       {children}
     </Link>
   );
 }
 
-/** Карета с тънка линия отгоре — като позиция в спецификация. */
+/** Плоскост с мек фон — една мисъл на карта. */
 export function Card({
   index,
   title,
@@ -96,17 +94,17 @@ export function Card({
   tag?: string;
 }) {
   return (
-    <article className="border-t border-border pt-4">
+    <article className="card p-6">
       <div className="flex items-baseline gap-3">
         {index && <span className="dim text-xs">{index}</span>}
-        <h3 className="font-display text-base">{title}</h3>
+        <h3 className="font-display text-lg">{title}</h3>
         {tag && (
-          <span className="ml-auto border border-border px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-muted">
+          <span className="ml-auto rounded-pill bg-surface-sunken px-2.5 py-1 text-[11px] text-muted">
             {tag}
           </span>
         )}
       </div>
-      {children && <div className="mt-2 text-sm leading-relaxed text-muted">{children}</div>}
+      {children && <div className="mt-3 leading-relaxed text-muted">{children}</div>}
     </article>
   );
 }
@@ -114,9 +112,9 @@ export function Card({
 /** Видима маркировка за текст, който още не е минал през юрист. */
 export function DraftNotice() {
   return (
-    <p className="mb-8 border border-border bg-surface-sunken px-4 py-3 text-xs leading-relaxed text-muted">
-      <strong className="text-foreground">Чернова.</strong> Текстът е работен и подлежи на преглед от юрист,
-      преди сайтът да тръгне. Не го приемайте като окончателен правен документ.
+    <p className="well mb-10 px-5 py-4 text-sm leading-relaxed text-muted">
+      <strong className="text-foreground">Чернова.</strong> Текстът е работен и подлежи на преглед
+      от юрист, преди сайтът да тръгне. Не го приемайте като окончателен правен документ.
     </p>
   );
 }
@@ -124,17 +122,15 @@ export function DraftNotice() {
 /** Честен заместител, докато няма реални снимки от обекти. */
 export function Placeholder({ label }: { label: string }) {
   return (
-    <div className="paper-grid flex aspect-[4/3] items-center justify-center border border-border">
-      <span className="px-4 text-center text-xs uppercase tracking-[0.15em] text-muted">
-        {label}
-      </span>
+    <div className="paper-grid well flex aspect-[4/3] items-center justify-center">
+      <span className="px-4 text-center text-sm text-muted">{label}</span>
     </div>
   );
 }
 
 export function Prose({ children }: { children: ReactNode }) {
   return (
-    <div className="max-w-2xl space-y-4 text-sm leading-relaxed text-muted [&_h2]:font-display [&_h2]:mt-8 [&_h2]:text-base [&_h2]:text-foreground [&_li]:ml-4 [&_li]:list-disc [&_strong]:text-foreground">
+    <div className="max-w-2xl space-y-4 leading-relaxed text-muted [&_h2]:font-display [&_h2]:mt-10 [&_h2]:text-xl [&_h2]:text-foreground [&_li]:ml-5 [&_li]:list-disc [&_strong]:text-foreground">
       {children}
     </div>
   );

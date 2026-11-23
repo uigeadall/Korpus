@@ -46,7 +46,7 @@ export default function ProductsPage() {
       </Section>
 
       <section className="py-12">
-        <Cta href="/konfigurator">Отвори конфигуратора</Cta>
+        <Cta href="/proekt">Направи си проект</Cta>
       </section>
     </Shell>
   );

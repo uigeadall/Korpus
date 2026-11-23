@@ -12,6 +12,7 @@ import {
   type PlacedModule,
   WORKTOP_THICKNESS,
   type Wall,
+  type WallOpening,
   type WorktopType,
 } from '@/lib/cabinet-rules';
 import {
@@ -36,6 +37,8 @@ const SUNKEN = '#efede8';
 
 interface Props {
   wall: Wall;
+  /** Отворите на тази стена — вратата и прозорците на стаята. */
+  openings?: WallOpening[];
   placed: { base: PlacedModule[]; upper: PlacedModule[] };
   worktop: WorktopType;
   /** Най-много колко място има чертежът върху листа, в точки. */
@@ -43,7 +46,7 @@ interface Props {
   maxHeightPt: number;
 }
 
-export function PdfDrawing({ wall, placed, worktop, maxWidthPt, maxHeightPt }: Props) {
+export function PdfDrawing({ wall, openings, placed, worktop, maxWidthPt, maxHeightPt }: Props) {
   const contentRight = Math.max(
     wall.length,
     ...placed.base.map((m) => m.x + m.width),
@@ -125,8 +128,8 @@ export function PdfDrawing({ wall, placed, worktop, maxWidthPt, maxHeightPt }: P
         </G>
       ))}
 
-      {/* врати и прозорци */}
-      {(wall.openings ?? []).map((o) => {
+      {/* врати и прозорци, заедно с вратата на стаята */}
+      {(openings ?? wall.openings ?? []).map((o) => {
         const box = openingBox(view, o);
         return (
           <G key={o.id}>

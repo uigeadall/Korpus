@@ -63,7 +63,7 @@ export default function ContactPage() {
           </p>
         </div>
         <div className="mt-6 flex flex-wrap gap-3">
-          <Cta href="/konfigurator" variant="outline">
+          <Cta href="/proekt" variant="outline">
             Към конфигуратора
           </Cta>
         </div>

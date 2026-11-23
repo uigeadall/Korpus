@@ -34,7 +34,7 @@ export function ProjectPhoto({
             className="object-cover"
           />
         ) : (
-          <span className="px-4 text-center text-xs uppercase tracking-[0.15em] text-muted">
+          <span className="px-4 text-center text-sm text-muted">
             {image.alt} — предстои заснемане
           </span>
         )}
@@ -54,7 +54,7 @@ export function ProjectCard({ project }: { project: Project }) {
         href={`/portfolio/${project.slug}`}
         className="group block focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
-        <div className="paper-grid relative flex aspect-[4/3] items-center justify-center overflow-hidden border border-border transition-colors group-hover:border-accent">
+        <div className="paper-grid relative flex aspect-[4/3] items-center justify-center overflow-hidden border border-border transition-colors group-hover:bg-border">
           {project.images[0]?.src ? (
             <Image
               src={project.images[0].src}
@@ -64,7 +64,7 @@ export function ProjectCard({ project }: { project: Project }) {
               className="object-cover"
             />
           ) : (
-            <span className="px-4 text-center text-xs uppercase tracking-[0.15em] text-muted">
+            <span className="px-4 text-center text-sm text-muted">
               {SCOPE_LABELS[project.scope]} — предстои заснемане
             </span>
           )}
@@ -98,7 +98,7 @@ export function FactList({ facts }: { facts: ProjectFact[] }) {
 /** Видима маркировка, че записът е мостра, а не наш обект. */
 export function ExampleNotice() {
   return (
-    <p className="mb-8 border border-border bg-surface-sunken px-4 py-3 text-xs leading-relaxed text-muted">
+    <p className="mb-8 well px-4 py-3 text-xs leading-relaxed text-muted">
       <strong className="text-foreground">Примерен запис.</strong> Показва как изглежда страница на
       проект. Числата са от контролната кухня в спецификацията, не от завършен обект, и кадрите още
       не са заснети.

@@ -22,6 +22,7 @@ import {
   DRAWER_SYSTEM_LABEL,
   WALL_SIDE_LABEL,
   WORKTOP_LABEL,
+  kitchenWallOpenings,
   kitchenRoom,
   wallSide,
 } from '@/lib/cabinet-rules';
@@ -163,6 +164,7 @@ export function OfferDocument({
           <View style={s.drawing}>
             <PdfDrawing
               wall={wall}
+              openings={kitchenWallOpenings(kitchen, wallSide(wall))}
               placed={placed}
               worktop={m.worktop}
               maxWidthPt={520}

@@ -2,16 +2,23 @@
 
 import {
   MODULES,
-  type ModuleKind,
   type PlacedModule,
+  type RoomKind,
   type RowId,
   type RowStatus,
 } from '@/lib/cabinet-rules';
 import { formatMm } from '@/lib/drawing';
 import type { Action } from './state';
 
-const BASE_ORDER: ModuleKind[] = ['column', 'door', 'drawers', 'sink', 'oven', 'dw', 'lgap'];
-const UPPER_ORDER: ModuleKind[] = ['upper', 'hood', 'ugap'];
+/** Как се казват двата реда във всяка стая. */
+const ROW_LABEL: Record<RoomKind, Record<RowId, string>> = {
+  kitchen: { base: 'Долен ред', upper: 'Горен ред' },
+  bedroom: { base: 'Гардероб', upper: 'Антресол' },
+  living: { base: 'Долен ред', upper: 'Стенен ред' },
+  bath: { base: 'Долен ред', upper: 'Над мивката' },
+  corridor: { base: 'Шкафове', upper: 'Антресол' },
+  hall: { base: 'Шкафове', upper: 'Антресол' },
+};
 
 const STATUS_TEXT: Record<RowStatus['state'], (diff: number) => string> = {
   exact: () => 'точно',
@@ -21,7 +28,7 @@ const STATUS_TEXT: Record<RowStatus['state'], (diff: number) => string> = {
 
 export function RowEditor({
   row,
-  wallId,
+  roomKind = 'kitchen',
   modules,
   status,
   selectedId,
@@ -29,21 +36,20 @@ export function RowEditor({
   dispatch,
 }: {
   row: RowId;
+  /** Коя стая — от нея зависи какви модули се предлагат. */
+  roomKind?: RoomKind;
   /** Стената, в която отиват новите модули. */
-  wallId?: string;
   modules: PlacedModule[];
   status: RowStatus;
   selectedId: string | null;
   onSelect: (id: string) => void;
   dispatch: (a: Action) => void;
 }) {
-  const kinds = row === 'base' ? BASE_ORDER : UPPER_ORDER;
-
   return (
-    <section className="border border-border bg-surface">
-      <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3">
-        <h2 className="font-display text-sm tracking-wide uppercase">
-          {row === 'base' ? 'Долен ред' : 'Горен ред'}
+    <section className="card overflow-hidden">
+      <header className="flex flex-wrap items-baseline justify-between gap-2 px-5 pt-4 pb-3">
+        <h2 className="font-display text-base">
+          {ROW_LABEL[roomKind][row]}
         </h2>
         <p
           className={`dim text-xs ${
@@ -69,23 +75,10 @@ export function RowEditor({
         ))}
         {!modules.length && (
           <li className="px-4 py-6 text-sm text-muted">
-            Няма модули. Добавете от списъка отдолу.
+            Няма модули. Вземете ги от палитрата горе вдясно.
           </li>
         )}
       </ul>
-
-      <div className="flex flex-wrap gap-2 border-t border-border px-4 py-3">
-        {kinds.map((kind) => (
-          <button
-            key={kind}
-            type="button"
-            onClick={() => wallId && dispatch({ type: 'add', wallId, row, kind })}
-            className="border border-border px-3 py-1.5 text-xs transition-colors hover:border-accent hover:text-accent focus-visible:outline-2 focus-visible:outline-accent"
-          >
-            + {MODULES[kind].label}
-          </button>
-        ))}
-      </div>
     </section>
   );
 }
@@ -120,7 +113,13 @@ function ModuleRow({
         onClick={() => onSelect(m.id)}
         className="flex w-full items-baseline gap-2 text-left"
       >
-        <span className="dim w-8 shrink-0 text-xs">{m.code ?? '—'}</span>
+        {/* Брас върху потъналия фон на избрания ред дава 4.29:1 — под
+            прага. Там кодът минава на основния цвят. */}
+        <span
+          className={`w-8 shrink-0 font-mono text-xs ${selected ? 'text-foreground' : 'dim'}`}
+        >
+          {m.code ?? '—'}
+        </span>
         <span className="text-sm leading-snug">{spec.label}</span>
       </button>
 
@@ -130,7 +129,7 @@ function ModuleRow({
           <select
             value={m.width}
             onChange={(e) => dispatch({ type: 'width', id: m.id, value: Number(e.target.value) })}
-            className="dim border border-border bg-surface px-2 py-1 text-xs"
+            className="field dim py-1 text-xs"
           >
             {spec.widths.map((w) => (
               <option key={w} value={w}>
@@ -150,7 +149,7 @@ function ModuleRow({
                 value: m.hingeSide === 'left' ? 'right' : 'left',
               })
             }
-            className="border border-border px-2 py-1 text-xs text-muted transition-colors hover:border-accent hover:text-accent"
+            className="rounded-pill bg-surface-sunken px-2.5 py-1 text-xs text-muted transition-colors hover:bg-border"
             title="Страна на пантите"
           >
             панти {m.hingeSide === 'left' ? '◀ вляво' : 'вдясно ▶'}
@@ -171,6 +170,12 @@ function ModuleRow({
             onClick={() => dispatch({ type: 'move', id: m.id, dir: 1 })}
           >
             →
+          </IconButton>
+          <IconButton
+            label="Копие"
+            onClick={() => dispatch({ type: 'duplicate', id: m.id })}
+          >
+            ⧉
           </IconButton>
           <IconButton label="Премахни" onClick={() => dispatch({ type: 'remove', id: m.id })}>
             ×
@@ -199,7 +204,7 @@ function IconButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="h-8 w-8 border border-border text-sm leading-none transition-colors hover:border-accent hover:text-accent disabled:opacity-30 disabled:hover:border-border disabled:hover:text-current"
+      className="h-8 w-8 rounded-full bg-surface-sunken text-sm leading-none transition-colors hover:bg-border disabled:opacity-30 disabled:hover:bg-surface-sunken"
     >
       {children}
     </button>
