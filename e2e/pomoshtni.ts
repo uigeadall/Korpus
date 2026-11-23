@@ -21,16 +21,22 @@ export async function otvoriChisto(page: Page, path: string): Promise<void> {
   await page.reload({ waitUntil: 'networkidle' });
 }
 
-/** Къде сме в жилището, според макета. */
+/**
+ * Къде сме в жилището, според макета.
+ *
+ * Взема се само изречението с името. Прочитът носи и други —
+ * „Щракнете по помещение…" — и рязането на първата точка оставяше
+ * опашка, която влизаше в сравнението.
+ */
 export function kadeSme(page: Page): Promise<string> {
-  return page.evaluate(
-    () =>
-      document
-        .querySelector('svg[role=img][aria-label^="Макет"]')
-        ?.getAttribute('aria-label')
-        ?.replace('Макет на жилището. Сега сте в: ', '')
-        .replace('.', '') ?? '',
-  );
+  return page.evaluate(() => {
+    const label =
+      document.querySelector('svg[role=img][aria-label^="Макет"]')?.getAttribute('aria-label') ??
+      '';
+    const at = label.indexOf('Сега сте в: ');
+    if (at < 0) return '';
+    return label.slice(at + 'Сега сте в: '.length).split('.')[0].trim();
+  });
 }
 
 /** Имената на помещенията в плана, без дръжката за опъване. */

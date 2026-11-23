@@ -40,6 +40,27 @@ const WALL_COLOR = '#ded9d0';
 /** Петното, с което се отбелязва стаята, в която стоиш. */
 const HERE = '#9ab7c6';
 
+/**
+ * Мебелта в макета.
+ *
+ * Чувствително по-топла и по-тъмна от зидовете. Първият опит беше
+ * близо до тях и шкафовете се сливаха със стената — виждаше се, че
+ * нещо стърчи, но не и че е мебел. Макетът е за разпределението:
+ * мебелта трябва да личи от пръв поглед.
+ *
+ * Долният ред е по-тъмен от горния — така двата пласта се четат като
+ * два. Плотът е тъмна черта отгоре; при този мащаб тя върши работата
+ * на цяла кухня.
+ */ // ПРОВЕРИ при дизайнер
+const STUFF: Record<string, string> = {
+  base: '#b7a993',
+  upper: '#c8bda9',
+  worktop: '#6f6a62',
+  appliance: '#a3a9ad',
+  wood: '#a8835f',
+  soft: '#8b9298',
+};
+
 function litColor(hex: string, amount: number): string {
   const n = parseInt(hex.slice(1), 16);
   const channel = (shift: number) =>
@@ -52,6 +73,9 @@ function fillOf(face: Face): string {
   if (face.role === 'wall') return litColor(WALL_COLOR, shade(face.normal));
   if (face.code === 'current') return litColor(HERE, shade(face.normal));
 
+  const stuff = face.code ? STUFF[face.code] : undefined;
+  if (stuff) return litColor(stuff, shade(face.normal));
+
   /*
    * Готовата стая е с по-топъл под. Разликата е малка нарочно: тя
    * казва „тази е свършена", без да се бие с петното „тук сте".
@@ -63,7 +87,16 @@ function fillOf(face: Face): string {
   return litColor(base, shade(face.normal) * (done ? 1.1 : 1));
 }
 
-export function FlatScene({ flat, currentId }: { flat: Flat; currentId: string | null }) {
+export function FlatScene({
+  flat,
+  currentId,
+  onPick,
+}: {
+  flat: Flat;
+  currentId: string | null;
+  /** Щракване по стая в макета. Без него макетът е само за гледане. */
+  onPick?: (id: string) => void;
+}) {
   const { x: goalX, z: goalZ } = flatTarget(flat, currentId);
   const whole = flatTarget(flat, null);
   const [eye, setEye] = useState({ x: goalX, z: goalZ });
@@ -139,25 +172,35 @@ export function FlatScene({ flat, currentId }: { flat: Flat; currentId: string |
         role="img"
         aria-label={
           current
-            ? `Макет на жилището. Сега сте в: ${roomName(current)}.`
+            ? `Макет на жилището. Сега сте в: ${roomName(current)}.` +
+              (onPick ? ' Щракнете по помещение, за да отидете в него.' : '')
             : 'Макет на жилището отгоре.'
         }
       >
-        {faces.map((face) => (
-          <polygon
-            key={face.key}
-            points={face.corners
-              .map((corner) => {
-                const p = project(corner, camera);
-                return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
-              })
-              .join(' ')}
-            fill={fillOf(face)}
-            stroke={face.role === 'wall' ? 'none' : 'rgba(0,0,0,0.07)'}
-            strokeWidth="1"
-            vectorEffect="non-scaling-stroke"
-          />
-        ))}
+        {faces.map((face) => {
+          /*
+           * Хваща се подът, не мебелта: тя стърчи над зидовете и крие
+           * съседни стаи, а човек сочи стаята, не шкафа в нея.
+           */
+          const room = face.role === 'floor' ? (face.moduleId ?? null) : null;
+          return (
+            <polygon
+              key={face.key}
+              points={face.corners
+                .map((corner) => {
+                  const p = project(corner, camera);
+                  return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+                })
+                .join(' ')}
+              fill={fillOf(face)}
+              stroke={face.role === 'wall' ? 'none' : 'rgba(0,0,0,0.07)'}
+              strokeWidth="1"
+              vectorEffect="non-scaling-stroke"
+              onClick={room && onPick ? () => onPick(room) : undefined}
+              className={room && onPick ? 'cursor-pointer' : undefined}
+            />
+          );
+        })}
       </svg>
 
       <figcaption className="mt-2 flex flex-wrap items-baseline justify-between gap-2 px-1 text-xs text-muted">
@@ -170,7 +213,12 @@ export function FlatScene({ flat, currentId }: { flat: Flat; currentId: string |
               }`
             : 'Изберете стая от плана'}
         </span>
-        <span>Зидовете са снижени, за да се вижда вътре.</span>
+        <span>
+          {flat.rooms.some((r) => r.project)
+            ? 'Зидовете са снижени, за да се вижда мебелта вътре.'
+            : 'Зидовете са снижени, за да се вижда вътре.'}
+          {onPick ? ' Щракнете по помещение, за да отидете в него.' : ''}
+        </span>
       </figcaption>
     </figure>
   );

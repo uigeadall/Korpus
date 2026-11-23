@@ -269,7 +269,16 @@ export function FlatEditor() {
           </div>
 
           <div className="card overflow-hidden p-3">
-            <FlatScene flat={flat} currentId={current?.id ?? null} />
+            <FlatScene
+              flat={flat}
+              currentId={current?.id ?? null}
+              /* Макетът става вход, не само изглед: щракването по
+                 помещение води в него, както и щракването в плана. */
+              onPick={(id) => {
+                const room = flat.rooms.find((r) => r.id === id);
+                goTo(id, room ? `${roomName(room)}, ${areaOf(room).toFixed(1)} квадрата.` : undefined);
+              }}
+            />
           </div>
 
           {/*
