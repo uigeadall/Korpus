@@ -49,7 +49,7 @@ src/lib/                 правилата — без React
   drop3d.ts              къде ляга модул, пуснат с показалец в обема
   scene3d.ts             обемите на стаята; flat-scene.ts — на жилището
   drawing.ts             геометрията на фронталния чертеж
-  share.ts               проектът, побран в линк
+  share.ts               проектът, побран в линк; flat-share.ts — жилището
   pdf/, xlsx.ts          файловете за клиента и за цеха
 
 src/components/

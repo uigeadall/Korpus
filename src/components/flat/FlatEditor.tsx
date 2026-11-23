@@ -12,7 +12,7 @@
  * останалите влизат в плана, защото без тях жилището не е жилище.
  */
 
-import { useEffect, useReducer } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 import {
   FLAT,
   FLAT_ROOM_LABEL,
@@ -44,6 +44,7 @@ import {
   saveHere,
 } from './flatState';
 import { defaultFlat } from '@/lib/flat';
+import { decodeFlat, encodeFlat } from '@/lib/flat-share';
 
 const KINDS: FlatRoomKind[] = ['kitchen', 'living', 'bedroom', 'corridor', 'bath', 'hall', 'other'];
 
@@ -115,6 +116,23 @@ export function FlatEditor() {
    * редът е важен, иначе зареденият чертеж я застъпва.
    */
   useEffect(() => {
+    /*
+     * Донесено по линк жилище има превес над запазеното: щом някой
+     * отвори чужд чертеж, иска да види него, не своя отпреди. Затова
+     * се гледа първо и записът не се пипа, докато човек не промени
+     * нещо — тогава този чертеж става негов.
+     */
+    const donesen = new URLSearchParams(window.location.search).get('j');
+    const otLink = donesen ? decodeFlat(donesen) : null;
+    if (otLink) {
+      dispatch({ type: 'load', value: otLink });
+      show({
+        currentId: otLink.rooms[0]?.id,
+        said: `Отворено жилище от линк: ${otLink.rooms.length} помещения.`,
+      });
+      return;
+    }
+
     const saved = loadFlat();
     if (saved?.rooms.length) dispatch({ type: 'load', value: saved });
 
@@ -139,6 +157,27 @@ export function FlatEditor() {
       window.history.replaceState(null, '', '/jilishte');
     }
   }, []);
+
+  /**
+   * Линкът към жилището.
+   *
+   * Клавиатурата не носи адресна лента, а човек не може да препише
+   * хиляда и четиристотин знака — затова копирането е бутон. Откаже ли
+   * хранилището (частен режим, отказано разрешение), казваме го,
+   * вместо да се правим, че е станало.
+   */
+  const [kopirano, setKopirano] = useState(false);
+  const kopirajLink = () => {
+    const url = `${window.location.origin}/jilishte?j=${encodeFlat(flat)}`;
+    navigator.clipboard.writeText(url).then(
+      () => {
+        setKopirano(true);
+        show({ said: 'Линкът към жилището е копиран.' });
+        window.setTimeout(() => setKopirano(false), 2500);
+      },
+      () => show({ said: 'Копирането не стана. Вземете адреса от лентата горе.' }),
+    );
+  };
 
   const changed = history.past.length > 0;
   useEffect(() => {
@@ -279,6 +318,22 @@ export function FlatEditor() {
                 {progress.done === progress.total ? ' — цялото жилище е готово' : ''}
               </p>
             )}
+
+            {/*
+              Докато няма база, това е единственият начин жилището да
+              излезе от този браузър — и да стигне до нас.
+            */}
+            <button
+              type="button"
+              onClick={kopirajLink}
+              className="btn btn-quiet mt-3 w-full text-[13px]"
+            >
+              {kopirano ? 'Линкът е копиран' : 'Копирайте линк към жилището'}
+            </button>
+            <p className="mt-2 text-[11px] leading-relaxed text-muted">
+              Линкът носи целия чертеж и обзаведените стаи. Отваря се на друго устройство и
+              може да се прати на нас.
+            </p>
           </section>
 
           <section className="card p-4">
