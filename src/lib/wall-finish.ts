@@ -149,3 +149,43 @@ export function planeArea(plane: WallPlane, corners: Vec3[]) {
   const vs = corners.map((c) => c.y);
   return { u0: Math.min(...us), u1: Math.max(...us), v0: Math.min(...vs), v1: Math.max(...vs) };
 }
+
+/* --- Повърхност с шарка: стена или под --------------------------------- */
+
+/**
+ * Каквото трябва на рисуването, за да положи шарка върху лице: правоъгълник
+ * в мерките на шарката и как точка от него се връща в стаята.
+ */
+export interface Surface {
+  /** За паметта на готовите шарки — коя повърхност е. */
+  key: string;
+  /** Различава стените една от друга, за да не са огледално еднакви. */
+  seed: number;
+  area: { u0: number; u1: number; v0: number; v1: number };
+  at: (u: number, v: number) => Vec3;
+}
+
+export function wallSurface(plane: WallPlane, corners: Vec3[]): Surface {
+  return {
+    key: plane.side,
+    seed: WALL_SIDES.indexOf(plane.side) * 101,
+    area: planeArea(plane, corners),
+    at: (u, v) => planePoint(plane, u, v),
+  };
+}
+
+/** Горното лице на пода: `u` по ширината на стаята, `v` в дълбочина. */
+export function isFloorTop(role: string, normal: Vec3): boolean {
+  return role === 'floor' && normal.y > 0.99;
+}
+
+export function floorSurface(corners: Vec3[]): Surface {
+  const xs = corners.map((c) => c.x);
+  const zs = corners.map((c) => c.z);
+  return {
+    key: 'floor',
+    seed: 7,
+    area: { u0: Math.min(...xs), u1: Math.max(...xs), v0: Math.min(...zs), v1: Math.max(...zs) },
+    at: (u, v) => ({ x: u, y: 0, z: v }),
+  };
+}

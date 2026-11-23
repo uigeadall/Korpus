@@ -34,6 +34,8 @@ import {
   parseOgled,
 } from '@/lib/ogled';
 import { brand } from '@/config/brand';
+import { finishById } from '@/config/wall-finishes';
+import { floorById } from '@/config/floor-finishes';
 
 const metres = (mm: number) => (mm / 1000).toFixed(2).replace('.', ',');
 
@@ -69,6 +71,8 @@ export function summaryText(kitchen: Kitchen, link: string, ogled: Ogled | null 
     `Модули: ${wall.base.length + wall.upper.length} броя`,
     `Фасади: ${kitchen.materials.facade.color}`,
     `Корпус: ${kitchen.materials.carcassColor}`,
+    ...(kitchen.wallFinish ? [`Стени: ${finishById(kitchen.wallFinish.all).name}`] : []),
+    ...(floorById(kitchen.floorFinish) ? [`Под: ${floorById(kitchen.floorFinish)!.name}`] : []),
     ...(things ? [`Обзавеждане: ${things}`] : []),
     ``,
     `Проектът се отваря тук:`,

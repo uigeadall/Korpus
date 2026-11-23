@@ -5,6 +5,7 @@ import {
   MODULES,
   WINDOW,
   computeKitchen,
+  maxShelves,
   emptyKitchen,
   kitchenDoor,
   kitchenRoom,
@@ -615,9 +616,12 @@ describe('връщане назад', () => {
 
   it('историята не расте без край', () => {
     const wallId = start().present.walls[0].id!;
-    let h = start();
+    let h = historyReducer(start(), { type: 'add', wallId, row: 'base', kind: 'door' });
+    const id = h.present.walls[0].base[0].id;
+    // Сто шкафа на една стена вече не минават (виж „мебелта остава в
+    // стената"), затова историята се пълни с разрешени промени.
     for (let i = 0; i < HISTORY_LIMIT + 20; i++) {
-      h = historyReducer(h, { type: 'add', wallId, row: 'base', kind: 'door' });
+      h = historyReducer(h, { type: 'hinge', id, value: i % 2 ? 'right' : 'left' });
     }
     expect(h.past).toHaveLength(HISTORY_LIMIT);
   });
@@ -627,18 +631,21 @@ describe('рафтове от обемния изглед', () => {
   it('задава брой и го стига до разкроя', () => {
     const k = run([{ type: 'add', row: 'base', kind: 'door' }]);
     const id = base(k)[0].id;
-    const four = reducer(k, { type: 'shelves', id, value: 4 });
-    expect(base(four)[0].shelves).toBe(4);
+    // Колкото събира шкафът — таванът е по височината му (`maxShelves`).
+    const n = maxShelves('door');
+    const full = reducer(k, { type: 'shelves', id, value: n });
+    expect(base(full)[0].shelves).toBe(n);
     const cut = (x: typeof k) =>
       computeKitchen(x).parts.filter((p) => /рафт/i.test(p.name)).length;
-    expect(cut(four)).toBe(cut(k) + 3);
+    expect(cut(full)).toBe(cut(k) + n - 1);
   });
 
   it('не приема безсмислени числа', () => {
     const k = run([{ type: 'add', row: 'base', kind: 'door' }]);
     const id = base(k)[0].id;
     expect(base(reducer(k, { type: 'shelves', id, value: -5 }))[0].shelves).toBe(0);
-    expect(base(reducer(k, { type: 'shelves', id, value: 999 }))[0].shelves).toBe(10);
+    // Не десет за всеки шкаф, а колкото се побират на височина.
+    expect(base(reducer(k, { type: 'shelves', id, value: 999 }))[0].shelves).toBe(maxShelves('door'));
   });
 
   it('поредните промени се сливат в една стъпка назад', () => {

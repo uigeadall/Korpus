@@ -345,7 +345,39 @@ export const SHELVES: Record<ModuleKind, number> = {
 export function acceptsShelves(kind: ModuleKind): boolean {
   const style = MODULES[kind].facade?.style;
   if (!MODULES[kind].hasCarcass) return false;
+  if (NO_EXTRA_SHELVES.has(kind)) return false;
   return style === 'doors' || style === 'split' || style === 'open' || style === 'panel';
+}
+
+/**
+ * Модули с корпус, в които рафт пак няма място: хладилникът заема
+ * колоната, аспираторът — шкафа над себе си, а стенният рафт и пейката
+ * са самата дъска. Пуснат там, рафтът стърчеше встрани от тях.
+ */
+const NO_EXTRA_SHELVES: ReadonlySet<ModuleKind> = new Set<ModuleKind>([
+  'column',
+  'hood',
+  'wallshelf',
+  'bench',
+]);
+
+/** Най-малкото разстояние между два рафта — по-гъсто не се слага нищо. */ // ПРОВЕРИ
+export const SHELF_MIN_GAP = 150;
+
+/**
+ * Колко рафта най-много събира модулът: вътрешната височина, разделена
+ * на най-малкото разстояние. Без таван рафтовете растяха до десет и в
+ * долния шкаф се редяха един върху друг.
+ */
+export function maxShelves(kind: ModuleKind): number {
+  if (!acceptsShelves(kind)) return 0;
+  const inner = moduleGeometry(kind).height - 2 * DIM.T;
+  return Math.max(0, Math.floor(inner / SHELF_MIN_GAP) - 1);
+}
+
+/** Броят рафтове, вкаран в границите на модула. */
+export function clampShelves(kind: ModuleKind, value: number): number {
+  return Math.max(0, Math.min(maxShelves(kind), Math.round(value)));
 }
 
 /**
@@ -1141,6 +1173,11 @@ export interface Kitchen {
    * проектите отпреди него — тогава стените са както винаги.
    */
   wallFinish?: WallFinishChoice;
+  /**
+   * С какво е покрит подът — ключ от `config/floor-finishes`. Липсва —
+   * подът е такъв, какъвто беше. Само за картината, като стените.
+   */
+  floorFinish?: string;
   rulesVersion: string;
 }
 

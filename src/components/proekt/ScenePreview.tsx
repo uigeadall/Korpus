@@ -20,7 +20,8 @@ import {
   viewBoxFor,
   visibleFaces,
 } from '@/lib/scene3d';
-import { finishIdFor, innerWallPlane } from '@/lib/wall-finish';
+import { finishIdFor, floorSurface, innerWallPlane, isFloorTop, wallSurface } from '@/lib/wall-finish';
+import { floorById } from '@/config/floor-finishes';
 import { litColor, paletteFor } from '@/components/configurator/Scene3D';
 import { WallSurface } from '@/components/configurator/WallSurface';
 
@@ -29,7 +30,9 @@ export function ScenePreview({ kitchen, label }: { kitchen: Kitchen; label: stri
     const room = kitchenRoom(kitchen);
     const result = computeKitchen(kitchen);
     const cam = DEFAULT_CAMERA(room);
-    const boxes = sceneFor(kitchen, room, result.placed, kitchen.materials.worktop, kitchen.materials.opening);
+    const all = sceneFor(kitchen, room, result.placed, kitchen.materials.worktop, kitchen.materials.opening);
+    // Избран под носи своята шарка — фугите на подразбиращия се не трябват.
+    const boxes = kitchen.floorFinish ? all.filter((b) => b.role !== 'seam') : all;
     return { room, cam, faces: visibleFaces(boxes, cam), viewBox: viewBoxFor(boxes, cam) };
   }, [kitchen]);
 
@@ -46,6 +49,21 @@ export function ScenePreview({ kitchen, label }: { kitchen: Kitchen; label: stri
       {faces.map((face) => {
         const amount = shade(face.normal);
         const warmth = tint(face.normal);
+        const floor = floorById(kitchen.floorFinish);
+        if (floor && isFloorTop(face.role, face.normal)) {
+          return (
+            <WallSurface
+              key={face.key}
+              face={face}
+              surface={floorSurface(face.corners)}
+              finish={floor}
+              cam={cam}
+              top={litColor(floor.hex, Math.min(1.2, amount * 1.07), warmth)}
+              bottom={litColor(floor.hex, amount * 0.9, warmth)}
+              light={(hex) => litColor(hex, amount, warmth)}
+            />
+          );
+        }
         const plane = face.role === 'wall' ? innerWallPlane(face.corners, face.normal, room) : null;
         if (plane) {
           const finish = finishById(finishIdFor(kitchen.wallFinish, plane.side));
@@ -53,7 +71,7 @@ export function ScenePreview({ kitchen, label }: { kitchen: Kitchen; label: stri
             <WallSurface
               key={face.key}
               face={face}
-              plane={plane}
+              surface={wallSurface(plane, face.corners)}
               finish={finish}
               cam={cam}
               top={litColor(finish.hex, Math.min(1.2, amount * 1.07), warmth)}

@@ -14,8 +14,9 @@
  */
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useFitToViewport } from '@/components/useFitToViewport';
+import { ScrollMore } from '@/components/ScrollMore';
 import {
   DOOR,
   MODULES,
@@ -45,7 +46,10 @@ import { NEEDS_KEY, layoutFor } from '@/lib/autolayout';
 import { CARCASS_COLORS, FACADE_COLORS, WORKTOPS } from '@/config/materials';
 import { chooseFinish } from '@/lib/wall-finish';
 import { WallFinishPanel } from '@/components/configurator/WallFinishPanel';
-import { type Action, reducer } from '@/components/configurator/state';
+import { FloorFinishPanel } from '@/components/configurator/FloorFinishPanel';
+import { type Action, NO_ROOM, blockedByWall, reducer } from '@/components/configurator/state';
+import { useFlash } from '@/components/useFlash';
+import { rotateInside } from '@/lib/fit';
 import { ActionBar } from '@/components/configurator/ActionBar';
 import { ModulePalette } from '@/components/configurator/ModulePalette';
 import { Timeline } from '@/components/configurator/Timeline';
@@ -62,8 +66,8 @@ import {
   type Answers,
   ANSWERS_KEY,
   START,
-  answers,
   fromKitchen,
+  guardedAnswers,
   furnitureFrom,
   place,
 } from './answers';
@@ -118,7 +122,8 @@ export function ProjectWizard() {
   );
   // Редуктор, а не `useState`: връщането от браузъра става в ефект, а
   // setState там върти излишен цикъл рендери.
-  const [a, set] = useReducer(answers, START);
+  // Пази мебелта в стаята — виж `guardedAnswers`.
+  const [a, set] = useReducer(guardedAnswers, START);
 
   /*
    * Ако сме дошли от чертежа на жилището, помним коя стая обзавеждаме.
@@ -241,7 +246,6 @@ export function ProjectWizard() {
     }
     set(templatePatch(t));
     goTo(3);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   /**
@@ -252,7 +256,12 @@ export function ProjectWizard() {
    * Резултатът става „донесен проект": оттук нататък въпросите не го
    * пренареждат, докато човек не пипне някой от тях.
    */
+  const [notice, flash] = useFlash();
   const edit = (action: Action) => {
+    if (blockedByWall(furniture, action)) {
+      flash(NO_ROOM);
+      return;
+    }
     const next = reducer(furniture, action);
     if (!a.byHand) {
       set({ opened: next });
@@ -287,9 +296,19 @@ export function ProjectWizard() {
    * Дясната колона се плъзга сама. Нова стъпка се отваря отгоре — иначе
    * „Напред", натиснат най-долу, показва дъното на следващата стъпка.
    */
-  const asideRef = useFitToViewport<HTMLElement>();
+  const asideRef = useFitToViewport<HTMLElement>(72, 16, 'exact');
+  const workRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     asideRef.current?.scrollTo({ top: 0 });
+    /*
+     * На широк екран новата стъпка поставя работната площ под менюто:
+     * обемът и въпросите са изцяло на екрана, двете колони свършват на
+     * една линия. Първата стъпка оставя заглавието да се вижда.
+     */
+    const work = workRef.current;
+    if (step === 0 || !work || !window.matchMedia('(min-width: 64rem)').matches) return;
+    const top = work.getBoundingClientRect().top + window.scrollY - 72;
+    if (Math.abs(window.scrollY - top) > 4) window.scrollTo({ top, behavior: 'smooth' });
   }, [step, asideRef]);
 
   /** Кои модули са маркирани в лентата. */
@@ -370,18 +389,40 @@ export function ProjectWizard() {
       {/* Поне колкото екрана: така дясната колона, която се нагласява към
           видимото при скрол, расте вътре в тази рамка и не мени
           височината на страницата — иначе всичко подскача в края ѝ. */}
-      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:min-h-[calc(100dvh-5.5rem)] lg:grid-cols-[minmax(0,1fr)_380px]">
+      <div
+        ref={workRef}
+        className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:min-h-[calc(100dvh-5.5rem)] lg:grid-cols-[minmax(0,1fr)_380px]"
+      >
         {/* Скролира се сама, щом надрасне прозореца — иначе закованата
             колона крие долния си край (виж и конфигуратора). Отгоре
             стои на височината на менюто, а не под него. */}
-        <div className="space-y-3 lg:sticky lg:top-[4.5rem] lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto">
+        {/* Двете колони са еднакво високи и свършват на една линия. Картата
+            с обема се разпъва до дъното, вместо под нея да остава бяло. */}
+        {/* Постоянна височина: картината не бива да „диша", докато
+            страницата се превърта. */}
+        <div
+          data-kolona="lyava"
+          className="space-y-3 lg:flex lg:h-[calc(100dvh-5.5rem)] lg:flex-col lg:overflow-y-auto"
+        >
           {/*
             Модулите стоят до самата картина, а не в чужда колона: мястото
             им е там, където се пускат. Вляво обемът, вдясно каталогът —
             на тесен екран падат един под друг.
           */}
-          <div className="card grid grid-cols-[minmax(0,1fr)] overflow-hidden bg-gradient-to-b from-surface to-surface-sunken sm:grid-cols-[minmax(0,1fr)_186px]">
+          <div className="card relative grid grid-cols-[minmax(0,1fr)] overflow-hidden bg-gradient-to-b from-surface to-surface-sunken sm:grid-cols-[minmax(0,1fr)_186px] lg:min-h-[300px] lg:flex-1">
+            {/* Върху картината, не под нея — иначе съобщението свива
+                картата и стаята подскача. */}
+            {notice && (
+              <p
+                role="status"
+                className="pointer-events-none absolute top-14 left-3 z-10 max-w-[min(26rem,60%)] rounded-field bg-surface/95 px-3 py-2 text-xs leading-relaxed text-danger shadow-sm ring-1 ring-border"
+              >
+                {notice}
+              </p>
+            )}
             <Scene3D
+              fill
+              className="aspect-[7/4] sm:aspect-auto"
               kitchen={furniture}
               room={room}
               placed={result.placed}
@@ -400,6 +441,7 @@ export function ProjectWizard() {
               }}
               onDropCancel={() => setDragKind(null)}
               onMoveModule={(id, toIndex) => edit({ type: 'reorder', id, toIndex })}
+              onSlideModule={(id, left) => edit({ type: 'slide', id, left })}
               onRemoveModule={(id) => edit({ type: 'remove', id })}
               onShelves={(id, value) =>
                 set((p) => ({ shelves: { ...p.shelves, [id]: value } }))
@@ -411,8 +453,9 @@ export function ProjectWizard() {
               }
               onRotateFurnishing={(id) =>
                 set((p) => ({
+                  // Завъртяно до стената, изделието се придърпва навътре.
                   furnishings: p.furnishings.map((f) =>
-                    f.id === id ? { ...f, rotation: (f.rotation + Math.PI / 2) % (Math.PI * 2) } : f,
+                    f.id === id ? rotateInside(f, { width: p.roomWidth, depth: p.roomDepth }) : f,
                   ),
                 }))
               }
@@ -427,7 +470,7 @@ export function ProjectWizard() {
               разпъва цялата страница настрани. На телефон това махаше
               `width=device-width` и сайтът се отваряше смален.
             */}
-            <div className="min-w-0 border-t border-border bg-surface p-2.5 sm:max-h-none sm:overflow-y-auto sm:border-t-0 sm:border-l">
+            <div className="min-w-0 border-t border-border bg-surface p-2.5 sm:max-h-none sm:min-h-0 sm:overflow-y-auto sm:border-t-0 sm:border-l">
               <ModulePalette
                 room={a.room}
                 dragging={dragKind}
@@ -498,7 +541,8 @@ export function ProjectWizard() {
             )}
             <PriceEstimate kitchen={furniture} result={result} compact />
             <span className="ml-auto">
-              Щракнете шкаф, за да се отвори. Рафтовете се влачат вътре и влизат в разбивката.
+              Щракнете шкаф, за да се отвори; колелцето или два пръста приближават стаята.
+              Рафтовете се влачат вътре и влизат в разбивката.
             </span>
           </div>
 
@@ -525,7 +569,7 @@ export function ProjectWizard() {
           ref={asideRef}
           // Скролът ѝ не се предава на страницата: стигне ли дъното си,
           // спира, вместо да повлече и обема.
-          className="space-y-4 lg:sticky lg:top-[4.5rem] lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1"
+          className="space-y-4 lg:h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-width:thin]"
         >
           {step === 0 && (
             <Card title="Коя стая обзавеждаме?">
@@ -887,6 +931,13 @@ export function ProjectWizard() {
                 />
               </Card>
 
+              <Card title="Под">
+                <FloorFinishPanel
+                  value={furniture.floorFinish}
+                  onChoose={(id) => set({ floorFinish: id ?? undefined })}
+                />
+              </Card>
+
               {a.room === 'kitchen' && (
                 <Card title="Плот">
                   <div className="grid grid-cols-2 gap-2">
@@ -1034,6 +1085,27 @@ export function ProjectWizard() {
                 </div>
               )}
 
+              {/*
+                Направено без чертежа — готовата стая може да влезе в
+                жилището: в чакаща стая от същия вид или като нова. Там се
+                вижда с мебелта си в макета на цялото жилище.
+              */}
+              {!fromFlat && cabinets > 0 && (
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/jilishte?dobavi=${encodeProject(furniture)}`)}
+                    className="btn btn-quiet w-full py-3"
+                  >
+                    Добавете я в жилището
+                  </button>
+                  <p className="text-[13px] leading-relaxed text-muted">
+                    Стаята влиза в чертежа на жилището, отметната като готова, и се вижда там с
+                    мебелта си. Можете да се върнете в нея по всяко време.
+                  </p>
+                </div>
+              )}
+
               <SendProject kitchen={furniture} />
 
             </>
@@ -1058,6 +1130,7 @@ export function ProjectWizard() {
               </button>
             )}
           </div>
+          <ScrollMore target={asideRef} />
         </aside>
       </div>
     </main>
@@ -1094,9 +1167,15 @@ function Slider({
 }) {
   return (
     <label className="block">
-      <span className="flex items-baseline justify-between gap-2">
+      {/* В тясна колона името и числото са едно под друго — иначе и двете
+          се чупят на по два реда, а „м" се откъсва от числото. */}
+      <span
+        className={
+          compact ? 'flex flex-col gap-0.5' : 'flex items-baseline justify-between gap-2'
+        }
+      >
         <span className="text-sm text-muted">{label}</span>
-        <span className={`dim tabular-nums ${compact ? 'text-sm' : 'text-xl'}`}>
+        <span className={`dim tabular-nums whitespace-nowrap ${compact ? 'text-sm' : 'text-xl'}`}>
           {metres(value)} м
         </span>
       </span>
@@ -1361,9 +1440,10 @@ function OpeningControls({
           </button>
         </>
       ) : (
-        <div className="mt-4 grid grid-cols-2 gap-4">
+        // Ширините са четири и искат цял ред — в половин колона „1000" опираше в ръба.
+        <div className="mt-4 space-y-4">
           <div>
-            <span className="text-sm text-muted">Ширина</span>
+            <span className="text-sm text-muted">Ширина, мм</span>
             <div className="mt-2 grid grid-cols-4 gap-1.5">
               {DOOR.WIDTHS.map((w) => (
                 <Choice key={w} selected={door.width === w} onClick={() => editDoor({ width: w })}>
@@ -1374,7 +1454,7 @@ function OpeningControls({
           </div>
           <div>
             <span className="text-sm text-muted">Панти</span>
-            <div className="mt-2 grid grid-cols-2 gap-1.5">
+            <div className="mt-2 grid grid-cols-2 gap-1.5 sm:max-w-[60%]">
               {(['left', 'right'] as const).map((hinge) => (
                 <Choice
                   key={hinge}

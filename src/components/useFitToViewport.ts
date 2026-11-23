@@ -14,7 +14,15 @@ import { useEffect, useRef } from 'react';
  * Работи само на широк екран. На телефон колоните са една под друга и
  * страницата скролира като страница.
  */
-export function useFitToViewport<T extends HTMLElement>(top = 72, bottom = 16) {
+export function useFitToViewport<T extends HTMLElement>(
+  top = 72,
+  bottom = 16,
+  /**
+   * `max` — най-много до дъното; `exact` — точно до дъното. Двете колони
+   * с `exact` са еднакво високи и свършват на една линия.
+   */
+  mode: 'max' | 'exact' = 'max',
+) {
   const ref = useRef<T>(null);
 
   useEffect(() => {
@@ -25,12 +33,13 @@ export function useFitToViewport<T extends HTMLElement>(top = 72, bottom = 16) {
 
     const fit = () => {
       frame = 0;
+      const prop = mode === 'exact' ? 'height' : 'maxHeight';
       if (!wide.matches) {
-        el.style.maxHeight = '';
+        el.style[prop] = '';
         return;
       }
       const start = Math.max(el.getBoundingClientRect().top, top);
-      el.style.maxHeight = `${Math.max(240, Math.floor(window.innerHeight - start - bottom))}px`;
+      el.style[prop] = `${Math.max(240, Math.floor(window.innerHeight - start - bottom))}px`;
     };
     const ask = () => {
       if (!frame) frame = requestAnimationFrame(fit);
@@ -46,8 +55,9 @@ export function useFitToViewport<T extends HTMLElement>(top = 72, bottom = 16) {
       window.removeEventListener('resize', ask);
       wide.removeEventListener('change', ask);
       el.style.maxHeight = '';
+      el.style.height = '';
     };
-  }, [top, bottom]);
+  }, [top, bottom, mode]);
 
   return ref;
 }

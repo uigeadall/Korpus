@@ -25,6 +25,7 @@ import { type RoomNeeds, DEFAULT_ROOM_NEEDS, layoutFor } from '@/lib/autolayout'
 import { CARCASS_COLORS } from '@/config/materials';
 import { type Furnishing, FURNISHINGS } from '@/lib/furnishings';
 import type { WallFinishChoice } from '@/lib/wall-finish';
+import { fitsNoWorse, keepInside } from '@/lib/fit';
 
 export interface Answers {
   room: RoomKind;
@@ -52,6 +53,8 @@ export interface Answers {
   windows?: RoomWindow[];
   /** Покритието на стените. Липсва — стените са както винаги. */
   wallFinish?: WallFinishChoice;
+  /** Подът. Липсва — подът е както винаги. */
+  floorFinish?: string;
   /**
    * Проект, отворен по линк. Показва се както е дошъл; пипне ли се
    * който и да е въпрос, правилата подреждат наново и това отпада.
@@ -101,6 +104,7 @@ export interface RoomSlice {
   door?: RoomDoor;
   windows?: RoomWindow[];
   wallFinish?: WallFinishChoice;
+  floorFinish?: string;
 }
 
 const SLICE_KEYS = [
@@ -114,6 +118,7 @@ const SLICE_KEYS = [
   'door',
   'windows',
   'wallFinish',
+  'floorFinish',
 ] as const satisfies readonly (keyof RoomSlice)[];
 
 /** Каквото тази стая носи със себе си. */
@@ -129,6 +134,7 @@ export function sliceOf(a: Answers): RoomSlice {
     door: a.door,
     windows: a.windows,
     wallFinish: a.wallFinish,
+    floorFinish: a.floorFinish,
   };
 }
 
@@ -146,8 +152,9 @@ function freshSlice(a: Answers): RoomSlice {
     hand: { base: [], upper: [] },
     shelves: {},
     furnishings: [],
-    // Стените са на стаята: в нова стая те са голи, не като в предишната.
+    // Стените и подът са на стаята: в нова стая те са голи, не като в предишната.
     wallFinish: undefined,
+    floorFinish: undefined,
   };
 }
 
@@ -200,6 +207,7 @@ export function furnitureFrom(a: Answers): Kitchen {
     ],
     furnishings: a.furnishings,
     ...(a.wallFinish ? { wallFinish: a.wallFinish } : {}),
+    ...(a.floorFinish ? { floorFinish: a.floorFinish } : {}),
     materials: {
       ...DEFAULT_MATERIALS,
       carcassColor: a.carcassColor,
@@ -232,6 +240,7 @@ export function fromKitchen(k: Kitchen): Partial<Answers> {
     door: kitchenDoor(k),
     windows: kitchenWindows(k),
     wallFinish: k.wallFinish,
+    floorFinish: k.floorFinish,
     shelves: Object.fromEntries(
       [...wall.base, ...wall.upper]
         .filter((m) => m.shelves !== undefined)
@@ -363,6 +372,13 @@ function freeSpot(a: Answers, kind: Furnishing['kind'], want: { x: number; z: nu
   return want;
 }
 
+/** Рафтовете от отговорите, вписани в шкафовете на готова подредба. */
+function withShelvesIn(walls: Kitchen['walls'], shelves: Record<string, number>): Kitchen['walls'] {
+  const fix = (list: KitchenModule[]) =>
+    list.map((m) => (m.id in shelves && m.shelves !== shelves[m.id] ? { ...m, shelves: shelves[m.id] } : m));
+  return walls.map((w) => ({ ...w, base: fix(w.base), upper: fix(w.upper) }));
+}
+
 export function answers(state: Answers, patch: AnswerPatch): Answers {
   const delta = typeof patch === 'function' ? patch(state) : patch;
   const next = { ...state, ...delta };
@@ -371,11 +387,23 @@ export function answers(state: Answers, patch: AnswerPatch): Answers {
   /*
    * Вратата е на стаята, а не въпрос за мебелта: местенето ѝ не
    * пренарежда шкафовете и затова не бута донесения по линк проект —
-   * само вратата в него. Същото важи за покритието на стените.
+   * само вратата в него. Същото важи за покритието на стените и пода.
+   *
+   * И за рафтовете. Рафт, пуснат в шкаф, е промяна по този шкаф, не
+   * отговор на въпрос. Преди той отменяше донесената подредба и
+   * правилата нареждаха наново — махнатите шкафове се връщаха, а
+   * преместените отиваха по местата си.
    */
   if (
     touched.length > 0 &&
-    touched.every((key) => key === 'door' || key === 'windows' || key === 'wallFinish')
+    touched.every(
+      (key) =>
+        key === 'door' ||
+        key === 'windows' ||
+        key === 'wallFinish' ||
+        key === 'floorFinish' ||
+        key === 'shelves',
+    )
   ) {
     if (state.opened) {
       next.opened = {
@@ -383,6 +411,8 @@ export function answers(state: Answers, patch: AnswerPatch): Answers {
         ...(next.door ? { door: next.door } : {}),
         ...(next.windows ? { windows: next.windows } : {}),
         ...('wallFinish' in delta ? { wallFinish: next.wallFinish } : {}),
+        ...('floorFinish' in delta ? { floorFinish: next.floorFinish } : {}),
+        ...('shelves' in delta ? { walls: withShelvesIn(state.opened.walls, next.shelves) } : {}),
       };
     }
     return next;
@@ -424,4 +454,36 @@ export function answers(state: Answers, patch: AnswerPatch): Answers {
   // нататък подреждат правилата.
   if (!('opened' in delta)) next.opened = undefined;
   return next;
+}
+
+/** Промени по отговорите, които могат да избутат мебелта през стената. */
+const SQUEEZING = ['wallLength', 'roomWidth', 'roomDepth', 'door', 'windows'] as const;
+
+/**
+ * `answers`, но мебелта остава в стаята.
+ *
+ * Скъсена стена, по-тясна стая, врата или прозорец върху наредените
+ * шкафове — всичко това препълва реда и шкафовете излизат през зида.
+ * Такава промяна не минава, както не минава и добавянето на шкаф, за
+ * който няма място. Готовите изделия при по-малка стая се придърпват
+ * навътре, вместо да останат отвън.
+ *
+ * Смяна на стаята и донесен проект не се проверяват: те не стесняват
+ * сегашното, а отварят друго — каквото е било запазено.
+ */
+export function guardedAnswers(state: Answers, patch: AnswerPatch): Answers {
+  const delta = typeof patch === 'function' ? patch(state) : patch;
+  let next = answers(state, delta);
+  if ('room' in delta || 'opened' in delta) return next;
+
+  if ('roomWidth' in delta || 'roomDepth' in delta) {
+    const room = { width: next.roomWidth, depth: next.roomDepth };
+    const inside = next.furnishings.map((f) => keepInside(f, room));
+    if (inside.some((f, i) => f !== next.furnishings[i])) next = { ...next, furnishings: inside };
+  }
+
+  if (!SQUEEZING.some((key) => key in delta)) return next;
+  const before = state.opened ?? furnitureFrom(state);
+  const after = next.opened ?? furnitureFrom(next);
+  return fitsNoWorse(before, after) ? next : state;
 }

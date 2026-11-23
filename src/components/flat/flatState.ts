@@ -13,6 +13,7 @@ import {
   type FlatRoom,
   type FlatRoomKind,
   addRoom,
+  placeProject,
   clampFlatRoom,
   defaultFlat,
   nameFor,
@@ -28,6 +29,17 @@ export type FlatAction =
   | { type: 'remove'; id: string }
   /** Стаята се върна готова от „Направи проект". */
   | { type: 'finish'; id: string; project: string }
+  /** Готов проект отвън — в чакаща стая от вида му или в нова. */
+  | {
+      type: 'place';
+      kind: FlatRoomKind;
+      width: number;
+      depth: number;
+      project: string;
+      id: string;
+      /** Дължината на стената с мебелта — виж `placeProject`. */
+      wallLength?: number;
+    }
   /*
    * Няколко наведнъж. Отделни действия, а не цикъл от единичните:
    * едно дръпване трябва да е една стъпка назад.
@@ -124,6 +136,16 @@ export function flatReducer(flat: Flat, action: FlatAction): Flat {
      */
     case 'finish':
       return withRoom(flat, action.id, (room) => ({ ...room, project: action.project }));
+
+    case 'place':
+      return placeProject(
+        flat,
+        action.kind,
+        { width: action.width, depth: action.depth },
+        action.project,
+        action.id,
+        action.wallLength,
+      ).flat;
 
     case 'unfinish':
       return withRoom(flat, action.id, (room) => {

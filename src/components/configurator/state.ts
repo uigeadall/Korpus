@@ -23,6 +23,7 @@ import {
   kitchenWindows,
   type RowId,
   RULES_VERSION,
+  clampShelves,
   type Wall,
   type WallSide,
   WALL_SIDES,
@@ -36,11 +37,14 @@ import {
   nearestWidth,
   sideLength,
   toOtherRow,
+  kitchenWallOpenings,
   wallSide,
   wallStatus,
 } from '@/lib/cabinet-rules';
 import { fillWidths } from '@/lib/furniture/system';
 import { chooseFinish } from '@/lib/wall-finish';
+import { fitsNoWorse } from '@/lib/fit';
+import { slideRow } from '@/lib/slide';
 
 export type Action =
   | { type: 'wallLength'; wallId: string; value: number }
@@ -67,6 +71,8 @@ export type Action =
   | { type: 'hinge'; id: string; value: HingeSide }
   | { type: 'move'; id: string; dir: -1 | 1 }
   | { type: 'reorder'; id: string; toIndex: number }
+  /** Шкаф плъзнат до точно място по стената — левият му ръб, в мм. */
+  | { type: 'slide'; id: string; left: number }
   | { type: 'moveToRow'; id: string; toIndex: number }
   | { type: 'addWall'; side?: WallSide }
   | { type: 'removeWall'; wallId: string }
@@ -78,6 +84,8 @@ export type Action =
   | { type: 'materials'; value: Partial<Materials> }
   /** Покритие на стена — на всички или само на една. */
   | { type: 'wallFinish'; side: WallSide | 'all'; id: string }
+  /** Подът; `null` го връща какъвто беше. */
+  | { type: 'floorFinish'; id: string | null }
   | { type: 'load'; value: Kitchen }
   | { type: 'reset' };
 
@@ -182,7 +190,32 @@ function rowOfModule(kitchen: Kitchen, id: string): RowId | null {
   return wall.base.some((m) => m.id === id) ? 'base' : 'upper';
 }
 
+/**
+ * Действието, но само ако мебелта остава в стената.
+ *
+ * Шкаф отвъд края на реда минава през страничния зид в обема и прави
+ * реда безкраен. Затова промяна, която препълва ред повече, отколкото е
+ * бил, просто не минава — като бутон, който не се натиска. Донесеното
+ * отвън (`load`) и изчистването (`reset`) не се проверяват: те не
+ * добавят, а заменят.
+ */
 export function reducer(kitchen: Kitchen, action: Action): Kitchen {
+  const next = apply(kitchen, action);
+  if (next === kitchen || action.type === 'load' || action.type === 'reset') return next;
+  return fitsNoWorse(kitchen, next) ? next : kitchen;
+}
+
+/** Отказано ли е действието, защото мебелта не се побира в стената. */
+export function blockedByWall(kitchen: Kitchen, action: Action): boolean {
+  if (action.type === 'load' || action.type === 'reset') return false;
+  const next = apply(kitchen, action);
+  return next !== kitchen && !fitsNoWorse(kitchen, next);
+}
+
+export const NO_ROOM = 'Няма място на стената — махнете или стеснете шкаф, за да влезе още.';
+
+/** Действието каквото е, без проверката за място. */
+function apply(kitchen: Kitchen, action: Action): Kitchen {
   switch (action.type) {
     case 'wallLength': {
       const index = kitchen.walls.findIndex((w) => w.id === action.wallId);
@@ -280,7 +313,8 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
       return withWallOf(kitchen, action.id, (base, upper) => {
         for (const list of [base, upper]) {
           const i = list.findIndex((m) => m.id === action.id);
-          if (i >= 0) list[i] = { ...list[i], shelves: Math.max(0, Math.min(10, action.value)) };
+          // Таванът е по височината на модула — виж `maxShelves`.
+          if (i >= 0) list[i] = { ...list[i], shelves: clampShelves(list[i].kind, action.value) };
         }
       });
 
@@ -425,8 +459,33 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
     case 'materials':
       return { ...kitchen, materials: { ...kitchen.materials, ...action.value } };
 
+    case 'slide': {
+      const index = kitchen.walls.findIndex(
+        (w) => w.base.some((m) => m.id === action.id) || w.upper.some((m) => m.id === action.id),
+      );
+      if (index < 0) return kitchen;
+      const wall = kitchen.walls[index];
+      const slide = slideRow(
+        wall,
+        kitchen.roomKind ?? 'kitchen',
+        kitchenWallOpenings(kitchen, wallSide(wall, index)),
+        action.id,
+        action.left,
+      );
+      if (!slide) return kitchen;
+      const walls = [...kitchen.walls];
+      walls[index] = { ...wall, [slide.row]: slide.modules };
+      return { ...kitchen, walls };
+    }
+
     case 'wallFinish':
       return { ...kitchen, wallFinish: chooseFinish(kitchen.wallFinish, action.side, action.id) };
+
+    case 'floorFinish': {
+      const { floorFinish: _old, ...rest } = kitchen;
+      void _old;
+      return action.id ? { ...rest, floorFinish: action.id } : rest;
+    }
 
     case 'load':
       return migrate(action.value);
@@ -501,6 +560,8 @@ function mergeKey(action: Action): string | null {
       return `shelves:${action.id}`;
     case 'reorder':
       return `reorder:${action.id}`;
+    case 'slide':
+      return `slide:${action.id}`;
     case 'room':
       return 'room';
     case 'door':

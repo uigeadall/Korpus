@@ -38,6 +38,7 @@ import {
 import { CARCASS_COLORS, FACADE_COLORS } from '@/config/materials';
 import { type Furnishing, type FurnishingKind } from './furnishings';
 import { type PackedFinish, packFinish, unpackFinish } from './wall-finish';
+import { floorById } from '@/config/floor-finishes';
 
 /** Версия на записа. Вдига се, ако подредбата по-долу някога се счупи. */
 const VERSION = 1;
@@ -163,6 +164,8 @@ interface Packed {
    * Липсва в линковете отпреди него и при стени по подразбиране.
    */
   c?: PackedFinish;
+  /** Подът. Липсва в линковете отпреди него и при подразбиращия се под. */
+  fl?: string;
 }
 
 const packModule = (m: KitchenModule): PackedModule => {
@@ -250,6 +253,7 @@ export function encodeProject(kitchen: Kitchen): string {
 
   const finish = packFinish(kitchen.wallFinish);
   if (finish) packed.c = finish;
+  if (floorById(kitchen.floorFinish)) packed.fl = kitchen.floorFinish;
 
   return toUrlSafe(JSON.stringify(packed));
 }
@@ -292,6 +296,8 @@ export function decodeProject(code: string): Kitchen | null {
     );
 
     const wallFinish = unpackFinish(p.c);
+    // Непознат под — например от по-нова версия — се отваря като подразбиращия се.
+    const floorFinish = floorById(typeof p.fl === 'string' ? p.fl : null)?.id;
 
     return {
       roomKind: ROOMS[p.r] ?? 'kitchen',
@@ -299,6 +305,7 @@ export function decodeProject(code: string): Kitchen | null {
       ...(door ? { door } : {}),
       ...(windows.length ? { windows } : {}),
       ...(wallFinish ? { wallFinish } : {}),
+      ...(floorFinish ? { floorFinish } : {}),
       walls: [
         {
           id: 'share-wall-1',

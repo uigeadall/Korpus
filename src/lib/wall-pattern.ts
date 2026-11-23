@@ -44,11 +44,11 @@ export type PatternSpec =
       /** Част от плочките в друг тон, 0–1. */
       mix?: number;
     }
-  /** Шахматна дъска от два цвята. */
-  | { kind: 'checker'; size: number; alt: string; grout: string }
-  /** Рибена кост. */
-  /** Рибена кост 2:1 — `h` е късата страна на плочката. */
-  | { kind: 'herringbone'; h: number; grout: string; tones?: string[] }
+  /**
+   * Рибена кост — паркетът. Дъсчица `h` широка и `ratio` пъти по-дълга;
+   * легнала и изправена правят стъпало, стъпалата вървят по диагонал.
+   */
+  | { kind: 'herringbone'; h: number; ratio: number; grout: string; tones?: string[] }
   /** Дъски — обшивка, ламинат. */
   | {
       kind: 'planks';
@@ -335,6 +335,36 @@ export function wallMarks(spec: PatternSpec, area: UvRect, seed = 0): WallMarks 
       if (!spec.offset) {
         const [i0, i1] = span(u0, u1, w);
         for (let i = i0; i <= i1; i++) out.line(spec.grout, thick, [i * w, v0], [i * w, v1]);
+      }
+      break;
+    }
+
+    case 'herringbone': {
+      /*
+       * Стъпалото: легнала [0, k]×[0, 1] и изправена [0, 1]×[1, k + 1], в
+       * къси страни. Стъпалата вървят през (1, 1), а ивиците от тях се
+       * повтарят през (k, −k) — така се покрива всичко без застъпване.
+       */
+      const { h, ratio: k } = spec;
+      const s0 = Math.floor((u0 - v1) / (2 * k * h)) - 2;
+      const s1 = Math.ceil((u1 - v0) / (2 * k * h)) + 2;
+      for (let st = s0; st <= s1; st++) {
+        const n0 = Math.floor((u0 + v0) / (2 * h) - k * 2) - 2;
+        const n1 = Math.ceil((u1 + v1) / (2 * h) + k * 2) + 2;
+        for (let n = n0; n <= n1; n++) {
+          const bu = (n + k * st) * h;
+          const bv = (n - k * st) * h;
+          if (bu > u1 || bv > v1 || bu + k * h < u0 || bv + (k + 1) * h < v0) continue;
+          const lying = rect(bu, bv, bu + k * h, bv + h);
+          const standing = rect(bu, bv + h, bu + h, bv + (k + 1) * h);
+          for (const [i, poly] of [lying, standing].entries()) {
+            for (let e = 0; e < 4; e++) out.line(spec.grout, 0.8, poly[e], poly[(e + 1) % 4], 0.8);
+            if (spec.tones?.length && hash(n * 2 + i, st, seed + 61) < 0.45) {
+              const tone = spec.tones[Math.floor(hash(n * 2 + i, st, seed + 62) * spec.tones.length)];
+              out.fill(tone, poly, 0.55);
+            }
+          }
+        }
       }
       break;
     }

@@ -197,7 +197,7 @@ const PREVIEW = { u0: 0, u1: 1200, v0: 0, v1: 800 };
 const previewCache = new Map<string, React.ReactNode>();
 
 /** Мостра на покритието — същата шарка, която отива в обема, но гледана право. */
-export function FinishPreview({ finish }: { finish: WallFinish }) {
+export function FinishPreview({ finish }: { finish: Pick<WallFinish, 'id' | 'hex' | 'pattern'> }) {
   let node = previewCache.get(finish.id);
   if (!node) {
     const marks = wallMarks(finish.pattern, PREVIEW, 7);

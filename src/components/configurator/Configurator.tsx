@@ -60,10 +60,15 @@ import { RowEditor } from './RowEditor';
 import { RowStatusBar } from './RowStatusBar';
 import { WallTabs } from './WallTabs';
 import { WallFinishPanel } from './WallFinishPanel';
+import { FloorFinishPanel } from './FloorFinishPanel';
 import { useFitToViewport } from '@/components/useFitToViewport';
+import { useFlash } from '@/components/useFlash';
+import { ScrollMore } from '@/components/ScrollMore';
 import { PriceEstimate } from '@/components/proekt/PriceEstimate';
 import {
   type Action,
+  NO_ROOM,
+  blockedByWall,
   canRedo,
   canUndo,
   clampWall,
@@ -85,7 +90,24 @@ export function Configurator() {
     initHistory(sampleKitchen()),
   );
   const kitchen = history.present;
-  const dispatch = dispatchHistory as (a: Action) => void;
+  /*
+   * Всичко минава оттук. Действие, за което няма място на стената, не
+   * минава (виж `reducer`) — и казва защо, вместо да мълчи.
+   */
+  const [notice, flash] = useFlash();
+  // Стабилна обвивка: ефектите, които я ползват, не бива да се
+  // пренавързват при всяка промяна на кухнята.
+  const kitchenNow = useRef(kitchen);
+  useEffect(() => {
+    kitchenNow.current = kitchen;
+  }, [kitchen]);
+  const dispatch = useCallback(
+    (a: Action) => {
+      if (blockedByWall(kitchenNow.current, a)) flash(NO_ROOM);
+      dispatchHistory(a);
+    },
+    [flash],
+  );
 
   // Отбелязва се с редуктор, а не със setState: връщането става вътре в
   // ефект, а setState там върти излишен цикъл рендери.
@@ -99,7 +121,8 @@ export function Configurator() {
   /** Стената, за която се избира покритие — обемът се обръща към нея. */
   const [wallTarget, setWallTarget] = useState<WallSide | null>(null);
   /** Дясната колона се плъзга сама и се побира във видимото. */
-  const asideRef = useFitToViewport<HTMLElement>();
+  // Двете колони са еднакво високи и свършват на една линия.
+  const asideRef = useFitToViewport<HTMLElement>(72, 16, 'exact');
   const selectedId = selected.at(-1) ?? null;
   const setSelectedId = (id: string | null) => setSelected(id ? [id] : []);
   const [view, setView] = useState<ExportView>('cabinet');
@@ -445,7 +468,10 @@ export function Configurator() {
           по-дълга от екрана, крие долния си край — страницата се плъзга
           под нея, но тя не мърда и лентата долу не се стига.
         */}
-        <div className="space-y-3 pb-24 lg:sticky lg:top-[4.5rem] lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto">
+        <div
+          data-kolona="lyava"
+          className="space-y-3 pb-24 lg:h-[calc(100dvh-5.5rem)] lg:overflow-y-auto"
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <WallTabs
               walls={kitchen.walls}
@@ -517,6 +543,12 @@ export function Configurator() {
             onFill={(row: RowId) => wall.id && dispatch({ type: 'fill', wallId: wall.id, row })}
           />
 
+          {notice && (
+            <p role="status" className="rounded-field bg-danger/8 px-4 py-2.5 text-xs text-danger">
+              {notice}
+            </p>
+          )}
+
           {view3d ? (
             <div className="card overflow-hidden bg-gradient-to-b from-surface to-surface-sunken">
               <Scene3D
@@ -536,6 +568,7 @@ export function Configurator() {
                 }}
                 onDropCancel={() => setDragKind(null)}
                 onMoveModule={(id, toIndex) => dispatch({ type: 'reorder', id, toIndex })}
+                onSlideModule={(id, left) => dispatch({ type: 'slide', id, left })}
                 onRemoveModule={(id) => {
                   dispatch({ type: 'remove', id });
                   setSelected((s) => s.filter((x) => x !== id));
@@ -636,7 +669,7 @@ export function Configurator() {
             „Направи проект"). */}
         <aside
           ref={asideRef}
-          className="min-w-0 space-y-3 lg:sticky lg:top-[4.5rem] lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1"
+          className="min-w-0 space-y-3 lg:h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-width:thin]"
         >
           {/*
             Палитрата е най-горе вдясно: оттам се вземат модулите за
@@ -851,6 +884,13 @@ export function Configurator() {
             />
           </Panel>
 
+          <Panel title="Под">
+            <FloorFinishPanel
+              value={kitchen.floorFinish}
+              onChoose={(id) => dispatch({ type: 'floorFinish', id })}
+            />
+          </Panel>
+
           <section className="card p-5">
             <h2 className="font-display text-lg">Готово?</h2>
             <div className="mt-3 flex flex-col gap-2">
@@ -901,6 +941,7 @@ export function Configurator() {
               {result.rulesVersion}.
             </p>
           </section>
+          <ScrollMore target={asideRef} />
         </aside>
       </div>
 

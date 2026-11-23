@@ -3,6 +3,7 @@ import { computeKitchen } from '@/lib/cabinet-rules';
 import { layoutFor } from '@/lib/autolayout';
 import { CARCASS_COLORS, FACADE_COLORS, WORKTOPS } from '@/config/materials';
 import { isKnownFinish } from '@/config/wall-finishes';
+import { floorById } from '@/config/floor-finishes';
 import { START, answers } from './answers';
 import { TEMPLATES, templateKitchen, templatePatch } from './templates';
 
@@ -20,6 +21,7 @@ describe('готовите стаи', () => {
       expect(WORKTOPS.some((w) => w.id === t.worktop), t.id).toBe(true);
       const ids = [t.wallFinish?.all, ...Object.values(t.wallFinish?.sides ?? {})].filter(Boolean);
       for (const id of ids) expect(isKnownFinish(id), `${t.id}: ${id}`).toBe(true);
+      if (t.floorFinish) expect(floorById(t.floorFinish), `${t.id}: ${t.floorFinish}`).not.toBeNull();
     }
   });
 

@@ -62,6 +62,34 @@ describe('шарката на стената', () => {
     expect(segs).toBe(241 + 105);
   });
 
+  it('рибената кост покрива пода без дупки и без застъпване', () => {
+    for (const k of [2, 5]) {
+      // Броят се клетките с размер къса страна; всяка трябва да е заета веднъж.
+      const cells = new Map<string, number>();
+      for (let st = -20; st <= 20; st++) {
+        for (let n = -60; n <= 120; n++) {
+          const bu = n + k * st;
+          const bv = n - k * st;
+          for (let i = 0; i < k; i++) cells.set(`${bu + i},${bv}`, (cells.get(`${bu + i},${bv}`) ?? 0) + 1);
+          for (let j = 1; j <= k; j++) cells.set(`${bu},${bv + j}`, (cells.get(`${bu},${bv + j}`) ?? 0) + 1);
+        }
+      }
+      for (let u = 0; u < 30; u++) {
+        for (let v = 0; v < 30; v++) expect(cells.get(`${u},${v}`), `k=${k} ${u},${v}`).toBe(1);
+      }
+    }
+  });
+
+  it('рибената кост рисува дъсчици по цялата площ и стои в тавана', () => {
+    const marks = wallMarks(
+      { kind: 'herringbone', h: 70, ratio: 5, grout: '#000000', tones: ['#111111'] },
+      { u0: 0, u1: 4200, v0: 0, v1: 3200 },
+    );
+    const segs = marks.lines.reduce((s, l) => s + l.segs.length, 0);
+    expect(segs).toBeGreaterThan(1500);
+    expect(marks.fills.reduce((s, l) => s + l.polys.length, 0)).toBeLessThanOrEqual(FILL_BUDGET);
+  });
+
   it('ламперията стои само долу', () => {
     const marks = wallMarks(
       { kind: 'wainscot', height: 950, panel: 600, lower: '#ffffff', rail: '#000000' },

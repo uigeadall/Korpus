@@ -36,6 +36,8 @@ export interface Template {
   carcassColor: string;
   worktop: WorktopType;
   wallFinish?: WallFinishChoice;
+  /** Подът — ключ от `config/floor-finishes`. */
+  floorFinish?: string;
 }
 
 export const TEMPLATES: readonly Template[] = [
@@ -51,6 +53,7 @@ export const TEMPLATES: readonly Template[] = [
     carcassColor: 'Бял',
     worktop: 'quartz20',
     wallFinish: { all: 'boya-default', sides: { top: 'plochki-metro-white' } },
+    floorFinish: 'pod-laminat-natural',
   },
   {
     id: 'kuhnya-tamna',
@@ -65,6 +68,7 @@ export const TEMPLATES: readonly Template[] = [
     carcassColor: 'Антрацит',
     worktop: 'sintered12',
     wallFinish: { all: 'boya-greige', sides: { top: 'tuhla-red-r' } },
+    floorFinish: 'pod-parket-riba-walnut',
   },
   {
     id: 'kuhnya-malka',
@@ -79,6 +83,7 @@ export const TEMPLATES: readonly Template[] = [
     carcassColor: 'Светъл дъб',
     worktop: 'laminate38',
     wallFinish: { all: 'boya-default', sides: { top: 'plochki-zellige-white' } },
+    floorFinish: 'pod-laminat-grey',
   },
   {
     id: 'spalnya-garderob',
@@ -93,6 +98,7 @@ export const TEMPLATES: readonly Template[] = [
     carcassColor: 'Светъл дъб',
     worktop: 'laminate38',
     wallFinish: { all: 'boya-greige', sides: { left: 'tapet-damask-cream' } },
+    floorFinish: 'pod-kilim-beige',
   },
   {
     id: 'hol-tv',
@@ -106,6 +112,7 @@ export const TEMPLATES: readonly Template[] = [
     carcassColor: 'Светъл дъб',
     worktop: 'laminate38',
     wallFinish: { all: 'boya-pearl', sides: { top: 'darvo-lameli-oak' } },
+    floorFinish: 'pod-parket-riba-oak',
   },
   {
     id: 'banya',
@@ -133,6 +140,7 @@ export const TEMPLATES: readonly Template[] = [
     carcassColor: 'Бял',
     worktop: 'laminate38',
     wallFinish: { all: 'boya-pearl' },
+    floorFinish: 'pod-laminat-grey',
   },
   {
     id: 'koridor',
@@ -146,6 +154,7 @@ export const TEMPLATES: readonly Template[] = [
     carcassColor: 'Бял',
     worktop: 'laminate38',
     wallFinish: { all: 'paneli-lamperia-white' },
+    floorFinish: 'pod-parket-lenti',
   },
 ];
 
@@ -172,6 +181,7 @@ export function templatePatch(t: Template): Partial<Answers> {
     carcassColor: t.carcassColor,
     worktop: t.worktop,
     wallFinish: t.wallFinish,
+    floorFinish: t.floorFinish,
     // Правилата подреждат — шаблонът е отговори, не готова мебел.
     byHand: false,
     hand: { base: [], upper: [] },

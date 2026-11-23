@@ -33,6 +33,7 @@ import {
 import { dropIndex, insertIndexAt } from './drawing';
 import { type Room, type WallSide, alongFrom } from './furniture/room';
 import { type Camera, planePointAt } from './scene3d';
+import { slideRow } from './slide';
 
 /** В коя равнина лежи зидът на дадена стена и къде по оста ѝ стои. */
 export function wallPlane(room: Room, side: WallSide): { axis: 'x' | 'z'; value: number } {
@@ -55,6 +56,8 @@ export interface DropTarget {
   /** Къде наистина ще легне — пресметнато с истинското подреждане. */
   left: number;
   width: number;
+  /** Плъзгане до точно място, не разместване — виж `slideTargetAt`. */
+  slide?: boolean;
 }
 
 const GHOST_ID = '__prizrak__';
@@ -181,3 +184,31 @@ export function dropTargetAt(
 
   return { row, index, left: ghost.x, width: ghost.width };
 }
+
+/**
+ * Къде ще легне шкаф, плъзнат по стената до точно място — по решетката
+ * и до ръбовете на съседите (`lib/slide`). Няма ли свободно място наблизо,
+ * връща null и местенето остава разместване (`moveTargetAt`).
+ */
+export function slideTargetAt(
+  scene: DropScene,
+  moduleId: string,
+  screenX: number,
+  screenY: number,
+  cam: Camera,
+): DropTarget | null {
+  const row: RowId | null = scene.placed.base.some((m) => m.id === moduleId)
+    ? 'base'
+    : scene.placed.upper.some((m) => m.id === moduleId)
+      ? 'upper'
+      : null;
+  if (!row) return null;
+  const m = scene.placed[row].find((x) => x.id === moduleId)!;
+  const plane = wallPlane(scene.room, scene.side);
+  const hit = planePointAt(screenX, screenY, cam, plane.axis, plane.value);
+  if (!hit) return null;
+  const along = alongMm(scene, hit);
+  const s = slideRow(scene.wall, scene.roomKind, scene.openings, moduleId, along - m.width / 2);
+  return s ? { row: s.row, index: -1, left: s.left, width: s.width, slide: true } : null;
+}
+

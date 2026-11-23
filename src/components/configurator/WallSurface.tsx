@@ -1,7 +1,8 @@
 'use client';
 
 /**
- * Вътрешното лице на стена с покритието ѝ — тухли, плочки, дъски, тапет.
+ * Лице с покритие — стена с тухли, плочки, тапет, или под с ламинат,
+ * паркет, килим.
  *
  * Шарката е смятана по самата стена (`lib/wall-pattern`) и тук само се
  * пренася в перспектива. Перспективата пази правите прави, затова всяка
@@ -11,10 +12,9 @@
  */
 
 import { useId } from 'react';
-import type { WallFinish } from '@/config/wall-finishes';
 import { type Camera, type Face, project } from '@/lib/scene3d';
-import { type WallPlane, planeArea, planePoint } from '@/lib/wall-finish';
-import { type Pt, type WallMarks, wallMarks } from '@/lib/wall-pattern';
+import type { Surface } from '@/lib/wall-finish';
+import { type PatternSpec, type Pt, type WallMarks, wallMarks } from '@/lib/wall-pattern';
 
 /*
  * Шарката зависи само от покритието и от парчето стена — не и от
@@ -24,16 +24,15 @@ import { type Pt, type WallMarks, wallMarks } from '@/lib/wall-pattern';
 const cache = new Map<string, WallMarks>();
 const CACHE_LIMIT = 300;
 
-function marksFor(finish: WallFinish, plane: WallPlane, corners: Face['corners']): WallMarks {
-  const area = planeArea(plane, corners);
-  const key = `${finish.id}|${plane.side}|${Math.round(area.u0)}|${Math.round(area.u1)}|${Math.round(
+function marksFor(finish: { id: string; pattern: PatternSpec }, surface: Surface): WallMarks {
+  const { area } = surface;
+  const key = `${finish.id}|${surface.key}|${Math.round(area.u0)}|${Math.round(area.u1)}|${Math.round(
     area.v0,
   )}|${Math.round(area.v1)}`;
   let marks = cache.get(key);
   if (!marks) {
     if (cache.size >= CACHE_LIMIT) cache.clear();
-    const seed = ['top', 'right', 'bottom', 'left'].indexOf(plane.side) * 101;
-    marks = wallMarks(finish.pattern, area, seed);
+    marks = wallMarks(finish.pattern, area, surface.seed);
     cache.set(key, marks);
   }
   return marks;
@@ -41,7 +40,7 @@ function marksFor(finish: WallFinish, plane: WallPlane, corners: Face['corners']
 
 export function WallSurface({
   face,
-  plane,
+  surface,
   finish,
   cam,
   top,
@@ -49,8 +48,8 @@ export function WallSurface({
   light,
 }: {
   face: Face;
-  plane: WallPlane;
-  finish: WallFinish;
+  surface: Surface;
+  finish: { id: string; pattern: PatternSpec };
   cam: Camera;
   /** Основният цвят, осветен горе и долу — както при останалите лица. */
   top: string;
@@ -60,7 +59,7 @@ export function WallSurface({
 }) {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const at = ([u, v]: Pt) => {
-    const p = project(planePoint(plane, u, v), cam);
+    const p = project(surface.at(u, v), cam);
     return `${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
   };
 
@@ -71,10 +70,13 @@ export function WallSurface({
     })
     .join(' ');
 
-  const marks = marksFor(finish, plane, face.corners);
+  const marks = marksFor(finish, surface);
 
   return (
-    <g data-role="wall" data-wall={plane.side}>
+    <g
+      data-role={face.role}
+      {...(face.role === 'wall' ? { 'data-wall': surface.key } : { 'data-floor': finish.id })}
+    >
       <defs>
         <linearGradient id={`${uid}-g`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor={top} />
@@ -84,7 +86,7 @@ export function WallSurface({
           <polygon points={points} />
         </clipPath>
       </defs>
-      <polygon points={points} data-role="wall" fill={`url(#${uid}-g)`} stroke="none" />
+      <polygon points={points} data-role={face.role} fill={`url(#${uid}-g)`} stroke="none" />
       {(marks.fills.length > 0 || marks.lines.length > 0) && (
         <g clipPath={`url(#${uid}-c)`} pointerEvents="none">
           {marks.fills.map((layer, i) => (

@@ -13,12 +13,14 @@ for (const path of ['/proekt', '/konfigurator']) {
     test.skip(info.project.name === 'телефон', 'на телефон колоните са една под друга');
     await otvoriChisto(page, path);
     if (path === '/proekt') {
+      // Новата стъпка сама поставя работната площ под менюто — изчакваме я.
       await page.getByRole('button', { name: /Готова стая: Светла права кухня/ }).click();
-      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(900);
     }
     await page.waitForTimeout(400);
+    const skrolPredi = await page.evaluate(() => window.scrollY);
 
-    const left = page.locator('div.lg\\:sticky').first();
+    const left = page.locator('[data-kolona=lyava]').first();
     const aside = page.locator('aside').first();
     const predi = (await left.boundingBox())!.y;
     const box = (await aside.boundingBox())!;
@@ -29,7 +31,7 @@ for (const path of ['/proekt', '/konfigurator']) {
     await page.waitForTimeout(400);
 
     expect((await left.boundingBox())!.y).toBe(predi);
-    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    expect(await page.evaluate(() => window.scrollY)).toBe(skrolPredi);
     const [top, max] = await aside.evaluate((e) => [e.scrollTop, e.scrollHeight - e.clientHeight]);
     expect(top).toBeGreaterThan(0);
     // Дробната височина на колоната оставя до пиксел до самото дъно.

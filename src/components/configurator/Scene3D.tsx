@@ -22,9 +22,11 @@ import {
   kitchenWallOpenings,
   moduleGeometry,
   shelfCount,
+  maxShelves,
   wallSide,
 } from '@/lib/cabinet-rules';
-import { type DropTarget, dropTargetAt, moveTargetAt } from '@/lib/drop3d';
+import { type DropTarget, dropTargetAt, moveTargetAt, slideTargetAt } from '@/lib/drop3d';
+import { gridStep, wallPoint } from '@/lib/slide';
 import { footprint, type Room, type WallSide } from '@/lib/furniture/room';
 import {
   type Box,
@@ -39,13 +41,27 @@ import {
   sceneFor,
   shade,
   tint,
+  VIEW_ASPECT,
   viewBoxFor,
   visibleFaces,
 } from '@/lib/scene3d';
 import { CARCASS_COLORS, FACADE_COLORS, swatch } from '@/config/materials';
 import { finishById } from '@/config/wall-finishes';
-import { finishIdFor, innerWallPlane } from '@/lib/wall-finish';
+import { finishIdFor, floorSurface, innerWallPlane, isFloorTop, wallSurface } from '@/lib/wall-finish';
+import { floorById } from '@/config/floor-finishes';
 import { WallSurface } from './WallSurface';
+import { roomFor } from '@/lib/fit';
+import { useFlash } from '@/components/useFlash';
+import {
+  type Zoom,
+  closestWidth,
+  deltaForScale,
+  parseViewBox,
+  settle,
+  zoomAmount,
+  zoomStep,
+  zoomedViewBox,
+} from '@/lib/zoom';
 import { FURNISHINGS, halfExtent } from '@/lib/furnishings';
 import { isOperable, moduleSpeech } from '@/lib/speech';
 
@@ -150,6 +166,7 @@ export function Scene3D({
   placed,
   worktop,
   className,
+  fill = false,
   onShelves,
   onMoveFurnishing,
   onRotateFurnishing,
@@ -160,6 +177,7 @@ export function Scene3D({
   onDropModule,
   onDropCancel,
   onMoveModule,
+  onSlideModule,
   onRemoveModule,
 }: {
   kitchen: Kitchen;
@@ -167,6 +185,11 @@ export function Scene3D({
   placed: { base: PlacedModule[]; upper: PlacedModule[] }[];
   worktop: WorktopType;
   className?: string;
+  /**
+   * Картината изпълва кутията, в която стои, вместо да е с постоянна
+   * форма. Кадърът се прави по формата на кутията — без празни ленти.
+   */
+  fill?: boolean;
   /** Нов брой рафтове за този модул. Без него рафтовете не се пипат. */
   onShelves?: (moduleId: string, shelves: number) => void;
   /** Преместване на готово изделие по пода. Без него то не се влачи. */
@@ -186,6 +209,11 @@ export function Scene3D({
   onDropCancel?: () => void;
   /** Разместване на готов шкаф по стената. Без него той само се отваря. */
   onMoveModule?: (moduleId: string, toIndex: number) => void;
+  /**
+   * Плъзгане на шкаф до точно място по стената — левият ръб в мм. С него
+   * шкафът ляга, където го пуснеш, по решетка; без него само се разменя.
+   */
+  onSlideModule?: (moduleId: string, left: number) => void;
   /** Махане на шкаф. Без него щракнатият шкаф няма какво да предложи. */
   onRemoveModule?: (moduleId: string) => void;
 }) {
@@ -281,7 +309,21 @@ export function Scene3D({
     const { id } = under(x, y);
     if (!id) return null;
     const m = moduleById.get(id);
-    return m && acceptsShelves(m.kind) ? id : null;
+    // Пълен шкаф не светва — в него рафт няма къде да влезе.
+    return m && acceptsShelves(m.kind) && shelfCount(m) < maxShelves(m.kind) ? id : null;
+  };
+
+  /** Защо рафтът не влезе — пълен шкаф или място, където рафт няма. */
+  const [shelfNote, noteShelf] = useFlash(2800);
+  const whyNoShelf = (x: number, y: number) => {
+    const { id } = under(x, y);
+    const m = id ? moduleById.get(id) : undefined;
+    if (!m) return;
+    noteShelf(
+      acceptsShelves(m.kind)
+        ? `${m.code ?? m.spec.label} е пълен — най-много ${maxShelves(m.kind)} рафта при тази височина.`
+        : `В „${m.spec.label}" рафт не влиза.`,
+    );
   };
 
   const carryMove = (e: React.PointerEvent) => {
@@ -294,7 +336,10 @@ export function Scene3D({
     setCarrying(false);
     setHover(null);
     const m = id ? moduleById.get(id) : undefined;
-    if (!id || !m) return;
+    if (!id || !m) {
+      whyNoShelf(e.clientX, e.clientY);
+      return;
+    }
     onShelves?.(id, shelfCount(m) + 1);
     // Отваряме го, за да се види какво е влязло вътре.
     setTargets((t) => ({ ...t, [id]: true }));
@@ -326,7 +371,13 @@ export function Scene3D({
   /* --- Камерата ------------------------------------------------------ */
 
   const cam: Camera = { ...camera, target: { ...DEFAULT_CAMERA(room).target } };
-  const boxes = sceneFor(kitchen, room, placed, worktop, kitchen.materials.opening, amounts);
+  /*
+   * Избран под носи своята шарка; фугите на подразбиращия се под тогава
+   * са излишни и само биха минали през паркета.
+   */
+  const floor = floorById(kitchen.floorFinish);
+  const scene = sceneFor(kitchen, room, placed, worktop, kitchen.materials.opening, amounts);
+  const boxes = floor ? scene.filter((b) => b.role !== 'seam') : scene;
   const faces = visibleFaces(boxes, cam);
   const palette = paletteFor(kitchen);
   const gradients = gradientsFor(faces, palette);
@@ -454,7 +505,45 @@ export function Scene3D({
     return paintOrder(boxFaces(box), cam);
   })();
 
+  /** Решетката при влачене на шкаф и колко далеч от ъгъла ще легне. */
+  const grid = (() => {
+    if (!carriedId || !dropScene || !dropAt?.slide) return null;
+    const m = moduleById.get(carriedId);
+    if (!m) return null;
+    const { wall, side } = dropScene;
+    const step = gridStep(wall.length);
+    const near = moduleGeometry('door').depth + 40;
+    const far = near + 420;
+    const lines: { a: { x: number; y: number }; b: { x: number; y: number }; major: boolean }[] = [];
+    for (let a = 0, i = 0; a <= wall.length + 0.5; a += step, i++) {
+      lines.push({
+        a: project(wallPoint(room, side, a, near, 2), cam),
+        b: project(wallPoint(room, side, a, far, 2), cam),
+        major: i % 5 === 0,
+      });
+    }
+    const at = project(wallPoint(room, side, dropAt.left, far + 60, 2), cam);
+    return { lines, at, left: dropAt.left, step };
+  })();
+
+  /** Вдигнатият от палитрата модул няма къде да влезе — сянката е червена. */
+  const noRoom = Boolean(dropKind && dropAt && !roomFor(kitchen, dropWallIndex, dropKind));
+
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.pointerType === 'touch') {
+      touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.current.size === 2) {
+        // Втори пръст: щипане. Каквото първият е започнал, се отменя.
+        drag.current = null;
+        carried.current = null;
+        moving.current = null;
+        press.current = null;
+        setCarriedId(null);
+        setDropAt(null);
+        pinch.current = spread();
+        return;
+      }
+    }
     if (carrying) return;
     const hit = under(e.clientX, e.clientY);
     press.current = { x: e.clientX, y: e.clientY, ...hit };
@@ -474,7 +563,7 @@ export function Scene3D({
      * показалецът не помръдне, това си е щракване и шкафът ще се
      * отвори; помръдне ли — почва местене, не въртене на стаята.
      */
-    if (hit.id && moduleById.has(hit.id) && onMoveModule && dropScene) {
+    if (hit.id && moduleById.has(hit.id) && (onMoveModule || onSlideModule) && dropScene) {
       carried.current = { id: hit.id, x: e.clientX, y: e.clientY };
       return;
     }
@@ -521,7 +610,28 @@ export function Scene3D({
   };
 
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.pointerType === 'touch' && touches.current.has(e.pointerId)) {
+      touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch.current && touches.current.size >= 2) {
+        e.preventDefault();
+        const now = spread();
+        if (pinch.current.dist > 0) zoomAt.current(deltaForScale(now.dist / pinch.current.dist), now.x, now.y);
+        pinch.current = now;
+        return;
+      }
+    }
     carryMove(e);
+    // Посочването е само с мишка и само когато нищо не се влачи.
+    if (
+      e.pointerType === 'mouse' &&
+      !drag.current &&
+      !carried.current &&
+      !moving.current &&
+      !dropKind &&
+      !carrying
+    ) {
+      pointAt(e.clientX, e.clientY);
+    }
 
     const grabbed = carried.current;
     if (grabbed && dropScene) {
@@ -530,7 +640,9 @@ export function Scene3D({
       e.preventDefault();
       setCarriedId(grabbed.id);
       const p = inScene(e.clientX, e.clientY);
-      setDropAt(p ? moveTargetAt(dropScene, grabbed.id, p.x, p.y, cam) : null);
+      // Първо свободно място по решетката; заето ли е — разместване.
+      const slid = p && onSlideModule ? slideTargetAt(dropScene, grabbed.id, p.x, p.y, cam) : null;
+      setDropAt(slid ?? (p && onMoveModule ? moveTargetAt(dropScene, grabbed.id, p.x, p.y, cam) : null));
       return;
     }
 
@@ -581,7 +693,10 @@ export function Scene3D({
     setDropAt(null);
     if (!moved) return false;
 
-    if (target) {
+    if (target?.slide) {
+      const now = dropScene?.placed[target.row].find((m) => m.id === grabbed.id);
+      if (now && now.x !== target.left) onSlideModule?.(grabbed.id, target.left);
+    } else if (target) {
       const row = dropScene?.placed[target.row] ?? [];
       const from = row.findIndex((m) => m.id === grabbed.id);
       if (from !== target.index) onMoveModule?.(grabbed.id, target.index);
@@ -594,6 +709,272 @@ export function Scene3D({
     drag.current = null;
     moving.current = null;
   };
+
+  /* --- Посочване и приближаване с колелцето ----------------------------
+   *
+   * Посоченият с мишката шкаф светва. Колелцето над него приближава към
+   * него, а щом е достатъчно близо, вратите му се отварят сами — за да се
+   * види какво има вътре. Колелцето обратно отдалечава и затваря каквото
+   * приближаването е отворило. Над празно място колелцето си скролира
+   * страницата, както винаги.
+   *
+   * Кадърът се стеснява, окото не се мести: щракането, рафтовете и
+   * местенето работят и отблизо, защото проекцията е същата.
+   */
+  const [pointed, setPointed] = useState<string | null>(null);
+  const pointAt = (clientX: number, clientY: number) => {
+    const { id } = under(clientX, clientY);
+    const next = id && moduleById.has(id) ? id : null;
+    if (next !== pointed) setPointed(next);
+  };
+  const leaveScene = () => setPointed(null);
+
+  /** Коя стена — за да се намери шкафът в стаята. */
+  const sideOf = new Map<string, WallSide>();
+  placed.forEach((rows, i) => {
+    const side = wallSide(kitchen.walls[i] ?? kitchen.walls[0], i);
+    for (const m of [...rows.base, ...rows.upper]) sideOf.set(m.id, side);
+  });
+
+  /*
+   * Формата на кутията, когато картината я изпълва. Мери се, а не се
+   * гадае: колоната с модули до нея и височината на екрана решават.
+   */
+  const [boxAspect, setBoxAspect] = useState<number | null>(null);
+  useEffect(() => {
+    const el = svgRef.current?.parentElement;
+    if (!fill || !el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) setBoxAspect(Math.max(0.9, Math.min(2.8, width / height)));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fill]);
+  const full = parseViewBox(
+    viewBoxFor(boxes, cam, 220, fill && boxAspect ? boxAspect : VIEW_ASPECT),
+  );
+  const [zoom, setZoom] = useState<Zoom | null>(null);
+  const shownView = zoomedViewBox(zoom, full);
+  const shownRef = useRef(shownView);
+  useEffect(() => {
+    shownRef.current = shownView;
+  });
+
+  /*
+   * Колелцето дава целта, а кадърът я догонва за няколко кадъра — иначе
+   * всяко щракване на колелцето е скок с петнайсет процента.
+   */
+  const goal = useRef<Zoom | null>(null);
+  const live = useRef<Zoom | null>(null);
+  const frame = useRef(0);
+  const fullWidth = useRef(full[2]);
+  const fullView = useRef(full);
+  /** Към кой шкаф е приближението и дали той е от отварящите се. */
+  const aim = useRef<{ id: string; opens: boolean } | null>(null);
+  /** Шкафовете, които приближаването е отворило — само тях затваря. */
+  const openedByZoom = useRef<Set<string>>(new Set());
+  const minWidth = useRef(full[2]);
+  /** Кога колелцето е спряло — тогава пружината връща кадъра. */
+  const restTimer = useRef<number | undefined>(undefined);
+
+  /** Отваря шкафа отблизо и затваря отвореното, щом човек се отдалечи. */
+  const syncOpen = (z: Zoom | null) => {
+    const amount = zoomAmount(z, fullWidth.current);
+    const opened = openedByZoom.current;
+    const target = aim.current;
+    const close = [...opened].filter((id) => amount < 0.3 || id !== target?.id);
+    const open = amount > 0.45 && target?.opens && !opened.has(target.id) ? target.id : null;
+    if (!close.length && !open) return;
+    for (const id of close) opened.delete(id);
+    if (open) opened.add(open);
+    setTargets((t) => ({
+      ...t,
+      ...Object.fromEntries(close.map((id) => [id, false])),
+      ...(open ? { [open]: true } : {}),
+    }));
+  };
+
+  const glide = () => {
+    if (frame.current) return;
+    const step = () => {
+      const [fx, fy, fw, fh] = fullView.current;
+      const whole: Zoom = { width: fw, cx: fx + fw / 2, cy: fy + fh / 2 };
+      const to = goal.current;
+      const from = live.current ?? (to ? whole : null);
+      if (!from) {
+        frame.current = 0;
+        return;
+      }
+      const end = to ?? whole;
+      // Бързо догонване — колелцето да се усеща под пръста, не след него.
+      const k = 0.42;
+      const next: Zoom = {
+        width: from.width + (end.width - from.width) * k,
+        cx: from.cx + (end.cx - from.cx) * k,
+        cy: from.cy + (end.cy - from.cy) * k,
+      };
+      const done =
+        Math.abs(next.width - end.width) < fw * 0.002 &&
+        Math.abs(next.cx - end.cx) < fw * 0.002 &&
+        Math.abs(next.cy - end.cy) < fw * 0.002;
+      const value = done ? to : next;
+      live.current = value;
+      setZoom(value);
+      syncOpen(value);
+      frame.current = done ? 0 : requestAnimationFrame(step);
+    };
+    frame.current = requestAnimationFrame(step);
+  };
+
+  const resetZoom = (smooth: boolean) => {
+    window.clearTimeout(restTimer.current);
+    goal.current = null;
+    aim.current = null;
+    if (smooth) {
+      glide();
+      return;
+    }
+    cancelAnimationFrame(frame.current);
+    frame.current = 0;
+    live.current = null;
+    setZoom(null);
+    syncOpen(null);
+  };
+
+  /**
+   * Едно приближаване или отдалечаване в точка от екрана — от колелцето,
+   * от щипането на тъчпада и от два пръста на телефона. Точката под
+   * мишката остава под мишката; шкафът там се отваря отблизо.
+   * Обработката се подменя при всеки рендер, за да вижда днешната стая.
+   */
+  const zoomAt = useRef<(deltaY: number, clientX: number, clientY: number) => void>(() => {});
+  useEffect(() => {
+    fullWidth.current = full[2];
+    fullView.current = full;
+    zoomAt.current = (deltaY, clientX, clientY) => {
+      if (dropKind || carrying || carried.current) return;
+      const p = inScene(clientX, clientY);
+      if (!p) return;
+
+      // Мястото на мишката като дял от показания кадър, пренесено в кадъра,
+      // към който вече се движим — така и бързите поредни завъртания
+      // държат точката под мишката.
+      const [sx, sy, sw, sh] = parseViewBox(shownRef.current);
+      const [gx, gy, gw, gh] = parseViewBox(zoomedViewBox(goal.current ?? live.current, full));
+      const at = { x: gx + ((p.x - sx) / sw) * gw, y: gy + ((p.y - sy) / sh) * gh };
+
+      // Шкафът под мишката се отваря, щом приближението стигне до него.
+      if (deltaY < 0) {
+        const { id } = under(clientX, clientY);
+        const m = id ? moduleById.get(id) : undefined;
+        aim.current = m ? { id: m.id, opens: canOpen(m.kind) } : null;
+      }
+
+      minWidth.current = closestWidth(full);
+      goal.current = zoomStep(goal.current ?? live.current, {
+        deltaY,
+        at,
+        full,
+        minWidth: minWidth.current,
+      });
+      glide();
+
+      // Колелцето спря: каквото е минало отвъд края, се връща.
+      window.clearTimeout(restTimer.current);
+      restTimer.current = window.setTimeout(() => {
+        goal.current = settle(goal.current, fullView.current, minWidth.current);
+        if (!goal.current) aim.current = null;
+        glide();
+      }, 140);
+    };
+  });
+
+  /*
+   * Над стаята всичко, което браузърът би направил с колелцето и
+   * щипането — скролиране, мащабиране на целия сайт, — приближава само
+   * стаята. Слуша се направо, не през React: там слушателят на колелцето
+   * е пасивен и не може да спре браузъра.
+   */
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const wheel = (e: WheelEvent) => {
+      e.preventDefault();
+      // Щипането на тъчпада идва като колелце с Ctrl — ситно, затова по-силно.
+      const step = (e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY) * (e.ctrlKey ? 3 : 1);
+      zoomAt.current(step, e.clientX, e.clientY);
+    };
+    // Safari праща щипането като жест, не като колелце.
+    let lastScale = 1;
+    const gestureStart = (e: Event) => {
+      e.preventDefault();
+      lastScale = 1;
+    };
+    const gestureChange = (e: Event) => {
+      e.preventDefault();
+      const g = e as Event & { scale: number; clientX: number; clientY: number };
+      zoomAt.current(deltaForScale(g.scale / lastScale), g.clientX, g.clientY);
+      lastScale = g.scale;
+    };
+    const gestureEnd = (e: Event) => e.preventDefault();
+    svg.addEventListener('wheel', wheel, { passive: false });
+    svg.addEventListener('gesturestart', gestureStart);
+    svg.addEventListener('gesturechange', gestureChange);
+    svg.addEventListener('gestureend', gestureEnd);
+    return () => {
+      svg.removeEventListener('wheel', wheel);
+      svg.removeEventListener('gesturestart', gestureStart);
+      svg.removeEventListener('gesturechange', gestureChange);
+      svg.removeEventListener('gestureend', gestureEnd);
+      cancelAnimationFrame(frame.current);
+      window.clearTimeout(restTimer.current);
+    };
+  }, []);
+
+  /*
+   * Два пръста на телефона. Вторият пръст прави от докосването щипане —
+   * то не върти стаята, не мести шкаф и не отваря нищо.
+   */
+  const touches = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ dist: number; x: number; y: number } | null>(null);
+  const spread = () => {
+    const [a, b] = [...touches.current.values()];
+    return { dist: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  };
+  /** Пръст, който е бил част от щипане, не завършва с щракване. */
+  const endTouch = (e: React.PointerEvent): boolean => {
+    if (e.pointerType !== 'touch') return false;
+    touches.current.delete(e.pointerId);
+    if (!pinch.current) return false;
+    if (touches.current.size < 2) pinch.current = null;
+    press.current = null;
+    drag.current = null;
+    return true;
+  };
+
+  /*
+   * Друга стая — друг кадър. Приближение, останало от предишната, би
+   * гледало в празно място на новата.
+   */
+  const roomShape = `${kitchen.roomKind ?? 'kitchen'}|${room.width}|${room.depth}`;
+  const [shapeSeen, setShapeSeen] = useState(roomShape);
+  if (shapeSeen !== roomShape) {
+    setShapeSeen(roomShape);
+    goal.current = null;
+    live.current = null;
+    aim.current = null;
+    setZoom(null);
+  }
+
+  useEffect(() => {
+    if (!zoom) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') resetZoom(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   const onKeyDown = (e: React.KeyboardEvent<SVGSVGElement>) => {
     const step = e.shiftKey ? 0.3 : 0.1;
@@ -641,25 +1022,28 @@ export function Scene3D({
   };
 
   return (
-    <div className={`relative ${className ?? ''}`}>
+    <div className={`relative ${fill ? 'h-full min-h-[260px]' : ''} ${className ?? ''}`}>
       <svg
         ref={svgRef}
-        viewBox={viewBoxFor(boxes, cam)}
-        className={`block h-auto w-full touch-none select-none ${
+        viewBox={shownView}
+        className={`${fill ? 'absolute inset-0 h-full' : 'block h-auto'} w-full touch-none select-none ${
           carrying ? 'cursor-copy' : 'cursor-grab active:cursor-grabbing'
         }`}
         role="group"
         aria-label={`Обемен изглед в стая ${room.width} на ${room.depth} мм. Стрелките въртят изгледа.`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
+        onPointerLeave={leaveScene}
         onPointerUp={(e) => {
+          if (endTouch(e)) return;
           const wasCarrying = dropCarried();
           endDrag();
           if (carrying) carryDrop(e);
           else if (!wasCarrying) tap(e);
           else press.current = null;
         }}
-        onPointerCancel={() => {
+        onPointerCancel={(e) => {
+          endTouch(e);
           carried.current = null;
           setCarriedId(null);
           setDropAt(null);
@@ -693,6 +1077,22 @@ export function Scene3D({
            * лица на зида — горният ръб, челата до отворите — са както
            * преди: те са самият зид, не облицовката му.
            */
+          if (floor && isFloorTop(face.role, face.normal)) {
+            const amount = Math.round(shade(face.normal) * STEPS) / STEPS;
+            const warmth = tint(face.normal);
+            return (
+              <WallSurface
+                key={face.key}
+                face={face}
+                surface={floorSurface(face.corners)}
+                finish={floor}
+                cam={cam}
+                top={litColor(floor.hex, Math.min(1.2, amount * 1.07), warmth)}
+                bottom={litColor(floor.hex, amount * 0.9, warmth)}
+                light={(hex) => litColor(hex, amount, warmth)}
+              />
+            );
+          }
           const plane = face.role === 'wall' ? innerWallPlane(face.corners, face.normal, room) : null;
           if (plane) {
             const finish = finishById(finishIdFor(kitchen.wallFinish, plane.side));
@@ -702,7 +1102,7 @@ export function Scene3D({
               <WallSurface
                 key={face.key}
                 face={face}
-                plane={plane}
+                surface={wallSurface(plane, face.corners)}
                 finish={finish}
                 cam={cam}
                 top={litColor(finish.hex, Math.min(1.2, amount * 1.07), warmth)}
@@ -721,6 +1121,8 @@ export function Scene3D({
               highlight={Boolean(
                 face.moduleId &&
                   (face.moduleId === hover ||
+                    // Посоченият светва — над него колелцето приближава.
+                    face.moduleId === pointed ||
                     face.moduleId === pickedItem?.id ||
                     face.moduleId === carriedId ||
                     face.moduleId === chosen?.id),
@@ -735,7 +1137,43 @@ export function Scene3D({
           Сянката на вдигнатия модул се рисува последна — тя стои пред
           всичко, както стои и пръстът, който я държи.
         */}
+        {/*
+          Решетката, по която ляга влаченият шкаф — на пода пред реда.
+          Стъпката е по дължината на стената; всяка пета черта е по-ясна.
+        */}
+        {grid && (
+          <g pointerEvents="none">
+            {grid.lines.map((l, i) => (
+              <line
+                key={i}
+                x1={l.a.x}
+                y1={l.a.y}
+                x2={l.b.x}
+                y2={l.b.y}
+                stroke="var(--accent)"
+                strokeOpacity={l.major ? 0.55 : 0.22}
+                strokeWidth={l.major ? 1.4 : 0.8}
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+            {/* Колко далеч от началото на стената ще застане левият ръб. */}
+            <text
+              x={grid.at.x}
+              y={grid.at.y}
+              fontSize={parseViewBox(shownView)[2] * 0.02}
+              fill="var(--accent)"
+              stroke="var(--background)"
+              strokeWidth={parseViewBox(shownView)[2] * 0.004}
+              paintOrder="stroke"
+              className="font-mono"
+            >
+              {`← ${grid.left} мм · решетка ${grid.step} мм`}
+            </text>
+          </g>
+        )}
+
         {ghostFaces.map((face) => (
+          // Червена сянка: в този ред няма място — пуснат, модулът няма да влезе.
           <polygon
             key={`ghost-${face.key}`}
             points={face.corners
@@ -744,9 +1182,9 @@ export function Scene3D({
                 return `${p.x},${p.y}`;
               })
               .join(' ')}
-            fill="var(--accent)"
+            fill={noRoom ? 'var(--danger)' : 'var(--accent)'}
             fillOpacity={0.26}
-            stroke="var(--accent)"
+            stroke={noRoom ? 'var(--danger)' : 'var(--accent)'}
             strokeWidth={6}
             strokeLinejoin="round"
             pointerEvents="none"
@@ -773,7 +1211,7 @@ export function Scene3D({
                 } else if (onShelves && acceptsShelves(m.kind) && (e.key === '+' || e.key === '=')) {
                   e.preventDefault();
                   e.stopPropagation();
-                  onShelves(m.id, shelfCount(m) + 1);
+                  if (shelfCount(m) < maxShelves(m.kind)) onShelves(m.id, shelfCount(m) + 1);
                 } else if (onShelves && acceptsShelves(m.kind) && e.key === '-') {
                   e.preventDefault();
                   e.stopPropagation();
@@ -790,6 +1228,15 @@ export function Scene3D({
           );
         })}
       </svg>
+
+      {shelfNote && (
+        <p
+          role="status"
+          className="pointer-events-none absolute top-12 left-1/2 -translate-x-1/2 rounded-pill bg-surface/95 px-3 py-1.5 text-[12px] text-danger shadow-sm ring-1 ring-border"
+        >
+          {shelfNote}
+        </p>
+      )}
 
       {onShelves && (
         <button
@@ -873,7 +1320,10 @@ export function Scene3D({
           </button>
           <button
             type="button"
-            onClick={() => setCamera(DEFAULT_CAMERA(room))}
+            onClick={() => {
+              resetZoom(false);
+              setCamera(DEFAULT_CAMERA(room));
+            }}
             className="rounded-pill bg-surface/90 px-3 py-1.5 text-[11px] text-muted shadow-sm ring-1 ring-border backdrop-blur transition-colors hover:text-foreground"
           >
             Изправи изгледа
