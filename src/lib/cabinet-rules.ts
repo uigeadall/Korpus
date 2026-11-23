@@ -135,6 +135,7 @@ export {
 };
 
 import type { Furnishing } from './furnishings';
+import type { WallFinishChoice } from './wall-finish';
 
 /**
  * Версия на правилата.
@@ -1134,6 +1135,12 @@ export interface Kitchen {
    * разбивката, нито в заявката за цеха.
    */
   furnishings?: Furnishing[];
+  /**
+   * С какво са покрити стените — боя, тухла, плочки, тапет. Само за
+   * картината: не влиза в разкроя и не мени правилата. Липсва в
+   * проектите отпреди него — тогава стените са както винаги.
+   */
+  wallFinish?: WallFinishChoice;
   rulesVersion: string;
 }
 

@@ -59,6 +59,9 @@ import { RoomPlan, type PlanMode } from './RoomPlan';
 import { RowEditor } from './RowEditor';
 import { RowStatusBar } from './RowStatusBar';
 import { WallTabs } from './WallTabs';
+import { WallFinishPanel } from './WallFinishPanel';
+import { useFitToViewport } from '@/components/useFitToViewport';
+import { PriceEstimate } from '@/components/proekt/PriceEstimate';
 import {
   type Action,
   canRedo,
@@ -93,6 +96,10 @@ export function Configurator() {
    * последният избран.
    */
   const [selected, setSelected] = useState<string[]>([]);
+  /** Стената, за която се избира покритие — обемът се обръща към нея. */
+  const [wallTarget, setWallTarget] = useState<WallSide | null>(null);
+  /** Дясната колона се плъзга сама и се побира във видимото. */
+  const asideRef = useFitToViewport<HTMLElement>();
   const selectedId = selected.at(-1) ?? null;
   const setSelectedId = (id: string | null) => setSelected(id ? [id] : []);
   const [view, setView] = useState<ExportView>('cabinet');
@@ -430,14 +437,15 @@ export function Configurator() {
         </p>
       )}
 
-      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+      {/* Поне колкото екрана — виж „Направи проект". */}
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:min-h-[calc(100dvh-5.5rem)] lg:grid-cols-[minmax(0,1fr)_360px]">
         {/*
           Работната площ стои на екрана, докато се работи отдясно. Щом
           стане по-висока от прозореца, се скролира сама: закована колона,
           по-дълга от екрана, крие долния си край — страницата се плъзга
           под нея, но тя не мърда и лентата долу не се стига.
         */}
-        <div className="space-y-3 pb-24 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+        <div className="space-y-3 pb-24 lg:sticky lg:top-[4.5rem] lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <WallTabs
               walls={kitchen.walls}
@@ -516,6 +524,7 @@ export function Configurator() {
                 room={room}
                 placed={result.placed}
                 worktop={kitchen.materials.worktop}
+                focusSide={wallTarget ?? undefined}
                 onShelves={(id, value) => dispatch({ type: 'shelves', id, value })}
                 /* Същото влачене от палитрата работи и тук — нарежда се по
                    активната стена, както в чертежа. */
@@ -622,8 +631,13 @@ export function Configurator() {
           </p>
         </div>
 
-        {/* Панелите: това, което се пипа рядко, стои сгънато. */}
-        <aside className="min-w-0 space-y-3">
+        {/* Панелите: това, което се пипа рядко, стои сгънато. На широк
+            екран колоната се плъзга сама и не избутва чертежа (виж
+            „Направи проект"). */}
+        <aside
+          ref={asideRef}
+          className="min-w-0 space-y-3 lg:sticky lg:top-[4.5rem] lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1"
+        >
           {/*
             Палитрата е най-горе вдясно: оттам се вземат модулите за
             тази стая и се пускат в чертежа. Едно място — преди всеки
@@ -822,6 +836,19 @@ export function Configurator() {
 
           <Panel title="Материали">
             <MaterialsPanel materials={kitchen.materials} dispatch={dispatch} />
+          </Panel>
+
+          <Panel title="Цена">
+            <PriceEstimate kitchen={kitchen} result={result} />
+          </Panel>
+
+          <Panel title="Стени">
+            <WallFinishPanel
+              choice={kitchen.wallFinish}
+              onChoose={(side, id) => dispatch({ type: 'wallFinish', side, id })}
+              focusSide={wallSide(kitchen.walls[0])}
+              onTargetChange={(t) => setWallTarget(t === 'all' ? null : t)}
+            />
           </Panel>
 
           <section className="card p-5">

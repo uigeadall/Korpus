@@ -43,6 +43,9 @@ import {
   visibleFaces,
 } from '@/lib/scene3d';
 import { CARCASS_COLORS, FACADE_COLORS, swatch } from '@/config/materials';
+import { finishById } from '@/config/wall-finishes';
+import { finishIdFor, innerWallPlane } from '@/lib/wall-finish';
+import { WallSurface } from './WallSurface';
 import { FURNISHINGS, halfExtent } from '@/lib/furnishings';
 import { isOperable, moduleSpeech } from '@/lib/speech';
 
@@ -54,7 +57,7 @@ const WORKTOP_COLOR: Record<WorktopType, string> = {
 };
 
 /** Цвят на всяка роля според избраните материали. */
-function paletteFor(kitchen: Kitchen): Record<string, string> {
+export function paletteFor(kitchen: Kitchen): Record<string, string> {
   const carcass = swatch(CARCASS_COLORS, kitchen.materials.carcassColor)?.hex ?? '#efece6';
   const facade =
     FACADE_COLORS.find((s) => s.name.startsWith(kitchen.materials.facade.color))?.hex ?? '#f1ece4';
@@ -63,7 +66,8 @@ function paletteFor(kitchen: Kitchen): Record<string, string> {
     // зид от същата стойност се слива с него и шкафовете престават да
     // са предмети; стената трябва да е фон, не съсед.
     floor: '#cfc6b7',
-    wall: '#ebe7e0',
+    // Общото покритие на стените; без избор е топлото бяло отпреди.
+    wall: finishById(kitchen.wallFinish?.all).hex,
     carcass,
     facade,
     worktop: WORKTOP_COLOR[kitchen.materials.worktop],
@@ -91,7 +95,7 @@ function paletteFor(kitchen: Kitchen): Record<string, string> {
 }
 
 /** Светлината в шестнайсетичен цвят, с топлия или студения ѝ отенък. */
-function litColor(hex: string, amount: number, warmth = { r: 1, g: 1, b: 1 }): string {
+export function litColor(hex: string, amount: number, warmth = { r: 1, g: 1, b: 1 }): string {
   const n = parseInt(hex.slice(1), 16);
   const channel = (shift: number, k: number) =>
     Math.max(0, Math.min(255, Math.round(((n >> shift) & 255) * amount * k)));
@@ -684,6 +688,29 @@ export function Scene3D({
         </defs>
 
         {faces.map((face) => {
+          /*
+           * Вътрешното лице на стената носи покритието ѝ. Останалите
+           * лица на зида — горният ръб, челата до отворите — са както
+           * преди: те са самият зид, не облицовката му.
+           */
+          const plane = face.role === 'wall' ? innerWallPlane(face.corners, face.normal, room) : null;
+          if (plane) {
+            const finish = finishById(finishIdFor(kitchen.wallFinish, plane.side));
+            const amount = Math.round(shade(face.normal) * STEPS) / STEPS;
+            const warmth = tint(face.normal);
+            return (
+              <WallSurface
+                key={face.key}
+                face={face}
+                plane={plane}
+                finish={finish}
+                cam={cam}
+                top={litColor(finish.hex, Math.min(1.2, amount * 1.07), warmth)}
+                bottom={litColor(finish.hex, amount * 0.9, warmth)}
+                light={(hex) => litColor(hex, amount, warmth)}
+              />
+            );
+          }
           const m = face.moduleId ? moduleById.get(face.moduleId) : undefined;
           return (
             <Polygon

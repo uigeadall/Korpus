@@ -37,6 +37,7 @@ import {
 } from './openings';
 import { CARCASS_COLORS, FACADE_COLORS } from '@/config/materials';
 import { type Furnishing, type FurnishingKind } from './furnishings';
+import { type PackedFinish, packFinish, unpackFinish } from './wall-finish';
 
 /** Версия на записа. Вдига се, ако подредбата по-долу някога се счупи. */
 const VERSION = 1;
@@ -157,6 +158,11 @@ interface Packed {
   d?: PackedDoor;
   /** Прозорците. Липсват в линковете отпреди тях. */
   n?: PackedWindow[];
+  /**
+   * Покритието на стените: общото, после горна, дясна, долна, лява.
+   * Липсва в линковете отпреди него и при стени по подразбиране.
+   */
+  c?: PackedFinish;
 }
 
 const packModule = (m: KitchenModule): PackedModule => {
@@ -242,6 +248,9 @@ export function encodeProject(kitchen: Kitchen): string {
     ]);
   }
 
+  const finish = packFinish(kitchen.wallFinish);
+  if (finish) packed.c = finish;
+
   return toUrlSafe(JSON.stringify(packed));
 }
 
@@ -282,11 +291,14 @@ export function decodeProject(code: string): Kitchen | null {
       }),
     );
 
+    const wallFinish = unpackFinish(p.c);
+
     return {
       roomKind: ROOMS[p.r] ?? 'kitchen',
       room,
       ...(door ? { door } : {}),
       ...(windows.length ? { windows } : {}),
+      ...(wallFinish ? { wallFinish } : {}),
       walls: [
         {
           id: 'share-wall-1',

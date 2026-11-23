@@ -24,6 +24,7 @@ import {
 import { type RoomNeeds, DEFAULT_ROOM_NEEDS, layoutFor } from '@/lib/autolayout';
 import { CARCASS_COLORS } from '@/config/materials';
 import { type Furnishing, FURNISHINGS } from '@/lib/furnishings';
+import type { WallFinishChoice } from '@/lib/wall-finish';
 
 export interface Answers {
   room: RoomKind;
@@ -49,6 +50,8 @@ export interface Answers {
   door?: RoomDoor;
   /** Прозорците в стаята. Празно значи стая без прозорец, не „още не". */
   windows?: RoomWindow[];
+  /** Покритието на стените. Липсва — стените са както винаги. */
+  wallFinish?: WallFinishChoice;
   /**
    * Проект, отворен по линк. Показва се както е дошъл; пипне ли се
    * който и да е въпрос, правилата подреждат наново и това отпада.
@@ -97,6 +100,7 @@ export interface RoomSlice {
   furnishings: Furnishing[];
   door?: RoomDoor;
   windows?: RoomWindow[];
+  wallFinish?: WallFinishChoice;
 }
 
 const SLICE_KEYS = [
@@ -109,6 +113,7 @@ const SLICE_KEYS = [
   'furnishings',
   'door',
   'windows',
+  'wallFinish',
 ] as const satisfies readonly (keyof RoomSlice)[];
 
 /** Каквото тази стая носи със себе си. */
@@ -123,6 +128,7 @@ export function sliceOf(a: Answers): RoomSlice {
     furnishings: a.furnishings,
     door: a.door,
     windows: a.windows,
+    wallFinish: a.wallFinish,
   };
 }
 
@@ -140,6 +146,8 @@ function freshSlice(a: Answers): RoomSlice {
     hand: { base: [], upper: [] },
     shelves: {},
     furnishings: [],
+    // Стените са на стаята: в нова стая те са голи, не като в предишната.
+    wallFinish: undefined,
   };
 }
 
@@ -191,6 +199,7 @@ export function furnitureFrom(a: Answers): Kitchen {
       },
     ],
     furnishings: a.furnishings,
+    ...(a.wallFinish ? { wallFinish: a.wallFinish } : {}),
     materials: {
       ...DEFAULT_MATERIALS,
       carcassColor: a.carcassColor,
@@ -222,6 +231,7 @@ export function fromKitchen(k: Kitchen): Partial<Answers> {
     byHand: false,
     door: kitchenDoor(k),
     windows: kitchenWindows(k),
+    wallFinish: k.wallFinish,
     shelves: Object.fromEntries(
       [...wall.base, ...wall.upper]
         .filter((m) => m.shelves !== undefined)
@@ -361,14 +371,18 @@ export function answers(state: Answers, patch: AnswerPatch): Answers {
   /*
    * Вратата е на стаята, а не въпрос за мебелта: местенето ѝ не
    * пренарежда шкафовете и затова не бута донесения по линк проект —
-   * само вратата в него.
+   * само вратата в него. Същото важи за покритието на стените.
    */
-  if (touched.length > 0 && touched.every((key) => key === 'door' || key === 'windows')) {
+  if (
+    touched.length > 0 &&
+    touched.every((key) => key === 'door' || key === 'windows' || key === 'wallFinish')
+  ) {
     if (state.opened) {
       next.opened = {
         ...state.opened,
         ...(next.door ? { door: next.door } : {}),
         ...(next.windows ? { windows: next.windows } : {}),
+        ...('wallFinish' in delta ? { wallFinish: next.wallFinish } : {}),
       };
     }
     return next;

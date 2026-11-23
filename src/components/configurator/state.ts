@@ -40,6 +40,7 @@ import {
   wallStatus,
 } from '@/lib/cabinet-rules';
 import { fillWidths } from '@/lib/furniture/system';
+import { chooseFinish } from '@/lib/wall-finish';
 
 export type Action =
   | { type: 'wallLength'; wallId: string; value: number }
@@ -75,6 +76,8 @@ export type Action =
   | { type: 'window'; id: string; value: Partial<RoomWindow> }
   | { type: 'removeWindow'; id: string }
   | { type: 'materials'; value: Partial<Materials> }
+  /** Покритие на стена — на всички или само на една. */
+  | { type: 'wallFinish'; side: WallSide | 'all'; id: string }
   | { type: 'load'; value: Kitchen }
   | { type: 'reset' };
 
@@ -421,6 +424,9 @@ export function reducer(kitchen: Kitchen, action: Action): Kitchen {
 
     case 'materials':
       return { ...kitchen, materials: { ...kitchen.materials, ...action.value } };
+
+    case 'wallFinish':
+      return { ...kitchen, wallFinish: chooseFinish(kitchen.wallFinish, action.side, action.id) };
 
     case 'load':
       return migrate(action.value);
