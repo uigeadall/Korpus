@@ -14,20 +14,28 @@ import {
   acceptsShelves,
   canOpen,
   type Kitchen,
+  type ModuleKind,
   type PlacedModule,
+  type RowId,
   type WorktopType,
   kitchenDoor,
+  kitchenWallOpenings,
+  moduleGeometry,
   shelfCount,
   wallSide,
 } from '@/lib/cabinet-rules';
-import type { Room, WallSide } from '@/lib/furniture/room';
+import { type DropTarget, dropTargetAt } from '@/lib/drop3d';
+import { footprint, type Room, type WallSide } from '@/lib/furniture/room';
 import {
+  type Box,
   type Camera,
   type Face,
   DEFAULT_CAMERA,
+  boxFaces,
   floorPointAt,
   project,
   cameraFacing,
+  paintOrder,
   sceneFor,
   shade,
   tint,
@@ -140,6 +148,10 @@ export function Scene3D({
   onRotateFurnishing,
   onRemoveFurnishing,
   focusSide,
+  dropKind = null,
+  dropWallIndex = 0,
+  onDropModule,
+  onDropCancel,
 }: {
   kitchen: Kitchen;
   room: Room;
@@ -157,6 +169,12 @@ export function Scene3D({
    * подава стената на отвора, който човекът в момента мести.
    */
   focusSide?: WallSide;
+  /** Модулът, вдигнат от палитрата. Докато го има, се чака пускане. */
+  dropKind?: ModuleKind | null;
+  /** По коя стена се нарежда — индекс в `kitchen.walls`. */
+  dropWallIndex?: number;
+  onDropModule?: (kind: ModuleKind, row: RowId, index: number) => void;
+  onDropCancel?: () => void;
 }) {
   const [camera, setCamera] = useState<Camera>(() => DEFAULT_CAMERA(room));
 
@@ -299,6 +317,99 @@ export function Scene3D({
   const faces = visibleFaces(boxes, cam);
   const palette = paletteFor(kitchen);
   const gradients = gradientsFor(faces, palette);
+
+  /* --- Пускане на модул от палитрата -------------------------------- */
+
+  /*
+   * Мястото, на което ще падне вдигнатият модул. Пази се в състояние,
+   * за да се нарисува прозрачната сянка: без нея човек пуска на сляпо
+   * и се надява.
+   */
+  const [dropAt, setDropAt] = useState<DropTarget | null>(null);
+
+  const dropWall = kitchen.walls[dropWallIndex];
+  const dropRows = placed[dropWallIndex];
+
+  useEffect(() => {
+    if (!dropKind || !dropWall || !dropRows) return;
+
+    const side = wallSide(dropWall, dropWallIndex);
+    const scene = {
+      room,
+      roomKind: kitchen.roomKind ?? 'kitchen',
+      side,
+      wall: dropWall,
+      openings: kitchenWallOpenings(kitchen, side),
+      placed: dropRows,
+    };
+    // Камерата се сглобява тук, а не отвън: отвън тя е нов обект при
+    // всеки рендер и следенето би се пренавързвало без причина.
+    const at: Camera = { ...camera, target: { ...DEFAULT_CAMERA(room).target } };
+
+    const where = (clientX: number, clientY: number) => {
+      const svg = svgRef.current;
+      if (!svg) return null;
+      const box = svg.getBoundingClientRect();
+      const inside =
+        clientX >= box.left && clientX <= box.right && clientY >= box.top && clientY <= box.bottom;
+      if (!inside) return null;
+
+      const ctm = svg.getScreenCTM();
+      if (!ctm) return null;
+      const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+      return dropTargetAt(scene, dropKind, p.x, p.y, at);
+    };
+
+    const onMove = (e: PointerEvent) => setDropAt(where(e.clientX, e.clientY));
+    const onUp = (e: PointerEvent) => {
+      const target = where(e.clientX, e.clientY);
+      if (target) onDropModule?.(dropKind, target.row, target.index);
+      else onDropCancel?.();
+      setDropAt(null);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [
+    dropKind,
+    dropWall,
+    dropWallIndex,
+    dropRows,
+    kitchen,
+    room,
+    camera,
+    onDropModule,
+    onDropCancel,
+  ]);
+
+  /**
+   * Сянката на модула, който ще падне — истински обем на мястото си, не
+   * правоъгълник върху картината. Само така се вижда, че шкафът ще
+   * застане до съседа си, а не пред него.
+   */
+  const ghostFaces: Face[] = (() => {
+    if (!dropKind || !dropAt || !dropWall) return [];
+    const side = wallSide(dropWall, dropWallIndex);
+    const g = moduleGeometry(dropKind);
+    const rect = footprint(room, side, dropAt.left, dropAt.width, g.depth);
+    const box: Box = {
+      x: rect.x,
+      y: g.y,
+      z: rect.y,
+      width: rect.width,
+      height: g.height,
+      depth: rect.height,
+      role: 'carcass',
+      facing: side,
+    };
+    return paintOrder(boxFaces(box), cam);
+  })();
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (carrying) return;
@@ -490,6 +601,28 @@ export function Scene3D({
             />
           );
         })}
+
+        {/*
+          Сянката на вдигнатия модул се рисува последна — тя стои пред
+          всичко, както стои и пръстът, който я държи.
+        */}
+        {ghostFaces.map((face) => (
+          <polygon
+            key={`ghost-${face.key}`}
+            points={face.corners
+              .map((c) => {
+                const p = project(c, cam);
+                return `${p.x},${p.y}`;
+              })
+              .join(' ')}
+            fill="var(--accent)"
+            fillOpacity={0.26}
+            stroke="var(--accent)"
+            strokeWidth={6}
+            strokeLinejoin="round"
+            pointerEvents="none"
+          />
+        ))}
 
         {[...outlines].map(([id, points]) => {
           const m = moduleById.get(id)!;

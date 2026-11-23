@@ -26,6 +26,13 @@ interface Props {
   dragging: ModuleKind | null;
   onGrab: (kind: ModuleKind, e: React.PointerEvent) => void;
   onAdd: (kind: ModuleKind) => void;
+  /**
+   * Къде се пуска. Палитрата стои и до чертежа, и до обема; да казва
+   * „в чертежа", когато отсреща е стаята, е лъжа за едно натискане.
+   */
+  hint?: string;
+  /** Накъде се пуска, за една дума в прочита на бутона: „в чертежа". */
+  where?: string;
 }
 
 const ROW_TITLE: Record<RowId, string> = {
@@ -76,9 +83,16 @@ function Thumb({ kind }: { kind: ModuleKind }) {
   );
 }
 
-export function ModulePalette({ room, dragging, onGrab, onAdd }: Props) {
+export function ModulePalette({
+  room,
+  dragging,
+  onGrab,
+  onAdd,
+  hint = 'Завлечете модул в чертежа и го пуснете където трябва. Щракване го слага в края на реда.',
+  where = 'в чертежа',
+}: Props) {
   return (
-    <section className="space-y-3">
+    <section className="space-y-2 sm:space-y-3">
       {(['base', 'upper'] as RowId[]).map((row) => {
         const kinds = modulesFor(room, row);
         if (!kinds.length) return null;
@@ -92,15 +106,22 @@ export function ModulePalette({ room, dragging, onGrab, onAdd }: Props) {
             <p className="px-1 text-[11px] uppercase tracking-wide text-muted">
               {ROW_TITLE[row]}
             </p>
-            <ul className="mt-1.5 space-y-1">
+            {/*
+              На тесен екран редът е хоризонтална лента под картината, а
+              не стълб до нея. Стълбът там пада под сгъвката: модулът се
+              хваща на едно място, а стаята е на друго и влаченето няма
+              как да стигне. Лентата държи всички модули на един замах от
+              обема.
+            */}
+            <ul className="mt-1.5 flex gap-1 overflow-x-auto pb-1 sm:block sm:space-y-1 sm:overflow-visible sm:pb-0">
               {kinds.map((kind) => (
-                <li key={kind}>
+                <li key={kind} className="shrink-0 sm:shrink">
                   <button
                     type="button"
                     onPointerDown={(e) => onGrab(kind, e)}
                     onClick={() => onAdd(kind)}
-                    aria-label={`${MODULES[kind].label}. Завлечете го в чертежа или натиснете, за да влезе в края на реда.`}
-                    className={`flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-[13px] transition-colors [touch-action:none] ${
+                    aria-label={`${MODULES[kind].label}. Завлечете го ${where} или натиснете, за да влезе в края на реда.`}
+                    className={`flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-[13px] whitespace-nowrap transition-colors [touch-action:none] sm:whitespace-normal ${
                       dragging === kind
                         ? 'bg-accent/15 ring-1 ring-accent'
                         : 'bg-surface-sunken hover:bg-border/60'
@@ -116,9 +137,7 @@ export function ModulePalette({ room, dragging, onGrab, onAdd }: Props) {
         );
       })}
 
-      <p className="px-1 text-[11px] leading-relaxed text-muted">
-        Завлечете модул в чертежа и го пуснете където трябва. Щракване го слага в края на реда.
-      </p>
+      <p className="px-1 text-[11px] leading-relaxed text-muted">{hint}</p>
     </section>
   );
 }

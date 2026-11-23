@@ -19,6 +19,9 @@ import {
   DEFAULT_MATERIALS,
   DOOR,
   type Kitchen,
+  type KitchenModule,
+  MODULES,
+  type ModuleKind,
   ROOM_KIND_LABEL,
   RULES_VERSION,
   type RoomDoor,
@@ -47,6 +50,7 @@ import { type RoomNeeds, DEFAULT_ROOM_NEEDS, NEEDS_KEY, layoutFor } from '@/lib/
 import { CARCASS_COLORS, FACADE_COLORS, WORKTOPS } from '@/config/materials';
 import { type Action, reducer } from '@/components/configurator/state';
 import { ActionBar } from '@/components/configurator/ActionBar';
+import { ModulePalette } from '@/components/configurator/ModulePalette';
 import { Timeline } from '@/components/configurator/Timeline';
 import { Scene3D } from '@/components/configurator/Scene3D';
 import {
@@ -99,6 +103,23 @@ interface Answers {
    * който и да е въпрос, правилата подреждат наново и това отпада.
    */
   opened?: Kitchen;
+  /**
+   * Стаята се отваря празна и човек я нарежда сам.
+   *
+   * Това е редът по подразбиране: влизаш в помещение, виждаш го голо и
+   * слагаш в него каквото ти трябва. Правилата остават на един бутон —
+   * който иска готово, го получава, но не му се налага.
+   */
+  byHand: boolean;
+  /**
+   * Модулите, сложени на ръка. В ръчен режим те са мебелта.
+   *
+   * Стоят тук, а не в `opened`, нарочно: `opened` отпада при всеки
+   * пипнат въпрос, защото правилата подреждат наново. Нареденото на
+   * ръка няма какво да се преподрежда и не бива да се губи, когато
+   * човек промени ширината на стената.
+   */
+  hand: { base: KitchenModule[]; upper: KitchenModule[] };
 }
 
 const START: Answers = {
@@ -114,11 +135,15 @@ const START: Answers = {
   worktop: 'laminate38',
   shelves: {},
   furnishings: [],
+  byHand: true,
+  hand: { base: [], upper: [] },
 };
 
 /** Отговорите стават конфигурация. Нито една ширина не се избира от клиента. */
 function furnitureFrom(a: Answers): Kitchen {
-  const layout = layoutFor(a.room, a.wallLength, a.needs);
+  // В ръчен режим мебелта е това, което човек е сложил — празно в
+  // началото. Иначе подреждат правилата.
+  const layout = a.byHand ? a.hand : layoutFor(a.room, a.wallLength, a.needs);
   const room = { width: a.roomWidth, depth: a.roomDepth };
   const withShelves = (list: typeof layout.base) =>
     list.map((m) => (m.id in a.shelves ? { ...m, shelves: a.shelves[m.id] } : m));
@@ -167,6 +192,9 @@ function fromKitchen(k: Kitchen): Partial<Answers> {
     carcassColor: k.materials.carcassColor,
     worktop: k.materials.worktop,
     furnishings: k.furnishings ?? [],
+    // Донесеният проект вече е подреден; оттук нататък го водят
+    // правилата, както беше и преди ръчният режим да съществува.
+    byHand: false,
     door: kitchenDoor(k),
     windows: kitchenWindows(k),
     shelves: Object.fromEntries(
@@ -451,7 +479,20 @@ export function ProjectWizard() {
    * Резултатът става „донесен проект": оттук нататък въпросите не го
    * пренареждат, докато човек не пипне някой от тях.
    */
-  const edit = (action: Action) => set({ opened: reducer(furniture, action) });
+  const edit = (action: Action) => {
+    const next = reducer(furniture, action);
+    if (!a.byHand) {
+      set({ opened: next });
+      return;
+    }
+    /*
+     * В ръчен режим се пазят самите модули, не готовата конфигурация.
+     * Така промяна по размерите минава през `furnitureFrom` и нареденото
+     * оцелява; `opened` щеше да отпадне при първия пипнат въпрос.
+     */
+    const wall = next.walls[0];
+    set({ hand: { base: wall.base, upper: wall.upper } });
+  };
   const result = useMemo(() => computeKitchen(furniture), [furniture]);
   const layout = useMemo(
     () => layoutFor(a.room, a.wallLength, a.needs),
@@ -469,6 +510,9 @@ export function ProjectWizard() {
 
   /** Кои модули са маркирани в лентата. */
   const [picked, setPicked] = useState<string[]>([]);
+
+  /** Модулът, вдигнат от палитрата и още невпуснат в стаята. */
+  const [dragKind, setDragKind] = useState<ModuleKind | null>(null);
   const onTheMove = editing !== 'door' && !windows.some((w) => w.id === editing) ? 'door' : editing;
 
   /*
@@ -539,11 +583,16 @@ export function ProjectWizard() {
         ))}
       </ol>
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         {/* Скролира се сама, щом надрасне прозореца — иначе закованата
             колона крие долния си край (виж и конфигуратора). */}
         <div className="space-y-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
-          <div className="card overflow-hidden bg-gradient-to-b from-surface to-surface-sunken">
+          {/*
+            Модулите стоят до самата картина, а не в чужда колона: мястото
+            им е там, където се пускат. Вляво обемът, вдясно каталогът —
+            на тесен екран падат един под друг.
+          */}
+          <div className="card grid grid-cols-[minmax(0,1fr)] overflow-hidden bg-gradient-to-b from-surface to-surface-sunken sm:grid-cols-[minmax(0,1fr)_186px]">
             <Scene3D
               kitchen={furniture}
               room={room}
@@ -551,6 +600,12 @@ export function ProjectWizard() {
               worktop={furniture.materials.worktop}
               // Изгледът гледа натам, където човекът в момента мести отвор.
               focusSide={windows.find((w) => w.id === onTheMove)?.side ?? door.side}
+              dropKind={dragKind}
+              onDropModule={(kind, row, index) => {
+                edit({ type: 'add', wallId: 'proekt-wall-1', row, kind, atIndex: index });
+                setDragKind(null);
+              }}
+              onDropCancel={() => setDragKind(null)}
               onShelves={(id, value) =>
                 set((p) => ({ shelves: { ...p.shelves, [id]: value } }))
               }
@@ -570,6 +625,25 @@ export function ProjectWizard() {
                 set((p) => ({ furnishings: p.furnishings.filter((f) => f.id !== id) }))
               }
             />
+
+            {/*
+              `min-w-0` не е украса: без него клетката на мрежата се
+              мери по най-широкото си съдържание и лентата с модулите
+              разпъва цялата страница настрани. На телефон това махаше
+              `width=device-width` и сайтът се отваряше смален.
+            */}
+            <div className="min-w-0 border-t border-border bg-surface p-2.5 sm:max-h-none sm:overflow-y-auto sm:border-t-0 sm:border-l">
+              <ModulePalette
+                room={a.room}
+                dragging={dragKind}
+                onGrab={(kind) => setDragKind(kind)}
+                onAdd={(kind) =>
+                  edit({ type: 'add', wallId: 'proekt-wall-1', row: MODULES[kind].row, kind })
+                }
+                hint="Завлечете модул в стаята и го пуснете до стената. Щракване го слага в края."
+                where="в стаята"
+              />
+            </div>
           </div>
 
           {/*
@@ -751,7 +825,42 @@ export function ProjectWizard() {
           )}
 
           {step === 2 && (
+            <Card title="Наредете я">
+              <p className="text-sm leading-relaxed text-muted">
+                Стаята е празна. Модулите стоят до изгледа — хванете модул и го пуснете до
+                стената, където да застане. Пуснатото се вижда веднага в обема.
+              </p>
+
+              <p className="mt-3 text-sm">
+                {cabinets === 0 ? (
+                  <span className="text-muted">Още няма нищо в стаята.</span>
+                ) : (
+                  <>
+                    <span className="dim">{cabinets}</span>{' '}
+                    {cabinets === 1 ? 'модул' : 'модула'} в стаята
+                  </>
+                )}
+              </p>
+
+              {cabinets > 0 && (
+                <button
+                  type="button"
+                  onClick={() => set({ byHand: true, hand: { base: [], upper: [] } })}
+                  className="btn btn-quiet mt-3 text-[13px]"
+                >
+                  Изпразнете стаята
+                </button>
+              )}
+            </Card>
+          )}
+
+          {step === 2 && (
             <Card title={copy.needsQuestion}>
+              <p className="mb-3 text-xs leading-relaxed text-muted">
+                {a.byHand
+                  ? 'Ако не искате да редите сами: отговорете тук и правилата ще подредят стаята наведнъж.'
+                  : 'Правилата подреждат стаята по тези отговори. Пипнете ли ги, подреждат наново.'}
+              </p>
               <div className="space-y-2">
                 {a.room === 'kitchen' &&
                   KITCHEN_SWITCHES.map((s) => (
@@ -824,6 +933,16 @@ export function ProjectWizard() {
                     />
                   ))}
               </div>
+
+              {a.byHand && (
+                <button
+                  type="button"
+                  onClick={() => set({ byHand: false })}
+                  className="btn btn-quiet mt-4 text-[13px]"
+                >
+                  Подредете я по тези отговори
+                </button>
+              )}
 
               <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-muted">
                 {copy.always}

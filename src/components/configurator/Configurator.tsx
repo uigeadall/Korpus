@@ -430,7 +430,7 @@ export function Configurator() {
         </p>
       )}
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/*
           Работната площ стои на екрана, докато се работи отдясно. Щом
           стане по-висока от прозореца, се скролира сама: закована колона,
@@ -517,6 +517,15 @@ export function Configurator() {
                 placed={result.placed}
                 worktop={kitchen.materials.worktop}
                 onShelves={(id, value) => dispatch({ type: 'shelves', id, value })}
+                /* Същото влачене от палитрата работи и тук — нарежда се по
+                   активната стена, както в чертежа. */
+                dropKind={dragKind}
+                dropWallIndex={activeIndex}
+                onDropModule={(kind, row, index) => {
+                  if (wall.id) dispatch({ type: 'add', wallId: wall.id, row, kind, atIndex: index });
+                  setDragKind(null);
+                }}
+                onDropCancel={() => setDragKind(null)}
               />
             </div>
           ) : (
@@ -609,7 +618,7 @@ export function Configurator() {
         </div>
 
         {/* Панелите: това, което се пипа рядко, стои сгънато. */}
-        <aside className="space-y-3">
+        <aside className="min-w-0 space-y-3">
           {/*
             Палитрата е най-горе вдясно: оттам се вземат модулите за
             тази стая и се пускат в чертежа. Едно място — преди всеки
