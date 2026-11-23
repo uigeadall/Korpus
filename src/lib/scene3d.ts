@@ -1366,6 +1366,16 @@ const FRAME_ON: ReadonlySet<BoxRole> = new Set<BoxRole>([
 ]);
 
 /**
+ * Празна стая се кадрира по самата себе си — под и зидове.
+ *
+ * По пода сам картината става една плоскост: зидовете падат извън кадъра
+ * и не личи нито че стаята има височина, нито къде е стената, до която
+ * ще се нареди мебелта. И четирите зида ги има винаги в списъка (кои се
+ * виждат решава камерата после), затова кадърът не подскача с ъгъла.
+ */
+const FRAME_EMPTY: ReadonlySet<BoxRole> = new Set<BoxRole>(['floor', 'wall']);
+
+/**
  * Къде на пода пада дадена точка от картината.
  *
  * Обратната проекция. Трябва, за да може диванът да се влачи там,
@@ -1394,6 +1404,64 @@ export function floorPointAt(screenX: number, screenY: number, cam: Camera): Vec
   };
 }
 
+/**
+ * Коя точка от света стои зад дадена точка от картината, на зададена
+ * дълбочина.
+ *
+ * Това е `project` наопаки. Проекцията смалява с `FOCAL/depth`; знае ли
+ * се дълбочината, всяко от завъртанията се развърта обратно.
+ */
+function worldAtDepth(screenX: number, screenY: number, t: number, cam: Camera): Vec3 {
+  const x1 = (screenX * t) / FOCAL;
+  const y2 = (-screenY * t) / FOCAL;
+  const z2 = cam.distance - t;
+
+  const cosP = Math.cos(cam.pitch);
+  const sinP = Math.sin(cam.pitch);
+  const dy = y2 * cosP + z2 * sinP;
+  const z1 = -y2 * sinP + z2 * cosP;
+
+  const cosY = Math.cos(cam.yaw);
+  const sinY = Math.sin(cam.yaw);
+  return {
+    x: cam.target.x + x1 * cosY + z1 * sinY,
+    y: cam.target.y + dy,
+    z: cam.target.z - x1 * sinY + z1 * cosY,
+  };
+}
+
+/**
+ * Къде лъчът през дадена точка от картината пробожда дадена равнина.
+ *
+ * Равнината е успоредна на две от осите — такива са и подът, и всеки от
+ * четирите зида, а друга не ни трябва. По всяка ос светът е права
+ * функция на дълбочината, затова се взимат две дълбочини и се решава
+ * едно уравнение.
+ *
+ * Връща `null`, когато лъчът е успореден на равнината: тогава пробождане
+ * няма и всяко число би било измислено.
+ */
+export function planePointAt(
+  screenX: number,
+  screenY: number,
+  cam: Camera,
+  axis: 'x' | 'y' | 'z',
+  value: number,
+): Vec3 | null {
+  const p0 = worldAtDepth(screenX, screenY, 1, cam);
+  const p1 = worldAtDepth(screenX, screenY, 2, cam);
+
+  const slope = p1[axis] - p0[axis];
+  if (Math.abs(slope) < 1e-9) return null;
+
+  const t = (value - p0[axis]) / slope + 1;
+  // Зад окото няма картина; отрицателна дълбочина значи, че равнината
+  // е отзад и показалецът сочи към нейното продължение, не към нея.
+  if (t <= 0) return null;
+
+  return worldAtDepth(screenX, screenY, t, cam);
+}
+
 export function viewBoxFor(
   boxes: Box[],
   cam: Camera,
@@ -1409,8 +1477,9 @@ export function viewBoxFor(
    * според ъгъла, а вратите излизат напред, когато се отворят — и в
    * двата случая картината би подскочила без причина.
    */
+  const frame = boxes.some((b) => b.role === 'carcass') ? FRAME_ON : FRAME_EMPTY;
   const points = boxes
-    .filter((b) => FRAME_ON.has(b.role))
+    .filter((b) => frame.has(b.role))
     .flatMap((b) => boxFaces(b).flatMap((f) => f.corners));
   if (!points.length) return `-500 ${-500 / aspect} 1000 ${1000 / aspect}`;
 

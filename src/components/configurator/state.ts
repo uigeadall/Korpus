@@ -6,6 +6,7 @@
  * Само добавянето и дължината трябва да им се каже коя стена.
  */
 
+import { defaultWidth } from '@/lib/cabinet-rules';
 import {
   type HingeSide,
   type Kitchen,
@@ -96,10 +97,8 @@ export function windowId(): string {
 export { clampWallLength as clampWall } from '@/lib/cabinet-rules';
 
 /** Ширина по подразбиране: средната от каталога, за да не е винаги най-малката. */
-export function defaultWidth(kind: ModuleKind): number {
-  const widths = MODULES[kind].widths;
-  return widths.includes(600) ? 600 : widths[Math.floor(widths.length / 2)];
-}
+export { defaultWidth } from '@/lib/cabinet-rules';
+
 
 function rowOf(kind: ModuleKind): RowId {
   return MODULES[kind].row;

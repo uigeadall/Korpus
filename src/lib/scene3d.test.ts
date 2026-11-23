@@ -414,6 +414,26 @@ describe('сцената на истинска кухня', () => {
     expect(withWalls).toBe(withoutWalls);
   });
 
+  it('празна стая се кадрира по стаята, не по пода', () => {
+    const k = emptyKitchen(3600);
+    k.room = { width: 4200, depth: 3200 };
+    const r = kitchenRoom(k);
+    const cam = DEFAULT_CAMERA(r);
+    const boxes = sceneFor(k, r, computeKitchen(k).placed, k.materials.worktop);
+
+    // Нищо за нареждане няма — кадърът трябва да хване и височината.
+    expect(boxes.some((b) => b.role === 'carcass')).toBe(false);
+    const [, , w, h] = viewBoxFor(boxes, cam).split(' ').map(Number);
+    const samoPoda = viewBoxFor(
+      boxes.filter((b) => b.role === 'floor'),
+      cam,
+    )
+      .split(' ')
+      .map(Number);
+    expect(w).toBeGreaterThan(samoPoda[2]);
+    expect(h).toBeGreaterThan(samoPoda[3]);
+  });
+
   it('нито един зид не се рисува върху мебел, от който и да е ъгъл', () => {
     const { boxes } = build();
     for (const yaw of [-1.2, -0.5, 0, 0.5, 1.2]) {

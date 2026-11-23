@@ -1402,6 +1402,19 @@ export function wallStatus(
 }
 
 /** Вертикалната геометрия на модул — за чертежа. */
+/**
+ * С каква ширина влиза нов модул от каталога.
+ *
+ * 600 е шкафът, с който се мери всичко в кухнята; няма ли го в списъка,
+ * взема се средната ширина, за да не тръгва нито от най-тясното, нито
+ * от най-широкото. Стои тук, а не при редактора: това е правило на
+ * каталога и го ползват и чертежът, и обемът.
+ */
+export function defaultWidth(kind: ModuleKind): number {
+  const widths = MODULES[kind].widths;
+  return widths.includes(600) ? 600 : widths[Math.floor(widths.length / 2)];
+}
+
 export function moduleGeometry(kind: ModuleKind): { y: number; height: number; depth: number } {
   // Новите системи носят своя геометрия на самия модул, затова тя има
   // предимство; кухненските без своя следват редовете на кухнята.

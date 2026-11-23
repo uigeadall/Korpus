@@ -167,6 +167,28 @@ export function pointAlong(room: Room, side: WallSide, x: number): { x: number; 
   }
 }
 
+/**
+ * Обратното на `pointAlong`: на колко милиметра от началото на стената
+ * пада дадена точка от пода.
+ *
+ * Трябва, за да може модул, пуснат с показалеца в обема, да намери
+ * мястото си по стената. Точката не се проверява дали е на стената —
+ * взема се само движението по нея, защото показалецът никога не пада
+ * точно върху зида.
+ */
+export function alongFrom(room: Room, side: WallSide, p: { x: number; y: number }): number {
+  switch (side) {
+    case 'top':
+      return p.x;
+    case 'right':
+      return p.y;
+    case 'bottom':
+      return room.width - p.x;
+    case 'left':
+      return room.depth - p.y;
+  }
+}
+
 /** Планът на цялата стая: стените и какво стои по тях. */
 export function planGeometry<K extends string, R extends string>(
   system: FurnitureSystem<K, R>,
