@@ -30,41 +30,61 @@ test.describe('направи проект', () => {
   }
 
   /**
-   * Всяка стая е сама за себе си.
+   * Всяка стая е сама за себе си — и помни своето.
    *
-   * Отговорите преживяват смяната на стаята — там им е мястото, защото
-   * размерите и цветовете си остават. Мебелта обаче не: гардеробът няма
-   * какво да прави в кухнята, а каталозите на двете стаи дори не се
-   * застъпват.
+   * Отговорите преживяват смяната на стаята: размерите и цветовете са
+   * на жилището. Мебелта не е — тя е на стаята и трябва да я чака, щом
+   * човек се върне. Изтичаше в чужда стая, после я изтривах; и двете
+   * са грешни, затова тук е целият кръг.
    */
-  test('гардеробите от спалнята не отиват в кухнята', async ({ page }) => {
+  test('всяка стая помни своята мебел', async ({ page }) => {
+    const broi = () =>
+      page.evaluate(
+        () =>
+          document.querySelectorAll(
+            'svg[aria-label^="Обемен"] polygon[role=button], svg[aria-label^="Обемен"] polygon[role=img]',
+          ).length,
+      );
+    const kamStaya = async (ime: string) => {
+      await page.getByRole('button', { name: 'Стаята', exact: true }).click();
+      await page.waitForTimeout(350);
+      await page.getByRole('button', { name: new RegExp(ime) }).first().click();
+      await page.waitForTimeout(350);
+      for (let i = 0; i < 2; i++) {
+        await page.getByRole('button', { name: /Напред/ }).first().click();
+        await page.waitForTimeout(350);
+      }
+      await page.waitForTimeout(450);
+    };
+
     await otvoriChisto(page, '/proekt');
     await page.waitForTimeout(500);
+
+    // Спалнята се подрежда и има мебел.
     await page.getByRole('button', { name: /Спалня/ }).first().click();
     await page.waitForTimeout(300);
     await podrediPoPravilata(page);
     await page.waitForTimeout(500);
+    const vSpalnyata = await broi();
+    expect(vSpalnyata).toBeGreaterThan(0);
 
-    const broi = () =>
-      page.evaluate(() =>
-        document.querySelectorAll('svg[aria-label^="Обемен"] polygon[role=button], svg[aria-label^="Обемен"] polygon[role=img]').length,
-      );
-    expect(await broi()).toBeGreaterThan(0);
-
-    // Обратно на първата стъпка през самите стъпки — „Назад" на нея е
-    // изключен и чакането му би увиснало.
-    await page.getByRole('button', { name: 'Стаята', exact: true }).click();
-    await page.waitForTimeout(400);
-    await page.getByRole('button', { name: /Кухня/ }).first().click();
-    await page.waitForTimeout(400);
-    for (let i = 0; i < 2; i++) {
-      await page.getByRole('button', { name: /Напред/ }).first().click();
-      await page.waitForTimeout(350);
-    }
-    await page.waitForTimeout(500);
-
+    // Кухнята е празна — мебелта на спалнята не идва с нея.
+    await kamStaya('Кухня');
     await expect(page.getByText('Още няма нищо в стаята.')).toBeVisible();
     expect(await broi()).toBe(0);
+
+    // А спалнята си е същата, когато се върнем.
+    await kamStaya('Спалня');
+    expect(await broi()).toBe(vSpalnyata);
+
+    // И през презареждане: прибраното се пази заедно с отговорите.
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(900);
+    expect(await broi()).toBe(vSpalnyata);
+    await kamStaya('Кухня');
+    expect(await broi()).toBe(0);
+    await kamStaya('Спалня');
+    expect(await broi()).toBe(vSpalnyata);
   });
 
   test('проектът пътува в линк и се отваря в чужд браузър', async ({ page, context }) => {

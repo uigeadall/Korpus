@@ -171,6 +171,45 @@ test.describe('нареждане с влачене', () => {
     expect(await broiModuli(page)).toBe(0);
   });
 
+  test('нареденото на ръка чака в своята стая', async ({ page }) => {
+    await doStapkaTri(page, 'Кухня');
+    await zavleci(page, 'Шкаф за мивка', 0.4);
+    await page.mouse.up();
+    await page.waitForTimeout(450);
+    expect(await broiModuli(page)).toBe(1);
+
+    const kamStaya = async (ime: string) => {
+      await page.getByRole('button', { name: 'Стаята', exact: true }).click();
+      await page.waitForTimeout(350);
+      await page.getByRole('button', { name: new RegExp(ime) }).first().click();
+      await page.waitForTimeout(350);
+      for (let i = 0; i < 2; i++) {
+        await page.getByRole('button', { name: /Напред/ }).first().click();
+        await page.waitForTimeout(350);
+      }
+      await page.waitForTimeout(450);
+    };
+
+    // Спалнята е празна…
+    await kamStaya('Спалня');
+    expect(await broiModuli(page)).toBe(0);
+    await zavleci(page, 'Гардероб', 0.4);
+    await page.mouse.up();
+    await page.waitForTimeout(450);
+    expect(await broiModuli(page)).toBe(1);
+
+    // …и всяка от двете си помни своето.
+    await kamStaya('Кухня');
+    expect(await broiModuli(page)).toBe(1);
+    const кухня = await page.evaluate(() => {
+      const a = JSON.parse(localStorage.getItem('korpus:proekt:v2') ?? '{}') as {
+        hand?: { base?: { kind: string }[] };
+      };
+      return (a.hand?.base ?? []).map((m) => m.kind);
+    });
+    expect(кухня).toEqual(['sink']);
+  });
+
   test('нареденото на ръка оцелява при промяна на размерите', async ({ page }) => {
     await doStapkaTri(page, 'Кухня');
     await zavleci(page, 'Шкаф за мивка', 0.4);

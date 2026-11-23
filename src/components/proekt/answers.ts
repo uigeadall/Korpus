@@ -71,6 +71,76 @@ export interface Answers {
    * човек промени ширината на стената.
    */
   hand: { base: KitchenModule[]; upper: KitchenModule[] };
+  /**
+   * Какво е оставено в другите стаи.
+   *
+   * Живите полета горе са на стаята, в която сме сега; тук чакат
+   * останалите. Смени ли се стаята, текущата се прибира и на нейно
+   * място излиза тази, която се отваря — такава, каквато е оставена.
+   *
+   * Първата поправка на този проблем беше да се изчисти нареденото при
+   * смяна на стаята, за да не изтича от спалнята в кухнята. Това спря
+   * изтичането, като изтри работата — по-лошо от самия бъг. Мебелта не
+   * е на отговорите, а на стаята.
+   */
+  stash: Partial<Record<RoomKind, RoomSlice>>;
+}
+
+/** Онова от отговорите, което е на стаята, а не на целия проект. */
+export interface RoomSlice {
+  roomWidth: number;
+  roomDepth: number;
+  wallLength: number;
+  byHand: boolean;
+  hand: { base: KitchenModule[]; upper: KitchenModule[] };
+  shelves: Record<string, number>;
+  furnishings: Furnishing[];
+  door?: RoomDoor;
+  windows?: RoomWindow[];
+}
+
+const SLICE_KEYS = [
+  'roomWidth',
+  'roomDepth',
+  'wallLength',
+  'byHand',
+  'hand',
+  'shelves',
+  'furnishings',
+  'door',
+  'windows',
+] as const satisfies readonly (keyof RoomSlice)[];
+
+/** Каквото тази стая носи със себе си. */
+export function sliceOf(a: Answers): RoomSlice {
+  return {
+    roomWidth: a.roomWidth,
+    roomDepth: a.roomDepth,
+    wallLength: a.wallLength,
+    byHand: a.byHand,
+    hand: a.hand,
+    shelves: a.shelves,
+    furnishings: a.furnishings,
+    door: a.door,
+    windows: a.windows,
+  };
+}
+
+/**
+ * Празна стая: мебелта пада, мерките остават.
+ *
+ * Първото влизане в непипана стая взема размерите, с които човек е
+ * дошъл — те са на жилището, не на стаята, и да скочат на фабрични
+ * числа би изглеждало като грешка.
+ */
+function freshSlice(a: Answers): RoomSlice {
+  return {
+    ...sliceOf(a),
+    byHand: true,
+    hand: { base: [], upper: [] },
+    shelves: {},
+    furnishings: [],
+  };
 }
 
 export const START: Answers = {
@@ -88,6 +158,7 @@ export const START: Answers = {
   furnishings: [],
   byHand: true,
   hand: { base: [], upper: [] },
+  stash: {},
 };
 
 /** Отговорите стават конфигурация. Нито една ширина не се избира от клиента. */
@@ -310,11 +381,22 @@ export function answers(state: Answers, patch: AnswerPatch): Answers {
    * мебелта си наведнъж, и няма какво да се чисти преди него.
    */
   if ('room' in delta && delta.room !== state.room && !('opened' in delta)) {
-    // Каквото самата промяна носи, остава: тя знае повече от чистенето.
-    if (!('hand' in delta)) next.hand = { base: [], upper: [] };
-    if (!('shelves' in delta)) next.shelves = {};
-    if (!('furnishings' in delta)) next.furnishings = [];
-    if (!('byHand' in delta)) next.byHand = true;
+    /*
+     * Текущата стая се прибира каквато е, а на нейно място излиза
+     * тази, която се отваря. Непипана стая се отваря празна, но с
+     * мерките, с които човек е дошъл.
+     */
+    const stash = { ...state.stash, [state.room]: sliceOf(state) };
+    const saved = stash[delta.room as RoomKind] ?? freshSlice(state);
+
+    for (const key of SLICE_KEYS) {
+      // Каквото самата промяна носи, остава: тя знае повече от
+      // прибраното. Така идването от чертежа на жилището отваря стаята
+      // с неговите мерки, а не със запомнените.
+      if (!(key in delta)) (next as Record<string, unknown>)[key] = saved[key];
+    }
+
+    next.stash = stash;
     next.opened = undefined;
     return next;
   }

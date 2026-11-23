@@ -176,6 +176,18 @@ export function ProjectWizard() {
            * правилата надуваха стаята, за да я поберат.
            */
           wallLength: clampWallLength(roomWidth),
+          /*
+           * Стаята от чертежа се отваря празна и това се казва изрично.
+           * Чертежът знае дали е обзаведена: ако е, идва с `p=` и
+           * минава по другия път. Без това тук щеше да излезе мебелта,
+           * останала от предишна стая от същия вид.
+           */
+          byHand: true,
+          hand: { base: [], upper: [] },
+          shelves: {},
+          furnishings: [],
+          door: undefined,
+          windows: undefined,
         });
         goTo(2);
         return;
