@@ -5,6 +5,7 @@ import {
   izberiStaya,
   kadeSme,
   otvoriChisto,
+  podrediPoPravilata,
   sredataNaStaya,
 } from './pomoshtni';
 
@@ -144,6 +145,7 @@ test.describe('жилището', () => {
     await page.getByRole('link', { name: /Обзаведете/ }).click();
     await page.waitForLoadState('networkidle');
     await expect(page).toHaveURL(/\/proekt/);
+    await podrediPoPravilata(page);
     await doKraya(page);
 
     const clips = () =>

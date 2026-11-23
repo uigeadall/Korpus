@@ -75,6 +75,30 @@ export async function izberiStaya(page: Page, name: string): Promise<void> {
   await page.waitForTimeout(200);
 }
 
+/**
+ * Нарежда стаята по правилата.
+ *
+ * Стаята се отваря празна — такъв е редът: човек я реди сам. Проверките,
+ * които искат готова мебел, минават оттук, както минава и клиентът,
+ * който не иска да реди.
+ */
+export async function podrediPoPravilata(page: Page): Promise<void> {
+  /*
+   * Докъде е стигнал потокът зависи откъде е влязъл: от чертежа на
+   * жилището се пада право на размерите, от началото — на избора на
+   * стая. Затова не се брои колко пъти да се цъкне „Напред", а се
+   * върви, докато бутонът се появи.
+   */
+  const button = page.getByRole('button', { name: 'Подредете я по тези отговори' });
+  for (let i = 0; i < 4; i++) {
+    if (await button.isVisible().catch(() => false)) break;
+    await page.getByRole('button', { name: /Напред/ }).first().click();
+    await page.waitForTimeout(350);
+  }
+  await button.click();
+  await page.waitForTimeout(450);
+}
+
 /** Минава през стъпките на „Направи проект" до края. */
 export async function doKraya(page: Page): Promise<void> {
   for (let i = 0; i < 5; i++) {

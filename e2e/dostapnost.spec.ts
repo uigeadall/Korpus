@@ -38,12 +38,25 @@ for (const path of STRANITSI) {
     });
   }
 
-  test(`${path} не се разлива настрани`, async ({ page }) => {
+  test(`${path} не се разлива настрани`, async ({ page }, info) => {
     await page.goto(path, { waitUntil: 'networkidle' });
     await page.waitForTimeout(400);
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth > window.innerWidth + 1,
-    );
-    expect(overflow, path).toBe(false);
+
+    const page_ = await page.evaluate(() => ({
+      scroll: document.documentElement.scrollWidth,
+      inner: window.innerWidth,
+    }));
+    expect(page_.scroll > page_.inner + 1, path).toBe(false);
+
+    /*
+     * И още нещо, което предишната проверка не хваща: когато нещо е
+     * по-широко от екрана, телефонът не слага водоравна лента, а смалява
+     * цялата страница и `width=device-width` отпада. Тогава двете числа
+     * горе пак са равни — просто са станали 1293 вместо 412 и сайтът се
+     * чете като през прозорец на самолет. Затова широчината се сверява с
+     * тази на устройството.
+     */
+    const wanted = info.project.use.viewport?.width;
+    if (wanted) expect(page_.inner, `${path} — широчина на изгледа`).toBe(wanted);
   });
 }

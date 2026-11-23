@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { doKraya, otvoriChisto } from './pomoshtni';
+import { doKraya, otvoriChisto, podrediPoPravilata } from './pomoshtni';
 
 /**
  * Фунията: от въпросите до нещо, което стига до нас.
@@ -17,6 +17,7 @@ test.describe('направи проект', () => {
       await page.waitForTimeout(500);
       await page.getByRole('button', { name: new RegExp(staya) }).first().click();
       await page.waitForTimeout(300);
+      await podrediPoPravilata(page);
       await doKraya(page);
 
       // Има мебел и тя се рисува в обем.
@@ -34,6 +35,7 @@ test.describe('направи проект', () => {
     await page.waitForTimeout(500);
     await page.getByRole('button', { name: /Спалня/ }).first().click();
     await page.waitForTimeout(300);
+    await podrediPoPravilata(page);
     await doKraya(page);
 
     const summary = () =>
@@ -62,6 +64,7 @@ test.describe('направи проект', () => {
     await page.waitForTimeout(500);
     await page.getByRole('button', { name: /Кухня/ }).first().click();
     await page.waitForTimeout(300);
+    await podrediPoPravilata(page);
     await doKraya(page);
 
     const clips = () =>
