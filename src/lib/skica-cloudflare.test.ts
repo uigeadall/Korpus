@@ -4,6 +4,7 @@ import {
   ModelError,
   cloudflareModel,
   imageFromCloudflare,
+  isDailyLimit,
   mimeOfBase64,
   outputSize,
   pickSkicaModel,
@@ -90,6 +91,19 @@ describe('размерът на снимката следва кадъра', () 
   });
 });
 
+describe('дневният лимит', () => {
+  it('познава се по кода 4006 или по текста, само при 429', () => {
+    expect(isDailyLimit(429, { errors: [{ code: 4006 }] })).toBe(true);
+    expect(isDailyLimit(429, null, 'you have used up your daily free allocation')).toBe(true);
+    expect(isDailyLimit(429, { errors: [{ code: 3040 }] }, 'capacity')).toBe(false);
+    expect(isDailyLimit(500, { errors: [{ code: 4006 }] })).toBe(false);
+  });
+
+  it('подразбиращият се модел е най-евтиният, който пази подредбата', () => {
+    expect(DEFAULT_CLOUDFLARE_MODEL).toBe('@cf/black-forest-labs/flux-2-klein-4b');
+  });
+});
+
 describe('кой модел рисува', () => {
   it('без ключове — никой', () => {
     expect(pickSkicaModel({})).toBeNull();
@@ -103,8 +117,26 @@ describe('кой модел рисува', () => {
 
   it('Cloudflare е пред Gemini, освен ако не е казано друго', () => {
     const both = { CLOUDFLARE_ACCOUNT_ID: 'a', CLOUDFLARE_API_TOKEN: 't', GEMINI_API_KEY: 'g' };
-    expect(pickSkicaModel(both)?.name).toContain('@cf/');
-    expect(pickSkicaModel({ ...both, SKICA_PROVIDER: 'gemini' })?.name).not.toContain('@cf/');
+    expect(pickSkicaModel(both)?.name).toMatch(/^@cf\//);
+    expect(pickSkicaModel({ ...both, SKICA_PROVIDER: 'gemini' })?.name).toMatch(/^gemini/);
+  });
+
+  it('безплатното първо, евтиното след него: Cloudflare → Runware → Gemini', () => {
+    const all = {
+      CLOUDFLARE_ACCOUNT_ID: 'a',
+      CLOUDFLARE_API_TOKEN: 't',
+      RUNWARE_API_KEY: 'r',
+      GEMINI_API_KEY: 'g',
+    };
+    const order = pickSkicaModel(all)?.name.split(' → ') ?? [];
+    expect(order[0]).toMatch(/^@cf\//);
+    expect(order[1]).toBe('runware runware:400@4');
+    expect(order[2]).toMatch(/^gemini/);
+    expect(pickSkicaModel({ ...all, SKICA_PROVIDER: 'runware' })?.name).toMatch(/^runware/);
+  });
+
+  it('само Runware — Runware, с FLUX.2 klein 4B', () => {
+    expect(pickSkicaModel({ RUNWARE_API_KEY: 'r' })?.name).toBe('runware runware:400@4');
   });
 
   it('само Gemini — Gemini', () => {
@@ -158,6 +190,33 @@ describe('повикването към Cloudflare', () => {
     await expect(cloudflareModel('a', 't').generate('x', PIXEL)).rejects.toThrow(
       '401 10000 Authentication error',
     );
+  });
+
+  it('изчерпан дневен лимит се познава — не е „опитайте след малко"', async () => {
+    // Точно това, което Cloudflare върна на живо на 24.11.2026.
+    const said = {
+      success: false,
+      errors: [
+        {
+          code: 4006,
+          message:
+            'AiError: AiError: you have used up your daily free allocation of 10,000 neurons, please upgrade to Cloudflare\'s Workers Paid plan if you would like to continue usage.',
+        },
+      ],
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(said), { status: 429 })));
+    const error = await cloudflareModel('a', 't').generate('x', PIXEL).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ModelError);
+    expect((error as ModelError).limit).toBe('day');
+  });
+
+  it('друга грешка не е дневен лимит', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ errors: [{ code: 3040, message: 'busy' }] }), { status: 429 })),
+    );
+    const error = await cloudflareModel('a', 't').generate('x', PIXEL).catch((e: unknown) => e);
+    expect((error as ModelError).limit).toBeNull();
   });
 
   it('успех без картинка също е грешка, не празна снимка', async () => {

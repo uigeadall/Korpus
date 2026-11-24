@@ -22,6 +22,17 @@ import { SKICA } from '@/lib/skica';
 import { DEFAULT_CAMERA, sceneFor } from '@/lib/scene3d';
 import { downloadBlob, imageName, svgToPng } from '@/components/configurator/iznasyane';
 
+/**
+ * Кога се нулира дневният лимит, в часа на човека. Cloudflare нулира в
+ * 00:00 UTC — у нас това е 02:00 зиме и 03:00 лете.
+ */
+function resetTime(now = new Date()): string {
+  const reset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+  // Сглобено на ръка: браузърите форматират „bg-BG" различно, някои добавят „ч.".
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${two(reset.getHours())}:${two(reset.getMinutes())}`;
+}
+
 type Sastoyanie =
   | { vid: 'pokoj' }
   | { vid: 'chaka' }
@@ -78,7 +89,14 @@ export function Skica({
         return;
       }
       if (response.status === 429) {
-        setS({ vid: 'greshka', said: 'Твърде много снимки наведнъж. Опитайте след малко.' });
+        const body = (await response.json().catch(() => ({}))) as { limit?: string };
+        setS({
+          vid: 'greshka',
+          said:
+            body.limit === 'day'
+              ? `Безплатният дневен лимит на AI снимките е изчерпан. Опитайте след ${resetTime()} ч.`
+              : 'Твърде много снимки наведнъж. Опитайте след малко.',
+        });
         return;
       }
       if (!response.ok) throw new Error(String(response.status));

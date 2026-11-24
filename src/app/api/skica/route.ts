@@ -80,7 +80,7 @@ export async function POST(request: Request) {
   try {
     const picture = await model.generate(instruction(parsed.value.prompt), parsed.value.image);
     console.info(
-      `скица · ${model.name} · стая: ${parsed.value.room} · ${Date.now() - started} мс`,
+      `скица · ${picture.by ?? model.name} · стая: ${parsed.value.room} · ${Date.now() - started} мс`,
     );
     return Response.json({ image: picture.image, mime: picture.mime }, { status: 200 });
   } catch (error) {
@@ -92,6 +92,16 @@ export async function POST(request: Request) {
     console.error(
       `скица се провали · ${model.name} · ${error instanceof Error ? error.message : error}`,
     );
+    /*
+     * Изчерпан дневен лимит не е „опитайте след малко" — до утре няма
+     * да стане. Казва се само това; чуждият текст остава в дневника.
+     */
+    if (error instanceof ModelError && error.limit === 'day') {
+      return Response.json(
+        { error: 'Безплатният дневен лимит на AI снимките е изчерпан.', limit: 'day' },
+        { status: 429 },
+      );
+    }
     return Response.json(
       { error: 'Снимката не се получи. Опитайте пак след малко.' },
       { status: error instanceof ModelError ? 502 : 500 },
