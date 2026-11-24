@@ -42,6 +42,7 @@ import {
   parseOgled,
 } from '@/lib/ogled';
 import { brand } from '@/config/brand';
+import { Skica } from './Skica';
 import { ceilingOf } from '@/lib/furniture/room';
 import { finishById } from '@/config/wall-finishes';
 import { floorById } from '@/config/floor-finishes';
@@ -272,6 +273,8 @@ export function SendProject({
       >
         {busy ? 'Подготвя се…' : 'Свалете картинка на стаята'}
       </button>
+
+      <Skica kitchen={kitchen} view={view} />
 
       {error && (
         <p role="alert" className="text-sm text-danger">
