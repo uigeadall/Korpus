@@ -120,3 +120,70 @@ describe('светлината', () => {
     expect(describeProject(k).promptEn).toContain('soft even indoor lighting');
   });
 });
+
+describe('вратите, прозорците и мебелта — с число, за да не се измислят', () => {
+  it('стая без прозорец казва „no windows", иначе моделът добавя прозорец', () => {
+    const k = staya();
+    k.windows = [];
+    const { promptEn } = describeProject(k);
+    expect(promptEn).toContain('exactly one door');
+    expect(promptEn).toContain('no windows');
+  });
+
+  it('прозорците се броят и се казва, че други няма', () => {
+    const k = staya();
+    k.windows = [
+      { id: 'w1', side: 'left', x: 400, width: 1200, sill: 900, height: 1400 },
+      { id: 'w2', side: 'left', x: 2000, width: 800, sill: 900, height: 1400 },
+    ];
+    expect(describeProject(k).promptEn).toContain('two windows and no other windows');
+  });
+
+  it('свободностоящата мебел се назовава и се брои', () => {
+    const k = staya('living');
+    k.furnishings = [
+      { id: 'a', kind: 'sofa', x: 1000, z: 1000, rotation: 0 },
+      { id: 'b', kind: 'coffee-table', x: 1500, z: 1500, rotation: 0 },
+      { id: 'c', kind: 'chair', x: 2000, z: 500, rotation: 0 },
+      { id: 'd', kind: 'chair', x: 2400, z: 500, rotation: 0 },
+    ];
+    const { promptEn, summaryBg } = describeProject(k);
+    expect(promptEn).toContain('freestanding furniture, exactly: a sofa, a coffee table, two chairs');
+    expect(summaryBg).toContain('диван');
+  });
+
+  it('всеки вид мебел има превод', () => {
+    const kinds = ['dining-table', 'chair', 'sofa', 'armchair', 'coffee-table', 'bed', 'nightstand'] as const;
+    for (const kind of kinds) {
+      const k = staya('living');
+      k.furnishings = [{ id: kind, kind, x: 1000, z: 1000, rotation: 0 }];
+      expect(describeProject(k).promptEn, kind).not.toMatch(/[А-Яа-я]/);
+    }
+  });
+
+  it('не иска изглед от нивото на очите — кадърът е отгоре', () => {
+    const { promptEn } = describeProject(staya());
+    expect(promptEn).not.toContain('eye-level');
+    expect(promptEn).not.toContain('natural daylight');
+  });
+});
+
+describe('модулите се назовават по вид', () => {
+  it('библиотеката и рафтовете остават библиотека и рафтове — не кухня', () => {
+    const { promptEn } = describeProject(staya('living'));
+    expect(promptEn).toContain('built-in furniture, exactly:');
+    expect(promptEn).not.toMatch(/sink|fridge|oven|dishwasher/);
+  });
+
+  it('кухнята си казва мивката и колоната', () => {
+    const { promptEn } = describeProject(staya('kitchen'));
+    expect(promptEn).toMatch(/sink base cabinet/);
+  });
+
+  it('празните места не се казват', () => {
+    for (const kind of ['kitchen', 'living', 'bedroom', 'bath', 'corridor', 'hall'] as const) {
+      const { promptEn } = describeProject(staya(kind));
+      expect(promptEn, kind).not.toMatch(/, ,|: ,|exactly: \./);
+    }
+  });
+});

@@ -19,6 +19,7 @@ import {
   nameFor,
   snapRoom,
 } from '@/lib/flat';
+import { fitProject, projectSize } from '@/lib/flat-furniture';
 
 export type FlatAction =
   | { type: 'add'; kind: FlatRoomKind }
@@ -37,8 +38,6 @@ export type FlatAction =
       depth: number;
       project: string;
       id: string;
-      /** Дължината на стената с мебелта — виж `placeProject`. */
-      wallLength?: number;
     }
   /*
    * Няколко наведнъж. Отделни действия, а не цикъл от единичните:
@@ -97,10 +96,19 @@ export function flatReducer(flat: Flat, action: FlatAction): Flat {
         snapRoom(flat, clampFlatRoom({ ...room, x: action.x, y: action.y })),
       );
 
+    /*
+     * Обзаведената стая носи мебелта си в новите мерки. Не се ли побира
+     * — стената е станала по-къса от реда шкафове — промяната не минава,
+     * както не минава и в самия проект. Иначе макетът показваше шкафове
+     * и маси през зида.
+     */
     case 'size':
-      return withRoom(flat, action.id, (room) =>
-        clampFlatRoom({ ...room, width: action.width, depth: action.depth }),
-      );
+      return withRoom(flat, action.id, (room) => {
+        const next = clampFlatRoom({ ...room, width: action.width, depth: action.depth });
+        if (!room.project) return next;
+        const project = fitProject(room.project, next);
+        return project === null ? room : { ...next, project };
+      });
 
     case 'rename':
       return withRoom(flat, action.id, (room) => ({
@@ -133,9 +141,17 @@ export function flatReducer(flat: Flat, action: FlatAction): Flat {
     /*
      * Проектът идва готов от потока и се пази като запис, а не като
      * мебел: жилището не знае какво е шкаф и не бива да научава.
+     *
+     * Стаята в жилището взема мерките на проекта. В проекта се влиза с
+     * мерките от чертежа; различни ли са накрая, човекът ги е сменил
+     * нарочно — знае стаята си по-добре от чертежа.
      */
     case 'finish':
-      return withRoom(flat, action.id, (room) => ({ ...room, project: action.project }));
+      return withRoom(flat, action.id, (room) => {
+        const size = projectSize(action.project);
+        const next = size ? clampFlatRoom({ ...room, ...size }) : room;
+        return { ...next, project: fitProject(action.project, next) ?? action.project };
+      });
 
     case 'place':
       return placeProject(
@@ -144,7 +160,7 @@ export function flatReducer(flat: Flat, action: FlatAction): Flat {
         { width: action.width, depth: action.depth },
         action.project,
         action.id,
-        action.wallLength,
+        (room) => fitProject(action.project, room),
       ).flat;
 
     case 'unfinish':

@@ -285,6 +285,35 @@ export interface RenderOptions {
    * нейното покритие. Без нея всички зидове излизат с общото.
    */
   room?: Room;
+  /**
+   * Готов кадър вместо сметнатия по подразбиране — `tightViewBox` за
+   * картината, която отива при AI модела.
+   */
+  viewBox?: string;
+}
+
+/**
+ * Кадър плътно около нарисуваното — за картината, която отива при AI.
+ *
+ * Кадърът на екрана е с постоянна форма и кадрира само по неподвижното,
+ * затова около стаята остава много бяло. Моделът го „дорисува" като
+ * още стая, а вратата излиза дребна и той я мести. Проверено на живо на
+ * 24.11.2026: със същия модел и същите думи, изрязан плътно, кадърът
+ * пази вратата на мястото ѝ; с бялото около нея — не.
+ *
+ * Тук влиза всичко, което се вижда, и зидовете: отрязан зид моделът
+ * би дорисувал наново.
+ */
+export function tightViewBox(boxes: Box[], cam: Camera, padding = 60): string {
+  const points = visibleFaces(boxes, cam).flatMap((f) => f.corners.map((c) => project(c, cam)));
+  if (!points.length) return viewBoxFor(boxes, cam);
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const minX = Math.min(...xs) - padding;
+  const minY = Math.min(...ys) - padding;
+  const width = Math.max(...xs) - Math.min(...xs) + padding * 2;
+  const height = Math.max(...ys) - Math.min(...ys) + padding * 2;
+  return `${minX} ${minY} ${width} ${height}`;
 }
 
 export interface Rendered {
@@ -310,7 +339,7 @@ export function renderScene(
   const { width = 1600, pass = 'material', padding = 220, aspect, title, room } = options;
 
   const faces = visibleFaces(boxes, cam);
-  const viewBox = viewBoxFor(boxes, cam, padding, aspect);
+  const viewBox = options.viewBox ?? viewBoxFor(boxes, cam, padding, aspect);
   const [, , vw, vh] = viewBox.split(' ').map(Number);
   const height = Math.round((width * vh) / Math.max(1, vw));
 

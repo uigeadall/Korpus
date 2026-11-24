@@ -12,7 +12,7 @@
  * останалите влизат в плана, защото без тях жилището не е жилище.
  */
 
-import { useEffect, useReducer, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import {
   FLAT,
   FLAT_ROOM_LABEL,
@@ -21,6 +21,7 @@ import {
   type FlatRoomKind,
   type FlatRoom,
   areaOf,
+  clampFlatRoom,
   isDone,
   isFurnished,
   progressOf,
@@ -46,8 +47,10 @@ import {
   saveHere,
 } from './flatState';
 import { defaultFlat, placeProject } from '@/lib/flat';
+import { fitProject } from '@/lib/flat-furniture';
 import { decodeFlat, encodeFlat } from '@/lib/flat-share';
 import { decodeProject } from '@/lib/share';
+import { kitchenRoom } from '@/lib/cabinet-rules';
 
 const KINDS: FlatRoomKind[] = ['kitchen', 'living', 'bedroom', 'corridor', 'bath', 'hall', 'other'];
 
@@ -170,22 +173,29 @@ export function FlatEditor() {
 
     /*
      * Готов проект, направен без чертежа — „Добави в жилището" накрая на
-     * „Направи проект". Влиза в чакаща стая от вида си или в нова, и се
-     * отмята. Мястото се смята предварително, за да се застане там.
+     * „Направи проект". Заменя стаята от вида си с мерките и мебелта на
+     * проекта, или влиза като нова, и се отмята. Мястото се смята
+     * предварително, за да се застане там.
      */
     const dobavi = params.get('dobavi');
     const kitchen = dobavi ? decodeProject(dobavi) : null;
     if (dobavi && kitchen) {
       const kind = kitchen.roomKind ?? 'kitchen';
-      const size = { width: kitchen.room?.width ?? 4200, depth: kitchen.room?.depth ?? 3200 };
+      const size = kitchenRoom(kitchen);
       const id = roomId();
-      const wallLength = kitchen.walls[0]?.length ?? 0;
-      const placed = placeProject(base, kind, size, dobavi, id, wallLength);
+      const placed = placeProject(base, kind, size, dobavi, id, (room) => fitProject(dobavi, room));
       saveFlat(placed.flat);
-      const where = placed.id;
-      dispatch({ type: 'place', kind, ...size, project: dobavi, id, wallLength });
-      if (where) goTo(where, 'Проектът е в жилището — стаята е отметната като готова.');
-      else show({ said: 'Жилището е пълно — махнете помещение, за да влезе ново.' });
+      const where = placed.flat.rooms.find((r) => r.id === placed.id);
+      dispatch({ type: 'place', kind, width: size.width, depth: size.depth, project: dobavi, id });
+      if (where) {
+        const m = (mm: number) => (mm / 1000).toFixed(2).replace('.', ',');
+        const how = where.id === id ? 'влезе като нова стая' : 'е заменена с проекта';
+        goTo(
+          where.id,
+          `„${roomName(where)}" ${how}: ${m(where.width)} × ${m(where.depth)} м, с мебелта си. ` +
+            'Отметната е като готова.',
+        );
+      } else show({ said: 'Жилището е пълно — махнете помещение, за да влезе ново.' });
       window.history.replaceState(null, '', '/jilishte');
     }
   }, []);
@@ -211,9 +221,21 @@ export function FlatEditor() {
     );
   };
 
+  /*
+   * Записва се само чертеж, който още не е записан.
+   *
+   * Next пази страницата жива, докато човек е в „Направи проект", и при
+   * връщане пуска ефектите ѝ наново. Без тази проверка записът пускаше
+   * стария чертеж отгоре на току-що добавената стая — а вторият ход на
+   * зареждането го четеше обратно. Съобщението казваше „заменена", а
+   * всекидневната си стоеше празна (25.11.2026, жилище с копирано антре).
+   */
   const changed = history.past.length > 0;
+  const lastSaved = useRef<typeof flat | null>(null);
   useEffect(() => {
-    if (changed) saveFlat(flat);
+    if (!changed || lastSaved.current === flat) return;
+    lastSaved.current = flat;
+    saveFlat(flat);
   }, [changed, flat]);
 
   const current = flat.rooms.find((r) => r.id === currentId) ?? flat.rooms[0] ?? null;
@@ -228,10 +250,38 @@ export function FlatEditor() {
    * подреждат, а накрая лентата позволява да се донагласи. Готова
    * стая се отваря такава, каквато е оставена.
    */
-  const furnishLink = (room: FlatRoom) =>
-    `/proekt?staya=${room.kind}&shirina=${room.width}&dalbochina=${room.depth}` +
-    `&stayaId=${encodeURIComponent(room.id)}` +
-    (room.project ? `&p=${room.project}` : '');
+  const furnishLink = (room: FlatRoom) => {
+    // Запис отпреди мерките да вървят заедно се отваря в мерките от
+    // чертежа, ако мебелта се побира — иначе какъвто е.
+    const project = room.project ? (fitProject(room.project, room) ?? room.project) : null;
+    return (
+      `/proekt?staya=${room.kind}&shirina=${room.width}&dalbochina=${room.depth}` +
+      `&stayaId=${encodeURIComponent(room.id)}` +
+      (project ? `&p=${project}` : '')
+    );
+  };
+
+  /**
+   * Нови мерки на стая. Обзаведена не се стеснява под мебелта си —
+   * редукторът я оставя каквато е, а тук се казва защо. Иначе човек
+   * дърпа ръба, нищо не мърда и не разбира какво става.
+   */
+  const resize = (id: string, width: number, depth: number) => {
+    const room = flat.rooms.find((r) => r.id === id);
+    if (room?.project) {
+      const next = clampFlatRoom({ ...room, width, depth });
+      if (fitProject(room.project, next) === null) {
+        const m = (mm: number) => (mm / 1000).toFixed(2).replace('.', ',');
+        show({
+          said:
+            `Мебелта в „${roomName(room)}" не се побира в ${m(next.width)} × ${m(next.depth)} м. ` +
+            'За по-малка стая махнете шкаф от проекта ѝ.',
+        });
+        return;
+      }
+    }
+    dispatch({ type: 'size', id, width, depth });
+  };
 
   /**
    * Ходенето. Стрелката води в съседната стая и казва коя е — иначе
@@ -296,7 +346,7 @@ export function FlatEditor() {
               selected={selected}
               onPick={pickRoom}
               onMove={(ids, x, y) => dispatch({ type: 'moveMany', ids, x, y })}
-              onSize={(id, width, depth) => dispatch({ type: 'size', id, width, depth })}
+              onSize={resize}
             />
           </div>
 
@@ -426,16 +476,12 @@ export function FlatEditor() {
                 <Field
                   label="Ширина"
                   value={current.width}
-                  onChange={(width) =>
-                    dispatch({ type: 'size', id: current.id, width, depth: current.depth })
-                  }
+                  onChange={(width) => resize(current.id, width, current.depth)}
                 />
                 <Field
                   label="Дълбочина"
                   value={current.depth}
-                  onChange={(depth) =>
-                    dispatch({ type: 'size', id: current.id, width: current.width, depth })
-                  }
+                  onChange={(depth) => resize(current.id, current.width, depth)}
                 />
               </div>
 
@@ -557,6 +603,16 @@ function ArrowButton({ item, onWalk }: { item: { dir: Direction; sign: string };
   );
 }
 
+/**
+ * Поле за мярка. Пише се на чернова и се записва с Enter или при
+ * излизане от полето.
+ *
+ * Записваше се при всеки клавиш: докато човек пише 3000, стаята минаваше
+ * през 3, 30 и 300 мм — тоест през най-малката позволена. Празна стая
+ * просто подскачаше, но обзаведената или отказваше още на първата цифра,
+ * или придърпваше масите в междинната мярка и после не ги връщаше.
+ * Стрелките на полето вървят по една стъпка и се записват веднага.
+ */
 function Field({
   label,
   value,
@@ -566,16 +622,32 @@ function Field({
   value: number;
   onChange: (value: number) => void;
 }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = (raw: string | null) => {
+    setDraft(null);
+    if (raw === null || raw.trim() === '') return;
+    const next = Number(raw);
+    if (Number.isFinite(next) && next !== value) onChange(next);
+  };
   return (
     <label className="block">
       <span className="text-[11px] text-muted">{label}</span>
       <input
         type="number"
-        value={value}
+        value={draft ?? value}
         min={FLAT.MIN_SIDE}
         max={FLAT.MAX_SIDE}
         step={FLAT.STEP}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => {
+          const raw = e.target.value;
+          if (Math.abs(Number(raw) - value) === FLAT.STEP) commit(raw);
+          else setDraft(raw);
+        }}
+        onBlur={() => commit(draft)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit(draft);
+          if (e.key === 'Escape') setDraft(null);
+        }}
         className="dim field mt-1 w-full py-1.5 text-sm"
       />
     </label>

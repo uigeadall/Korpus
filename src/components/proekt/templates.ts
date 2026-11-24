@@ -11,7 +11,7 @@
  * тест пази шаблон да не сочи към нещо, което го няма.
  */
 
-import type { RoomKind, WorktopType } from '@/lib/cabinet-rules';
+import { type RoomKind, type WorktopType, clampWallLength } from '@/lib/cabinet-rules';
 import {
   type RoomNeeds,
   DEFAULT_ROOM_NEEDS,
@@ -196,7 +196,16 @@ export const TEMPLATES: readonly Template[] = [
  * стените. Иначе смяната на стаята в `answers()` би извадила запомненото
  * от миналия път и шаблонът щеше да излезе смесен с чужда мебел.
  */
-export function templatePatch(t: Template): Partial<Answers> {
+export function templatePatch(
+  t: Template,
+  /**
+   * Стаята, която вече е начертана в жилището. Шаблонът тогава носи
+   * мебелта си, но не и мерките: иначе стаята от чертежа ставаше
+   * 4,80 × 3,80, защото шаблонът е такъв, и мебелта излизаше през
+   * зидовете в макета.
+   */
+  room?: { width: number; depth: number },
+): Partial<Answers> {
   const key = NEEDS_KEY[t.room];
   const needs: RoomNeeds = {
     ...DEFAULT_ROOM_NEEDS,
@@ -204,9 +213,9 @@ export function templatePatch(t: Template): Partial<Answers> {
   };
   return {
     room: t.room,
-    roomWidth: t.roomWidth,
-    roomDepth: t.roomDepth,
-    wallLength: t.wallLength,
+    roomWidth: room?.width ?? t.roomWidth,
+    roomDepth: room?.depth ?? t.roomDepth,
+    wallLength: room ? clampWallLength(Math.min(t.wallLength, room.width)) : t.wallLength,
     needs,
     facadeColor: t.facadeColor,
     carcassColor: t.carcassColor,

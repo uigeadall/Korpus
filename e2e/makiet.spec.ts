@@ -119,3 +119,83 @@ test.describe('макетът става за работа', () => {
     expect(await kadeSme(page)).not.toBe(predi);
   });
 });
+
+test.describe('връщането в жилището', () => {
+  /*
+   * Бутонът стоеше най-долу, под цената и снимките, в колона, която се
+   * скролира отделно. Човек натискаше „Готово" горе, отиваше в жилището
+   * от менюто и стаята си стоеше празна.
+   */
+  test('„Готово — обратно към жилището" е най-отгоре на последната стъпка', async ({ page }, info) => {
+    // Целият път през съветника; под товар dev сървърът компилира бавно.
+    test.slow();
+    await otvoriChisto(page, '/jilishte');
+    await page.waitForTimeout(900);
+    await page.getByRole('link', { name: /Обзаведете/ }).first().click();
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('button', { name: /Напред|Подредете/ }).first()).toBeVisible({
+      timeout: 30000,
+    });
+    await podrediPoPravilata(page);
+    await doKraya(page);
+
+    const obratno = page.getByRole('button', { name: /Готово — обратно/ });
+    const poluchi = page.getByText('Ето какво се получи');
+    const yO = (await obratno.boundingBox())!.y;
+    const yP = (await poluchi.boundingBox())!.y;
+    expect(yO, 'бутонът е под обобщението').toBeLessThan(yP);
+
+    if (info.project.name === 'десктоп') {
+      // Видим без скролиране — колоната вдясно е закована.
+      await expect(obratno).toBeInViewport();
+    }
+
+    await obratno.click();
+    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveURL(/\/jilishte$/);
+  });
+});
+
+test.describe('мерките на обзаведената стая', () => {
+  /*
+   * Стаята в жилището и стаята в проекта бяха две отделни мерки. Стесни
+   * ли се едната, масата и креслото излизаха през зида в макета.
+   */
+  test('не се стеснява под мебелта си, казва защо, а където се побира — минава', async ({ page }) => {
+    const flat = defaultFlat();
+    const rooms = flat.rooms.map((r) => {
+      if (r.kind !== 'living') return r;
+      const k = emptyKitchen(r.width);
+      k.roomKind = 'living';
+      k.room = { width: r.width, depth: r.depth };
+      const l = layoutFor('living', r.width, DEFAULT_ROOM_NEEDS);
+      k.walls[0] = { ...k.walls[0], base: l.base, upper: l.upper };
+      k.furnishings = [{ id: 't', kind: 'dining-table', x: 2600, z: 1500, rotation: 0 }];
+      return { ...r, project: encodeProject(k) };
+    });
+    await page.goto('/jilishte', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(
+      (f) => {
+        localStorage.clear();
+        localStorage.setItem('korpus:jilishte:v1', JSON.stringify(f));
+        localStorage.setItem('korpus:jilishte:tuk', 'f-living');
+      },
+      { rooms },
+    );
+    await page.reload({ waitUntil: 'networkidle' });
+
+    // Пише се цифра по цифра, както човек — не наведнъж.
+    const width = page.getByLabel('Ширина');
+    await width.click({ clickCount: 3 });
+    await page.keyboard.type('2400', { delay: 40 });
+    await page.keyboard.press('Tab');
+    await expect(page.getByText(/не се побира в 2,40 × 2,00 м/)).toBeVisible();
+    await expect(width).toHaveValue('3600');
+
+    const depth = page.getByLabel('Дълбочина');
+    await depth.click({ clickCount: 3 });
+    await page.keyboard.type('1600', { delay: 40 });
+    await page.keyboard.press('Tab');
+    await expect(depth).toHaveValue('1600');
+  });
+});

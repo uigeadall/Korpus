@@ -473,6 +473,12 @@ export function pollinationsModel(apiKey: string, model = pollinationsModelName(
       form.append('model', model);
       form.append('size', `${width}x${height}`);
       form.append('response_format', 'b64_json');
+      /*
+       * Случайно зърно при всяко повикване. Pollinations пази отговорите
+       * и еднаква заявка връща същата снимка — „Не ми харесва — нова"
+       * щеше да връща старата.
+       */
+      form.append('seed', String(Math.floor(Math.random() * 2 ** 31)));
 
       const response = await fetch(POLLINATIONS_URL, {
         method: 'POST',

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_ROOM_NEEDS, layoutFor } from './autolayout';
 import { computeKitchen, emptyKitchen, kitchenRoom, type Kitchen } from './cabinet-rules';
-import { PART_COLOR, depthRange, paletteFor, renderScene } from './render';
-import { DEFAULT_CAMERA, sceneFor, visibleFaces } from './scene3d';
+import { PART_COLOR, depthRange, paletteFor, renderScene, tightViewBox } from './render';
+import { DEFAULT_CAMERA, project, sceneFor, viewBoxFor, visibleFaces } from './scene3d';
 import { WALL_FINISHES } from '@/config/wall-finishes';
 import { FLOOR_FINISHES } from '@/config/floor-finishes';
 
@@ -199,5 +199,43 @@ describe('трите прочита', () => {
     const { cam, boxes } = kadar(тъмна);
     const { svg } = renderScene(boxes, cam, тъмна, { pass: 'material' });
     expect(svg).toContain('<linearGradient');
+  });
+});
+
+describe('плътният кадър за AI', () => {
+  /*
+   * С бяло около стаята моделът мести вратите и дорисува стени —
+   * проверено на живо. Кадърът за AI е плътно около нарисуваното.
+   */
+  const box = (v: string) => {
+    const [x, y, w, h] = v.split(' ').map(Number);
+    return { x, y, w, h };
+  };
+
+  it('е по-малък от кадъра на екрана — по-малко бяло', () => {
+    const { cam, boxes } = kadar();
+    const tight = box(tightViewBox(boxes, cam));
+    const screen = box(viewBoxFor(boxes, cam));
+    expect(tight.w * tight.h).toBeLessThan(screen.w * screen.h * 0.8);
+  });
+
+  it('побира всичко видимо, и зидовете — отрязан зид моделът дорисува', () => {
+    const { cam, boxes } = kadar();
+    const t = box(tightViewBox(boxes, cam));
+    for (const f of visibleFaces(boxes, cam)) {
+      for (const c of f.corners) {
+        const p = project(c, cam);
+        expect(p.x).toBeGreaterThanOrEqual(t.x);
+        expect(p.x).toBeLessThanOrEqual(t.x + t.w);
+        expect(p.y).toBeGreaterThanOrEqual(t.y);
+        expect(p.y).toBeLessThanOrEqual(t.y + t.h);
+      }
+    }
+  });
+
+  it('renderScene го приема наготово', () => {
+    const { k, cam, boxes } = kadar();
+    const viewBox = tightViewBox(boxes, cam);
+    expect(renderScene(boxes, cam, k, { width: 1024, viewBox }).svg).toContain(`viewBox="${viewBox}"`);
   });
 });

@@ -62,5 +62,14 @@ describe('готовите стаи', () => {
     const last = cabinets.at(-1)!;
     expect(last.x + last.width).toBe(t.roomDepth - DIM.BASE_D);
   });
-});
 
+  it('в стая от жилището шаблонът носи мебелта, но не и мерките си', () => {
+    for (const t of TEMPLATES) {
+      const patch = templatePatch(t, { width: 3600, depth: 2000 });
+      expect(patch).toMatchObject({ roomWidth: 3600, roomDepth: 2000 });
+      expect(patch.wallLength).toBeLessThanOrEqual(3600);
+    }
+    // Без начертана стая — мерките на шаблона.
+    expect(templatePatch(TEMPLATES[0]).roomWidth).toBe(TEMPLATES[0].roomWidth);
+  });
+});

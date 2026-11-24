@@ -67,6 +67,22 @@ describe('повикването към Pollinations', () => {
     expect(picture).toEqual({ image: JPEG, mime: 'image/jpeg' });
   });
 
+  it('всяко повикване е с ново зърно — иначе „нова" връща същата от кеша', async () => {
+    const seeds: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_u: string, init: RequestInit) => {
+        seeds.push(String((init.body as FormData).get('seed')));
+        return new Response(JSON.stringify({ data: [{ b64_json: JPEG }] }), { status: 200 });
+      }),
+    );
+    const model = pollinationsModel('sk');
+    await model.generate('x', PIXEL);
+    await model.generate('x', PIXEL);
+    expect(seeds[0]).toMatch(/^\d+$/);
+    expect(seeds[0]).not.toBe(seeds[1]);
+  });
+
   it('402 е изхарчен безплатен бюджет — лимит, не повреда', async () => {
     vi.stubGlobal(
       'fetch',

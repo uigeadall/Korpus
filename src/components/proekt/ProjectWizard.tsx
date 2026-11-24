@@ -261,7 +261,11 @@ export function ProjectWizard() {
     ) {
       return;
     }
-    set(templatePatch(t));
+    /*
+     * Дошли от жилището, стаята вече има мерки — тези от чертежа или
+     * сменените на втората стъпка. Шаблонът не ги пипа.
+     */
+    set(templatePatch(t, fromFlat ? { width: a.roomWidth, depth: a.roomDepth } : undefined));
     goTo(3);
   };
 
@@ -639,6 +643,35 @@ export function ProjectWizard() {
           // спира, вместо да повлече и обема.
           className="space-y-4 lg:h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-width:thin]"
         >
+          {/*
+            Дошли от жилището — първото, което човек иска, е да се върне в
+            схемата и да види стаята отметната. Затова е най-отгоре на
+            последната стъпка, над всичко останало. Долу, под картите с
+            цената и снимките, в колона, която се скролира отделно, не се
+            виждаше: човек натискаше „Готово" горе, отиваше в жилището от
+            менюто и стаята си стоеше празна.
+          */}
+          {step === STEPS.length - 1 && fromFlat && (
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(
+                    `/jilishte?gotova=${encodeURIComponent(fromFlat)}` +
+                      `&p=${encodeProject(furniture)}`,
+                  )
+                }
+                className="btn btn-primary w-full py-3"
+              >
+                Готово — обратно към жилището
+              </button>
+              <p className="text-[13px] leading-relaxed text-muted">
+                Стаята се отмята в схемата и мебелта се вижда в макета. Можете да се върнете в
+                нея и да я промените по всяко време.
+              </p>
+            </div>
+          )}
+
           {/* Удобството стои най-горе, щом има мебел — пречи ли нещо, да се
               види преди цветовете. */}
           {step >= 2 && notes.length > 0 && (
@@ -1169,34 +1202,10 @@ export function ProjectWizard() {
               </Card>
 
               {/*
-                Дошли от жилището — първото, което човек иска, е да се
-                върне в схемата и да види стаята отметната.
-              */}
-              {fromFlat && (
-                <div className="flex flex-col gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      router.push(
-                        `/jilishte?gotova=${encodeURIComponent(fromFlat)}` +
-                          `&p=${encodeProject(furniture)}`,
-                      )
-                    }
-                    className="btn btn-primary w-full py-3"
-                  >
-                    Готово — обратно към жилището
-                  </button>
-                  <p className="text-[13px] leading-relaxed text-muted">
-                    Стаята се отмята в схемата. Можете да се върнете в нея и да я промените по
-                    всяко време.
-                  </p>
-                </div>
-              )}
-
-              {/*
                 Направено без чертежа — готовата стая може да влезе в
-                жилището: в чакаща стая от същия вид или като нова. Там се
-                вижда с мебелта си в макета на цялото жилище.
+                жилището: заменя стаята от същия вид с мерките и мебелта си,
+                а ако такава няма — влиза като нова. Там се вижда с мебелта
+                си в макета на цялото жилище.
               */}
               {!fromFlat && cabinets > 0 && (
                 <div className="flex flex-col gap-2">

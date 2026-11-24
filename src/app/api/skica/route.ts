@@ -18,9 +18,14 @@ import { ModelError, skicaModel } from '@/lib/skica-model';
  * Брои се в паметта на този процес; на сървър без състояние всеки
  * екземпляр брои свое и преградата изтънява. Същинската е Ж7 в плана —
  * но празна врата пред платен модел не се оставя.
+ *
+ * При разработка таванът е висок: там всички заявки идват от един адрес
+ * (localhost) и пробите изяждаха тавана на човека пред екрана. Сменя се
+ * и от `SKICA_MAX_PER_10MIN`.
  */
 const WINDOW_MS = 10 * 60 * 1000;
-const MAX_PER_WINDOW = 6;
+const MAX_PER_WINDOW =
+  Number(process.env.SKICA_MAX_PER_10MIN) || (process.env.NODE_ENV === 'development' ? 100 : 6);
 const seen = new Map<string, number[]>();
 
 function tooMany(who: string, now = Date.now()): boolean {
