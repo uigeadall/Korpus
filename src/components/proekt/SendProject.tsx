@@ -14,7 +14,15 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import type { Kitchen } from '@/lib/cabinet-rules';
+import { type Kitchen, computeKitchen, kitchenRoom } from '@/lib/cabinet-rules';
+import { DEFAULT_CAMERA, sceneFor } from '@/lib/scene3d';
+import { renderScene } from '@/lib/render';
+import { describeProject } from '@/lib/opisanie';
+import {
+  downloadBlob,
+  imageName,
+  svgToPng,
+} from '@/components/configurator/iznasyane';
 import {
   ROOM_KIND_LABEL,
   WALL_SIDE_LABEL,
@@ -108,6 +116,35 @@ export function SendProject({ kitchen }: { kitchen: Kitchen }) {
       window.setTimeout(() => setCopied(false), 2500);
     } catch {
       setError('Браузърът не позволи копиране. Отворете линка и го копирайте от адреса.');
+    }
+  };
+
+  /**
+   * Картинката се прави в браузъра: сцената е SVG и платното я рисува.
+   * Сървър не ѝ трябва — няма какво да смята, което вече не е сметнато.
+   */
+  const downloadImage = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const room = kitchenRoom(kitchen);
+      const cam = DEFAULT_CAMERA(room);
+      const boxes = sceneFor(
+        kitchen,
+        room,
+        computeKitchen(kitchen).placed,
+        kitchen.materials.worktop,
+        kitchen.materials.opening,
+      );
+      const rendered = renderScene(boxes, cam, kitchen, {
+        width: 1920,
+        title: describeProject(kitchen).summaryBg,
+      });
+      downloadBlob(await svgToPng(rendered), imageName(kitchen.roomKind ?? 'kitchen', 'izgled'));
+    } catch {
+      setError('Картинката не се получи. Пробвайте пак или свалете PDF-а.');
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -214,6 +251,15 @@ export function SendProject({ kitchen }: { kitchen: Kitchen }) {
         className="btn btn-quiet w-full py-3 disabled:opacity-50"
       >
         {busy ? 'Подготвя се…' : 'Свалете PDF с чертежа'}
+      </button>
+
+      <button
+        type="button"
+        onClick={downloadImage}
+        disabled={busy}
+        className="btn btn-quiet w-full py-3 disabled:opacity-50"
+      >
+        {busy ? 'Подготвя се…' : 'Свалете картинка на стаята'}
       </button>
 
       {error && (

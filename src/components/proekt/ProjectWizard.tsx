@@ -477,6 +477,10 @@ export function ProjectWizard() {
               onDropCancel={() => setDragKind(null)}
               onMoveModule={(id, toIndex) => edit({ type: 'reorder', id, toIndex })}
               onSlideModule={(id, left) => edit({ type: 'slide', id, left })}
+              /* Камерата е на стаята: връщането в нея дава същия кадър,
+                 а изнесената картинка тръгва оттам. */
+              view={a.view}
+              onView={(view) => set({ view })}
               onRemoveModule={(id) => edit({ type: 'remove', id })}
               onShelves={(id, value) =>
                 set((p) => ({ shelves: { ...p.shelves, [id]: value } }))

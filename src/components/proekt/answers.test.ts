@@ -165,6 +165,21 @@ describe('какво отменя донесения проект', () => {
     expect(след.opened!.door?.x).toBe(400);
   });
 
+  it('завъртането на изгледа не го отменя', () => {
+    // Къде стои окото не е въпрос за мебелта.
+    const преди = sProekt();
+    const след = answers(преди, { view: { yaw: 1, pitch: 0.3, distance: 6000 } });
+    expect(след.opened).toBeDefined();
+    expect(след.view?.yaw).toBe(1);
+  });
+
+  it('камерата се връща със своята стая', () => {
+    const спалня = answers(spalnya(), { view: { yaw: 0.5, pitch: 0.2, distance: 5000 } });
+    const кухня = answers(спалня, { room: 'kitchen' });
+    expect(кухня.view).toBeUndefined();
+    expect(answers(кухня, { room: 'bedroom' }).view?.yaw).toBe(0.5);
+  });
+
   it('всеки друг въпрос го отменя — оттам нататък подреждат правилата', () => {
     const след = answers(sProekt(), { wallLength: 4200 });
     expect(след.opened).toBeUndefined();

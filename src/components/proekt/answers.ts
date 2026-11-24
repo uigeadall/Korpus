@@ -65,6 +65,8 @@ export interface Answers {
   wallFinish?: WallFinishChoice;
   /** Подът. Липсва — подът е както винаги. */
   floorFinish?: string;
+  /** Откъде се гледа стаята. Пази се на стаята — виж `RoomSlice`. */
+  view?: { yaw: number; pitch: number; distance: number };
   /**
    * Проект, отворен по линк. Показва се както е дошъл; пипне ли се
    * който и да е въпрос, правилата подреждат наново и това отпада.
@@ -127,6 +129,15 @@ export interface RoomSlice {
   windows?: RoomWindow[];
   wallFinish?: WallFinishChoice;
   floorFinish?: string;
+  /**
+   * Откъде се гледа стаята.
+   *
+   * Пази се на стаята, а не на изгледа: иначе всяко връщане в нея дава
+   * друг кадър и шестте стаи на едно жилище изглеждат като снимани от
+   * шестима различни. Важи и за картинките, които се изнасят — те
+   * тръгват от същата камера.
+   */
+  view?: { yaw: number; pitch: number; distance: number };
 }
 
 const SLICE_KEYS = [
@@ -143,6 +154,7 @@ const SLICE_KEYS = [
   'windows',
   'wallFinish',
   'floorFinish',
+  'view',
 ] as const satisfies readonly (keyof RoomSlice)[];
 
 /** Каквото тази стая носи със себе си. */
@@ -161,6 +173,7 @@ export function sliceOf(a: Answers): RoomSlice {
     windows: a.windows,
     wallFinish: a.wallFinish,
     floorFinish: a.floorFinish,
+    view: a.view,
   };
 }
 
@@ -498,7 +511,10 @@ export function answers(state: Answers, patch: AnswerPatch): Answers {
         key === 'windows' ||
         key === 'wallFinish' ||
         key === 'floorFinish' ||
-        key === 'shelves',
+        key === 'shelves' ||
+        // Къде стои окото не е въпрос за мебелта — завъртането на
+        // изгледа не бива да изхвърля донесен по линк проект.
+        key === 'view',
     )
   ) {
     if (state.opened) {

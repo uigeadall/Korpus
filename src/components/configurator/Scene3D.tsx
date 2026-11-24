@@ -45,7 +45,6 @@ import {
   viewBoxFor,
   visibleFaces,
 } from '@/lib/scene3d';
-import { CARCASS_COLORS, FACADE_COLORS, swatch } from '@/config/materials';
 import { finishById } from '@/config/wall-finishes';
 import { finishIdFor, floorSurface, innerWallPlane, isFloorTop, wallSurface } from '@/lib/wall-finish';
 import { floorById } from '@/config/floor-finishes';
@@ -64,101 +63,9 @@ import {
 } from '@/lib/zoom';
 import { FURNISHINGS, halfExtent } from '@/lib/furnishings';
 import { isOperable, moduleSpeech } from '@/lib/speech';
+import { SHADE_STEPS, gradientsFor, litColor, paletteFor } from '@/lib/render';
 
-const WORKTOP_COLOR: Record<WorktopType, string> = {
-  laminate38: '#6f6a62',
-  quartz20: '#d9d6cf',
-  sintered12: '#3b3a38',
-  granite30: '#53514d',
-};
-
-/** Цвят на всяка роля според избраните материали. */
-export function paletteFor(kitchen: Kitchen): Record<string, string> {
-  const carcass = swatch(CARCASS_COLORS, kitchen.materials.carcassColor)?.hex ?? '#efece6';
-  const facade =
-    FACADE_COLORS.find((s) => s.name.startsWith(kitchen.materials.facade.color))?.hex ?? '#f1ece4';
-  return {
-    // Подът е топъл, зидът — по-светъл от мебелта. Светла фасада върху
-    // зид от същата стойност се слива с него и шкафовете престават да
-    // са предмети; стената трябва да е фон, не съсед.
-    floor: '#cfc6b7',
-    // Общото покритие на стените; без избор е топлото бяло отпреди.
-    wall: finishById(kitchen.wallFinish?.all).hex,
-    carcass,
-    facade,
-    worktop: WORKTOP_COLOR[kitchen.materials.worktop],
-    plinth: '#45433f',
-    appliance: '#8d9399',
-    handle: '#8e8a84',
-    // Сянката е тъмна и леко топла; светло петно върху светъл под не се чете.
-    shadow: '#241f18',
-    // Вътрешността е от същата плоскост като корпуса.
-    shelf: carcass,
-    rod: '#9a968f',
-    seam: '#9d9284',
-    // Съседната стая не се вижда — през отвора се гледа в полумрак.
-    doorway: '#2a2621',
-    // Каса и крило: бели, както е в почти всяко жилище. // ПРОВЕРИ
-    casing: '#f3f1ed',
-    door: '#eceae5',
-    // Денят отвън. Светло петно върху зида казва „прозорец" по-ясно от
-    // истинска прозрачност, зад която и без това няма какво да се види.
-    glass: '#dce7ef',
-    // Обзавеждането е чуждо изделие и нарочно е в други цветове.
-    wood: '#8a6a4a',
-    soft: '#6e7378',
-  };
-}
-
-/** Светлината в шестнайсетичен цвят, с топлия или студения ѝ отенък. */
-export function litColor(hex: string, amount: number, warmth = { r: 1, g: 1, b: 1 }): string {
-  const n = parseInt(hex.slice(1), 16);
-  const channel = (shift: number, k: number) =>
-    Math.max(0, Math.min(255, Math.round(((n >> shift) & 255) * amount * k)));
-  const to2 = (v: number) => v.toString(16).padStart(2, '0');
-  return `#${to2(channel(16, warmth.r))}${to2(channel(8, warmth.g))}${to2(channel(0, warmth.b))}`;
-}
-
-/**
- * Всяка повърхност прелива отгоре надолу — истинските не са еднакво
- * осветени по цялата си височина. Преливките се правят наготово за
- * няколко степени яркост и се ползват повторно; иначе всяко от стотиците
- * лица иска свое определение и рисуването се скапва.
- */
-const STEPS = 18;
-
-interface Shaded {
-  id: string;
-  top: string;
-  bottom: string;
-}
-
-function gradientsFor(
-  faces: Face[],
-  palette: Record<string, string>,
-): { defs: Shaded[]; idOf: (face: Face) => string } {
-  const defs = new Map<string, Shaded>();
-
-  const key = (face: Face) => {
-    const step = Math.max(0, Math.min(STEPS, Math.round(shade(face.normal) * STEPS)));
-    return `${face.role}-${step}`;
-  };
-
-  for (const face of faces) {
-    const id = key(face);
-    if (defs.has(id)) continue;
-    const base = palette[face.role] ?? palette.carcass;
-    const amount = Math.round(shade(face.normal) * STEPS) / STEPS;
-    const warmth = tint(face.normal);
-    defs.set(id, {
-      id,
-      top: litColor(base, Math.min(1.2, amount * 1.07), warmth),
-      bottom: litColor(base, amount * 0.9, warmth),
-    });
-  }
-
-  return { defs: [...defs.values()], idOf: key };
-}
+export { litColor, paletteFor } from '@/lib/render';
 
 export function Scene3D({
   kitchen,
@@ -179,6 +86,8 @@ export function Scene3D({
   onMoveModule,
   onSlideModule,
   onRemoveModule,
+  view,
+  onView,
 }: {
   kitchen: Kitchen;
   room: Room;
@@ -216,8 +125,42 @@ export function Scene3D({
   onSlideModule?: (moduleId: string, left: number) => void;
   /** Махане на шкаф. Без него щракнатият шкаф няма какво да предложи. */
   onRemoveModule?: (moduleId: string) => void;
+  /**
+   * Запомнена камера на стаята.
+   *
+   * Без нея всяко връщане в стаята дава друг кадър и шестте стаи на едно
+   * жилище изглеждат като снимани от шестима различни. Подаде ли се,
+   * изгледът тръгва оттам и се обажда, щом човек я завърти.
+   */
+  view?: { yaw: number; pitch: number; distance: number };
+  onView?: (view: { yaw: number; pitch: number; distance: number }) => void;
 }) {
-  const [camera, setCamera] = useState<Camera>(() => DEFAULT_CAMERA(room));
+  const [camera, setCameraState] = useState<Camera>(() =>
+    view ? { ...DEFAULT_CAMERA(room), ...view } : DEFAULT_CAMERA(room),
+  );
+
+  const cameraRef = useRef(camera);
+  cameraRef.current = camera;
+  const setCamera = (next: Camera | ((c: Camera) => Camera)) => {
+    const value = typeof next === 'function' ? next(cameraRef.current) : next;
+    cameraRef.current = value;
+    setCameraState(value);
+  };
+
+  /*
+   * Запомня се УСТАНОВЕНАТА камера, не всеки кадър от движението.
+   *
+   * При въртене окото се мести по шейсет пъти в секунда; обаждане на
+   * всяко от тях залива записа в браузъра и пренарежда цялата страница
+   * без нужда. Затова се обажда в края на жеста и при единичните
+   * действия — бутона и стрелките.
+   *
+   * Пази се само накъде гледа: целта е на стаята и се смята наново.
+   */
+  const reportView = () => {
+    const c = cameraRef.current;
+    onView?.({ yaw: c.yaw, pitch: c.pitch, distance: c.distance });
+  };
 
   /*
    * Премести ли някой вратата на зид, който стои между окото и стаята,
@@ -710,6 +653,8 @@ export function Scene3D({
   };
 
   const endDrag = () => {
+    // Въртяло ли се е окото, тук то вече е спряло и мястото му се помни.
+    if (drag.current) reportView();
     drag.current = null;
     moving.current = null;
   };
@@ -991,6 +936,7 @@ export function Scene3D({
     if (turn[e.key]) {
       e.preventDefault();
       setCamera((c) => ({ ...c, ...turn[e.key] }));
+      reportView();
     }
   };
 
@@ -1082,7 +1028,7 @@ export function Scene3D({
            * преди: те са самият зид, не облицовката му.
            */
           if (floor && isFloorTop(face.role, face.normal)) {
-            const amount = Math.round(shade(face.normal) * STEPS) / STEPS;
+            const amount = Math.round(shade(face.normal) * SHADE_STEPS) / SHADE_STEPS;
             const warmth = tint(face.normal);
             return (
               <WallSurface
@@ -1100,7 +1046,7 @@ export function Scene3D({
           const plane = face.role === 'wall' ? innerWallPlane(face.corners, face.normal, room) : null;
           if (plane) {
             const finish = finishById(finishIdFor(kitchen.wallFinish, plane.side));
-            const amount = Math.round(shade(face.normal) * STEPS) / STEPS;
+            const amount = Math.round(shade(face.normal) * SHADE_STEPS) / SHADE_STEPS;
             const warmth = tint(face.normal);
             return (
               <WallSurface
@@ -1327,6 +1273,7 @@ export function Scene3D({
             onClick={() => {
               resetZoom(false);
               setCamera(DEFAULT_CAMERA(room));
+              reportView();
             }}
             className="rounded-pill bg-surface/90 px-3 py-1.5 text-[11px] text-muted shadow-sm ring-1 ring-border backdrop-blur transition-colors hover:text-foreground"
           >
