@@ -1203,7 +1203,7 @@ export function ProjectWizard() {
                 </div>
               )}
 
-              <SendProject kitchen={furniture} />
+              <SendProject kitchen={furniture} view={a.view} />
 
             </>
           )}

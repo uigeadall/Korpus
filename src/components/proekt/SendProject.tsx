@@ -96,7 +96,17 @@ export function summaryText(kitchen: Kitchen, link: string, ogled: Ogled | null 
   ].join('\n');
 }
 
-export function SendProject({ kitchen }: { kitchen: Kitchen }) {
+export function SendProject({
+  kitchen,
+  view,
+}: {
+  kitchen: Kitchen;
+  /**
+   * Откъде е гледана стаята. Картинката тръгва оттам: иначе човек
+   * нагласява изгледа, сваля — и получава чужд кадър.
+   */
+  view?: { yaw: number; pitch: number; distance: number };
+}) {
   const [days, setDays] = useState<string[]>([]);
   const [times, setTimes] = useState<string[]>([]);
   const ogled = parseOgled({ days, times });
@@ -128,7 +138,7 @@ export function SendProject({ kitchen }: { kitchen: Kitchen }) {
     setError(null);
     try {
       const room = kitchenRoom(kitchen);
-      const cam = DEFAULT_CAMERA(room);
+      const cam = { ...DEFAULT_CAMERA(room), ...view };
       const boxes = sceneFor(
         kitchen,
         room,
@@ -138,6 +148,7 @@ export function SendProject({ kitchen }: { kitchen: Kitchen }) {
       );
       const rendered = renderScene(boxes, cam, kitchen, {
         width: 1920,
+        room,
         title: describeProject(kitchen).summaryBg,
       });
       downloadBlob(await svgToPng(rendered), imageName(kitchen.roomKind ?? 'kitchen', 'izgled'));

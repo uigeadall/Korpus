@@ -3,6 +3,8 @@ import { DEFAULT_ROOM_NEEDS, layoutFor } from './autolayout';
 import { computeKitchen, emptyKitchen, kitchenRoom, type Kitchen } from './cabinet-rules';
 import { PART_COLOR, depthRange, paletteFor, renderScene } from './render';
 import { DEFAULT_CAMERA, sceneFor, visibleFaces } from './scene3d';
+import { WALL_FINISHES } from '@/config/wall-finishes';
+import { FLOOR_FINISHES } from '@/config/floor-finishes';
 
 /** Кухня с мебел — сцената трябва да има какво да покаже. */
 function kuhnya(): Kitchen {
@@ -71,6 +73,73 @@ describe('готовият документ', () => {
     const cam = DEFAULT_CAMERA(room);
     const boxes = sceneFor(k, room, computeKitchen(k).placed, k.materials.worktop);
     expect(renderScene(boxes, cam, k).svg).toContain('</svg>');
+  });
+});
+
+describe('износът показва същото като екрана', () => {
+  /*
+   * Четирите неща, с които първият опит лъжеше. Картинката обещава
+   * „едно към едно с екрана" и това е единственото място, където
+   * обещанието се пази — на екрана разликата не личи, защото и двете
+   * изглеждат правдоподобно.
+   */
+  const tuhla = WALL_FINISHES.find((f) => f.category === 'tuhla')!;
+
+  const izgled = (promeni: (k: Kitchen) => void = () => {}) => {
+    const k = kuhnya();
+    promeni(k);
+    const room = kitchenRoom(k);
+    const cam = DEFAULT_CAMERA(room);
+    const boxes = sceneFor(k, room, computeKitchen(k).placed, k.materials.worktop);
+    return renderScene(boxes, cam, k, { width: 900, room }).svg;
+  };
+
+  it('покритието на ОТДЕЛНА стена личи', () => {
+    const гол = izgled();
+    const тухлена = izgled((k) => {
+      k.wallFinish = { all: 'boya-default', sides: { top: tuhla.id } };
+    });
+    expect(тухлена).not.toBe(гол);
+  });
+
+  it('шарката се рисува, а не само цветът', () => {
+    const svg = izgled((k) => {
+      k.wallFinish = { all: tuhla.id };
+    });
+    // Фугите на тухлите са чертички, не плътен правоъгълник.
+    expect(svg).toContain('<path');
+    expect(svg).toContain('clip-path');
+  });
+
+  it('настилката на пода личи', () => {
+    // Подът си има свой каталог — не е покритие за стена.
+    const паркет = FLOOR_FINISHES.find((f) => f.category === 'parket')!;
+    expect(izgled((k) => {
+      k.floorFinish = паркет.id;
+    })).not.toBe(izgled());
+  });
+
+  it('без стая зидовете пак излизат, само без своето покритие', () => {
+    // Старото извикване без `room` не бива да хвърля.
+    const k = kuhnya();
+    const room = kitchenRoom(k);
+    const cam = DEFAULT_CAMERA(room);
+    const boxes = sceneFor(k, room, computeKitchen(k).placed, k.materials.worktop);
+    expect(renderScene(boxes, cam, k, { width: 900 }).svg).toContain('</svg>');
+  });
+
+  it('камерата решава кадъра — друг ъгъл, друга картинка', () => {
+    const k = kuhnya();
+    const room = kitchenRoom(k);
+    const boxes = sceneFor(k, room, computeKitchen(k).placed, k.materials.worktop);
+    const право = renderScene(boxes, DEFAULT_CAMERA(room), k, { width: 900, room }).svg;
+    const завъртяно = renderScene(
+      boxes,
+      { ...DEFAULT_CAMERA(room), yaw: 0.6 },
+      k,
+      { width: 900, room },
+    ).svg;
+    expect(завъртяно).not.toBe(право);
   });
 });
 

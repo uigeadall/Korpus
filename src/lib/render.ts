@@ -23,6 +23,17 @@
 import type { Kitchen, WorktopType } from './cabinet-rules';
 import { CARCASS_COLORS, FACADE_COLORS, swatch } from '@/config/materials';
 import { finishById } from '@/config/wall-finishes';
+import { floorById } from '@/config/floor-finishes';
+import {
+  type Surface,
+  finishIdFor,
+  floorSurface,
+  innerWallPlane,
+  isFloorTop,
+  wallSurface,
+} from './wall-finish';
+import { type Pt, wallMarks } from './wall-pattern';
+import type { Room } from './furniture/room';
 import {
   type Box,
   type BoxRole,
@@ -203,6 +214,64 @@ function escapeXml(text: string): string {
   return text.replace(/[<>&"]/g, (c) => `&${{ '<': 'lt', '>': 'gt', '&': 'amp', '"': 'quot' }[c]};`);
 }
 
+/**
+ * Лице с покритие — зид с тухли, под с паркет.
+ *
+ * Същата сметка, с която рисува и екранът (`WallSurface`): шарката се
+ * прави по самата стена и тук само се пренася в перспектива. Вторият
+ * път би се разминал с първия и износът щеше да лъже.
+ */
+function surfaceMarkup(
+  face: Face,
+  surface: Surface,
+  finish: { id: string; hex: string; pattern: Parameters<typeof wallMarks>[0] },
+  cam: Camera,
+  id: string,
+): string {
+  const amount = Math.round(shade(face.normal) * STEPS) / STEPS;
+  const warmth = tint(face.normal);
+  const light = (hex: string) => litColor(hex, amount, warmth);
+
+  const at = ([u, v]: Pt) => {
+    const p = project(surface.at(u, v), cam);
+    return `${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+  };
+  const points = face.corners
+    .map((c) => {
+      const p = project(c, cam);
+      return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+    })
+    .join(' ');
+
+  const marks = wallMarks(finish.pattern, surface.area, surface.seed);
+  const fills = marks.fills
+    .map(
+      (layer) =>
+        `<path d="${layer.polys.map((poly) => `M${poly.map(at).join('L')}Z`).join('')}"` +
+        ` fill="${light(layer.color)}" fill-opacity="${layer.opacity}"/>`,
+    )
+    .join('');
+  const lines = marks.lines
+    .map(
+      (layer) =>
+        `<path d="${layer.segs.map(([a, b]) => `M${at(a)}L${at(b)}`).join('')}"` +
+        ` fill="none" stroke="${light(layer.color)}" stroke-opacity="${layer.opacity}"` +
+        ` stroke-width="${layer.width}" vector-effect="non-scaling-stroke" stroke-linecap="square"/>`,
+    )
+    .join('');
+
+  const top = litColor(finish.hex, Math.min(1.2, amount * 1.07), warmth);
+  const bottom = litColor(finish.hex, amount * 0.9, warmth);
+
+  return (
+    `<defs><linearGradient id="${id}-g" x1="0" y1="0" x2="0" y2="1">` +
+    `<stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bottom}"/>` +
+    `</linearGradient><clipPath id="${id}-c"><polygon points="${points}"/></clipPath></defs>` +
+    `<polygon points="${points}" fill="url(#${id}-g)"/>` +
+    (fills || lines ? `<g clip-path="url(#${id}-c)">${fills}${lines}</g>` : '')
+  );
+}
+
 export interface RenderOptions {
   /** Ширина в пиксели. Височината следва формата на кадъра. */
   width?: number;
@@ -211,6 +280,11 @@ export interface RenderOptions {
   aspect?: number;
   /** Какво да се чуе, ако някой отвори картинката с четец. */
   title?: string;
+  /**
+   * Стаята — нужна е, за да се познае коя стена е коя и да се сложи
+   * нейното покритие. Без нея всички зидове излизат с общото.
+   */
+  room?: Room;
 }
 
 export interface Rendered {
@@ -233,7 +307,7 @@ export function renderScene(
   kitchen: Kitchen,
   options: RenderOptions = {},
 ): Rendered {
-  const { width = 1600, pass = 'material', padding = 220, aspect, title } = options;
+  const { width = 1600, pass = 'material', padding = 220, aspect, title, room } = options;
 
   const faces = visibleFaces(boxes, cam);
   const viewBox = viewBoxFor(boxes, cam, padding, aspect);
@@ -253,7 +327,7 @@ export function renderScene(
       .join(' ');
 
   const body = faces
-    .map((face) => {
+    .map((face, i) => {
       if (pass === 'depth') {
         // Сянката е петно на пода, не тяло: в карта на дълбочината тя
         // би изрязала дупка там, където подът е цял.
@@ -267,6 +341,26 @@ export function renderScene(
       if (face.role === 'shadow') {
         return `<polygon points="${points(face)}" fill="${palette.shadow}" opacity="0.17"/>`;
       }
+
+      /*
+       * Зидът и подът носят покритие — тухла, плочки, паркет. Рисуват се
+       * със същата сметка като на екрана; иначе изнесената картинка
+       * показва плосък цвят там, където човек вижда шарка.
+       */
+      const floor = floorById(kitchen.floorFinish);
+      // Без избрана настилка подът си остава какъвто е бил — рисува се
+      // като всяко друго лице, с цвета от палитрата.
+      if (floor && isFloorTop(face.role, face.normal)) {
+        return surfaceMarkup(face, floorSurface(face.corners), floor, cam, `s${i}`);
+      }
+      const plane = room && face.role === 'wall'
+        ? innerWallPlane(face.corners, face.normal, room)
+        : null;
+      if (plane) {
+        const finish = finishById(finishIdFor(kitchen.wallFinish, plane.side));
+        return surfaceMarkup(face, wallSurface(plane, face.corners), finish, cam, `s${i}`);
+      }
+
       const fill =
         face.role === 'handle' ? palette.handle : `url(#g-${gradients.idOf(face)})`;
       return `<polygon points="${points(face)}" fill="${fill}"/>`;

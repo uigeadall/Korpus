@@ -1260,7 +1260,7 @@ export function Scene3D({
           )}
         </div>
 
-        <div className="pointer-events-auto flex gap-2">
+        <div className="pointer-events-auto flex flex-wrap justify-end gap-2">
           <button
             type="button"
             onClick={() => setAll(!anyOpen)}
