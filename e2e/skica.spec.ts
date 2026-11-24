@@ -16,7 +16,7 @@ test('без ключ казва честно, вместо да увисне', 
   await doKraya(page);
   await page.waitForTimeout(600);
 
-  const button = page.getByRole('button', { name: 'Направете снимка на стаята' });
+  const button = page.getByRole('button', { name: 'Генерирайте с AI' });
   await expect(button).toBeVisible();
   await button.click();
 
@@ -38,7 +38,7 @@ test('кадърът, който тръгва към модела, е истин
   await page.waitForTimeout(600);
 
   const zayavka = page.waitForRequest((r) => r.url().includes('/api/skica'));
-  await page.getByRole('button', { name: 'Направете снимка на стаята' }).click();
+  await page.getByRole('button', { name: 'Генерирайте с AI' }).click();
   const req = await zayavka;
 
   const body = JSON.parse(req.postData() ?? '{}') as {
@@ -79,7 +79,7 @@ test('върнатата снимка се показва, носи надпис
   await doKraya(page);
   await page.waitForTimeout(600);
 
-  await page.getByRole('button', { name: 'Направете снимка на стаята' }).click();
+  await page.getByRole('button', { name: 'Генерирайте с AI' }).click();
 
   const snimka = page.getByRole('img', { name: /Снимка на стаята/ });
   await expect(snimka).toBeVisible({ timeout: 15000 });

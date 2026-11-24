@@ -98,13 +98,25 @@ export function Skica({
 
   return (
     <div className="space-y-3">
+      {s.vid !== 'gotova' && (
+        <p className="text-[13px] leading-relaxed text-muted">
+          AI взима стаята точно както сте я наредили и я рисува като истинска снимка — със
+          светлина, материали и отражения. Отнема до половин минута.
+        </p>
+      )}
+
       <button
         type="button"
         onClick={napravi}
         disabled={s.vid === 'chaka'}
-        className="btn btn-quiet w-full py-3 disabled:opacity-50"
+        aria-busy={s.vid === 'chaka'}
+        className="btn btn-primary w-full py-3 disabled:opacity-50"
       >
-        {s.vid === 'chaka' ? 'Моделът рисува…' : 'Направете снимка на стаята'}
+        {s.vid === 'chaka'
+          ? 'AI рисува стаята…'
+          : s.vid === 'gotova'
+            ? 'Генерирайте отново'
+            : 'Генерирайте с AI'}
       </button>
 
       {s.vid === 'greshka' && (

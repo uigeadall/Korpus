@@ -67,6 +67,7 @@ import { PhotoOverlay } from './PhotoOverlay';
 import { ScenePreview } from './ScenePreview';
 import { TEMPLATES, type Template, templateKitchen, templatePatch } from './templates';
 import { SendProject } from './SendProject';
+import { Skica } from './Skica';
 import {
   type Answers,
   ANSWERS_KEY,
@@ -1144,6 +1145,16 @@ export function ProjectWizard() {
                   място.
                 </p>
               </Card>
+
+              {/*
+                Стаята е готова — първото, което човек иска, е да я види
+                като истинска. Затова е тук, а не на дъното при изпращането.
+              */}
+              {cabinets > 0 && (
+                <Card title="Вижте стаята като на снимка">
+                  <Skica kitchen={furniture} view={a.view} />
+                </Card>
+              )}
 
               <Card title="Ориентировъчна цена">
                 <PriceEstimate kitchen={furniture} result={result} />
