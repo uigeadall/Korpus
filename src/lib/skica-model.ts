@@ -1,8 +1,8 @@
 /**
  * Моделът, който прави снимката — зад гнездо, не вшит.
  *
- * Днес отзад стои Gemini 2.5 Flash Image, когото хората наричат
- * „nano banana". Избран е, защото приема нашия кадър какъвто си е и го
+ * Отзад стои семейството на Google за картинки, което хората наричат
+ * „nano banana". Избрано е, защото приема нашия кадър какъвто си е и го
  * доправя: не му трябва карта на дълбочината, когато има готов рендер.
  * Утре на негово място може да застане друг — затова всичко, което
  * знае как се говори с точно този, стои на едно място.
@@ -10,8 +10,9 @@
  * Ключът се чете от средата и никога не напуска сървъра. В браузъра не
  * влиза и в git не влиза (правило 4).
  *
- * ВНИМАНИЕ: формата на отговора е писана по описанието на API-то и не е
- * проверявана срещу жив ключ. Разчитането ѝ е отделна чиста функция с
+ * ВНИМАНИЕ: формата на отговора е писана по описанието на API-то. При
+ * първото пускане ключът стигна до Google, но квотата беше нула и
+ * отговорът не можа да се види. Разчитането е отделна чиста функция с
  * тестове точно затова — счупи ли се, се вижда къде, вместо цялото
  * повикване да върне „нещо не стана".
  */
@@ -28,8 +29,25 @@ export interface SkicaModel {
   generate(instruction: string, image: string): Promise<SkicaResult>;
 }
 
-/** Кое повикване към кой модел. Сменя се тук, не по маршрутките. */
-export const GEMINI_MODEL = 'gemini-2.5-flash-image';
+/**
+ * Кой модел рисува.
+ *
+ * Имената им се менят по-бързо от кода: при първото пускане се оказа,
+ * че избраното отпреди вече е старо, а `gemini-2.5-flash` изобщо „не се
+ * дава на нови потребители". Затова името се чете от средата и може да
+ * се смени без пускане наново — а подразбиращото се е това, което
+ * върви днес.
+ *
+ * Списъкът на достъпните се вижда с:
+ *   curl https://generativelanguage.googleapis.com/v1beta/models \
+ *     -H "x-goog-api-key: $GEMINI_API_KEY"
+ */
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.1-flash-image';
+
+export function geminiModelName(): string {
+  return process.env.GEMINI_IMAGE_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
+}
+
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 /**
@@ -75,11 +93,11 @@ export function refusalFromGemini(payload: unknown): string | null {
   return null;
 }
 
-export function geminiModel(apiKey: string): SkicaModel {
+export function geminiModel(apiKey: string, model = geminiModelName()): SkicaModel {
   return {
-    name: GEMINI_MODEL,
+    name: model,
     async generate(instruction, image) {
-      const response = await fetch(`${GEMINI_URL}/${GEMINI_MODEL}:generateContent`, {
+      const response = await fetch(`${GEMINI_URL}/${model}:generateContent`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
