@@ -19,6 +19,9 @@ import {
   type RowId,
   modulesFor,
 } from '@/lib/cabinet-rules';
+import { useEzik, useT } from '@/i18n/client';
+import { prevedi } from '@/i18n/rechnik';
+import { INSTRUMENTI } from '@/i18n/tekstove/instrumenti';
 
 interface Props {
   room: RoomKind;
@@ -35,10 +38,6 @@ interface Props {
   where?: string;
 }
 
-const ROW_TITLE: Record<RowId, string> = {
-  base: 'Долу',
-  upper: 'Горе',
-};
 
 /**
  * Малка картинка на модула: правоъгълник с толкова чела, колкото има.
@@ -88,9 +87,12 @@ export function ModulePalette({
   dragging,
   onGrab,
   onAdd,
-  hint = 'Завлечете модул в чертежа и го пуснете където трябва. Щракване го слага в края на реда.',
-  where = 'в чертежа',
+  hint,
+  where,
 }: Props) {
+  const ezik = useEzik();
+  const t = useT(INSTRUMENTI).paleta;
+  const kade = where ?? t.kade;
   return (
     <section className="space-y-2 sm:space-y-3">
       {(['base', 'upper'] as RowId[]).map((row) => {
@@ -102,10 +104,8 @@ export function ModulePalette({
            * етикет на списък. Като <h3> тя се вмъкваше преди всяко <h2>
            * наоколо и чупеше реда на заглавията.
            */
-          <div key={row} role="group" aria-label={`Модули ${ROW_TITLE[row].toLowerCase()}`}>
-            <p className="px-1 text-[11px] uppercase tracking-wide text-muted">
-              {ROW_TITLE[row]}
-            </p>
+          <div key={row} role="group" aria-label={t.grupa(t.red[row])}>
+            <p className="px-1 text-[11px] uppercase tracking-wide text-muted">{t.red[row]}</p>
             {/*
               На тесен екран редът е хоризонтална лента под картината, а
               не стълб до нея. Стълбът там пада под сгъвката: модулът се
@@ -120,7 +120,7 @@ export function ModulePalette({
                     type="button"
                     onPointerDown={(e) => onGrab(kind, e)}
                     onClick={() => onAdd(kind)}
-                    aria-label={`${MODULES[kind].label}. Завлечете го ${where} или натиснете, за да влезе в края на реда.`}
+                    aria-label={t.buton(prevedi(MODULES[kind].label, ezik), kade)}
                     className={`flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-[13px] whitespace-nowrap transition-colors [touch-action:none] sm:whitespace-normal ${
                       dragging === kind
                         ? 'bg-accent/15 ring-1 ring-accent'
@@ -128,7 +128,7 @@ export function ModulePalette({
                     }`}
                   >
                     <Thumb kind={kind} />
-                    <span className="leading-tight">{MODULES[kind].label}</span>
+                    <span className="leading-tight">{prevedi(MODULES[kind].label, ezik)}</span>
                   </button>
                 </li>
               ))}
@@ -137,7 +137,7 @@ export function ModulePalette({
         );
       })}
 
-      <p className="px-1 text-[11px] leading-relaxed text-muted">{hint}</p>
+      <p className="px-1 text-[11px] leading-relaxed text-muted">{hint ?? t.hint}</p>
     </section>
   );
 }

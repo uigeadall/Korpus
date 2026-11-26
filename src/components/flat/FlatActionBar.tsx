@@ -12,6 +12,8 @@
  */
 
 import Link from 'next/link';
+import { useT } from '@/i18n/client';
+import { JILISHTE } from '@/i18n/tekstove/jilishte';
 
 interface Props {
   /** Колко стаи са маркирани. */
@@ -58,21 +60,22 @@ function Action({
 
 export function FlatActionBar({ count, onDuplicate, onRemove, onFurnish, furnishLabel }: Props) {
   const none = count === 0;
+  const t = useT(JILISHTE).lenta;
 
   return (
     <div
       role="toolbar"
-      aria-label="Действия върху маркираните помещения"
+      aria-label={t.etiket}
       className="sticky bottom-3 z-10 flex flex-wrap items-center gap-1 rounded-pill border border-border bg-surface/92 px-2 py-1.5 shadow-lg backdrop-blur"
     >
       <p className="px-2 text-[11px] text-muted" aria-live="polite">
-        {none ? 'Изберете помещение' : count === 1 ? '1 помещение' : `${count} помещения`}
+        {none ? t.izberete : t.broi(count)}
       </p>
 
       <span aria-hidden="true" className="mx-1 h-6 w-px bg-border" />
 
-      <Action sign="⧉" label="Копирай" disabled={none} onClick={onDuplicate} />
-      <Action sign="🗑" label="Изтрий" disabled={none} danger onClick={onRemove} />
+      <Action sign="⧉" label={t.kopirai} disabled={none} onClick={onDuplicate} />
+      <Action sign="🗑" label={t.iztrii} disabled={none} danger onClick={onRemove} />
 
       {onFurnish && (
         <Link href={onFurnish} className="btn btn-primary ml-auto px-4 py-2 text-[13px]">

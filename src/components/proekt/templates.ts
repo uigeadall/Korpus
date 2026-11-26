@@ -20,13 +20,14 @@ import {
 import type { WallFinishChoice } from '@/lib/wall-finish';
 import { type Answers, type ExtraWalls, START, furnitureFrom } from './answers';
 import type { KitchenModule } from '@/lib/cabinet-rules';
+import type { T3 } from '@/i18n/tekst';
 
 export interface Template {
   /** Постоянен ключ — за тестовете и за адреса. */
   id: string;
-  name: string;
+  name: T3;
   /** Един ред под името: какво има вътре. */
-  note: string;
+  note: T3;
   room: RoomKind;
   roomWidth: number;
   roomDepth: number;
@@ -54,8 +55,8 @@ const m = (id: string, kind: KitchenModule['kind'], width = 600): KitchenModule 
 export const TEMPLATES: readonly Template[] = [
   {
     id: 'kuhnya-svetla',
-    name: 'Светла права кухня',
-    note: '3,6 м · горен ред · бели метро плочки',
+    name: { bg: 'Светла права кухня', en: 'Bright straight kitchen', zh: '明亮一字型厨房' },
+    note: { bg: '3,6 м · горен ред · бели метро плочки', en: '3.6 m · upper row · white metro tiles', zh: '3.6 米 · 上排柜 · 白色地铁砖' },
     room: 'kitchen',
     roomWidth: 4200,
     roomDepth: 3200,
@@ -68,8 +69,8 @@ export const TEMPLATES: readonly Template[] = [
   },
   {
     id: 'kuhnya-tamna',
-    name: 'Тъмна кухня без горни шкафове',
-    note: '3,6 м · много чекмеджета · тухлена стена',
+    name: { bg: 'Тъмна кухня без горни шкафове', en: 'Dark kitchen without wall units', zh: '无吊柜深色厨房' },
+    note: { bg: '3,6 м · много чекмеджета · тухлена стена', en: '3.6 m · lots of drawers · brick wall', zh: '3.6 米 · 多抽屉 · 砖墙' },
     room: 'kitchen',
     roomWidth: 4200,
     roomDepth: 3400,
@@ -83,8 +84,8 @@ export const TEMPLATES: readonly Template[] = [
   },
   {
     id: 'kuhnya-g',
-    name: 'Г-образна кухня',
-    note: 'горна и лява стена · сляп ъгъл · дъб',
+    name: { bg: 'Г-образна кухня', en: 'L-shaped kitchen', zh: 'L 型厨房' },
+    note: { bg: 'горна и лява стена · сляп ъгъл · дъб', en: 'top and left walls · blind corner · oak', zh: '上墙和左墙 · 转角盲区 · 橡木' },
     room: 'kitchen',
     roomWidth: 4200,
     roomDepth: 3400,
@@ -103,8 +104,8 @@ export const TEMPLATES: readonly Template[] = [
   },
   {
     id: 'kuhnya-malka',
-    name: 'Малка кухня',
-    note: '2,4 м · без съдомиялна · зелени фасади',
+    name: { bg: 'Малка кухня', en: 'Small kitchen', zh: '小厨房' },
+    note: { bg: '2,4 м · без съдомиялна · зелени фасади', en: '2.4 m · no dishwasher · green fronts', zh: '2.4 米 · 无洗碗机 · 绿色门板' },
     room: 'kitchen',
     roomWidth: 2800,
     roomDepth: 2600,
@@ -118,8 +119,8 @@ export const TEMPLATES: readonly Template[] = [
   },
   {
     id: 'spalnya-garderob',
-    name: 'Спалня с гардероб до тавана',
-    note: '3 м гардероб · антресол · скрин',
+    name: { bg: 'Спалня с гардероб до тавана', en: 'Bedroom with floor-to-ceiling wardrobe', zh: '通顶衣柜卧室' },
+    note: { bg: '3 м гардероб · антресол · скрин', en: '3 m wardrobe · top boxes · chest of drawers', zh: '3 米衣柜 · 顶柜 · 斗柜' },
     room: 'bedroom',
     roomWidth: 3600,
     roomDepth: 3400,
@@ -133,8 +134,8 @@ export const TEMPLATES: readonly Template[] = [
   },
   {
     id: 'hol-tv',
-    name: 'Хол с ТВ стена',
-    note: 'ТВ шкаф · библиотека · ламели зад телевизора',
+    name: { bg: 'Хол с ТВ стена', en: 'Living room with TV wall', zh: '带电视墙的客厅' },
+    note: { bg: 'ТВ шкаф · библиотека · ламели зад телевизора', en: 'TV unit · bookcase · slats behind the TV', zh: '电视柜 · 书柜 · 电视背景格栅' },
     room: 'living',
     roomWidth: 4800,
     roomDepth: 3800,
@@ -147,8 +148,8 @@ export const TEMPLATES: readonly Template[] = [
   },
   {
     id: 'banya',
-    name: 'Баня с колона и пералня',
-    note: 'шкаф с мивка · колона · огледален шкаф',
+    name: { bg: 'Баня с колона и пералня', en: 'Bathroom with tall unit and washer', zh: '带高柜和洗衣机的浴室' },
+    note: { bg: 'шкаф с мивка · колона · огледален шкаф', en: 'vanity unit · tall unit · mirror cabinet', zh: '台盆柜 · 高柜 · 镜柜' },
     room: 'bath',
     roomWidth: 2400,
     roomDepth: 2200,
@@ -160,8 +161,8 @@ export const TEMPLATES: readonly Template[] = [
   },
   {
     id: 'antre',
-    name: 'Антре с пейка',
-    note: 'обувки · закачалка · пейка за събуване',
+    name: { bg: 'Антре с пейка', en: 'Entrance hall with bench', zh: '带换鞋凳的玄关' },
+    note: { bg: 'обувки · закачалка · пейка за събуване', en: 'shoes · coat rack · shoe bench', zh: '鞋柜 · 挂衣架 · 换鞋凳' },
     room: 'hall',
     roomWidth: 2800,
     roomDepth: 1800,
@@ -175,8 +176,8 @@ export const TEMPLATES: readonly Template[] = [
   },
   {
     id: 'koridor',
-    name: 'Коридор с ламперия',
-    note: 'плитки шкафове · антресол · ламперия',
+    name: { bg: 'Коридор с ламперия', en: 'Corridor with panelling', zh: '带护墙板的走廊' },
+    note: { bg: 'плитки шкафове · антресол · ламперия', en: 'shallow cabinets · top boxes · panelling', zh: '浅柜 · 顶柜 · 护墙板' },
     room: 'corridor',
     roomWidth: 3200,
     roomDepth: 1400,

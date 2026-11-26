@@ -1,6 +1,8 @@
 'use client';
 
 import { type RefObject, useEffect, useState } from 'react';
+import { useT } from '@/i18n/client';
+import { SAIT } from '@/i18n/tekstove/sait';
 
 /**
  * „↓ още" в дъното на колона, която се плъзга сама.
@@ -10,6 +12,7 @@ import { type RefObject, useEffect, useState } from 'react';
  * изчезват, щом човек стигне дъното. Слага се последно в колоната.
  */
 export function ScrollMore({ target }: { target: RefObject<HTMLElement | null> }) {
+  const t = useT(SAIT);
   const [more, setMore] = useState(false);
 
   useEffect(() => {
@@ -50,7 +53,7 @@ export function ScrollMore({ target }: { target: RefObject<HTMLElement | null> }
         }}
         className="pointer-events-auto rounded-pill bg-surface px-3 py-1 text-[11px] text-muted shadow-sm ring-1 ring-border transition-colors hover:text-foreground"
       >
-        ↓ още отдолу
+        {t.oshteOtdolu}
       </button>
     </div>
   );

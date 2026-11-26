@@ -15,10 +15,46 @@ import {
   canOpen,
   shelfCount,
 } from './cabinet-rules';
+import type { Ezik } from '@/i18n/ezik';
+import { kod, prevedi } from '@/i18n/rechnik';
+import { tekstove } from '@/i18n/tekst';
+
+const TEKST = tekstove({
+  bg: {
+    rafta: (n: number): string => (n === 1 ? '1 рафт' : `${n} рафта`),
+    otvoren: 'отворен',
+    zatvoren: 'затворен',
+    ured: 'уред',
+    otvorenaSektsiya: 'отворена секция',
+    enter: ' Enter отваря и затваря.',
+    plusMinus: ' Плюс и минус менят рафтовете.',
+    delete: ' Delete го маха.',
+  },
+  en: {
+    rafta: (n: number): string => (n === 1 ? '1 shelf' : `${n} shelves`),
+    otvoren: 'open',
+    zatvoren: 'closed',
+    ured: 'appliance',
+    otvorenaSektsiya: 'open section',
+    enter: ' Enter opens and closes it.',
+    plusMinus: ' Plus and minus change the shelves.',
+    delete: ' Delete removes it.',
+  },
+  zh: {
+    rafta: (n: number): string => `${n} 块层板`,
+    otvoren: '已打开',
+    zatvoren: '已关闭',
+    ured: '电器',
+    otvorenaSektsiya: '开放格',
+    enter: ' 按 Enter 打开或关闭。',
+    plusMinus: ' 加减号调整层板数量。',
+    delete: ' 按 Delete 移除。',
+  },
+});
 
 /** „1 рафт", но „0 рафта" и „2 рафта" — броят на български. */
-export function shelvesPhrase(n: number): string {
-  return n === 1 ? '1 рафт' : `${n} рафта`;
+export function shelvesPhrase(n: number, ezik: Ezik = 'bg'): string {
+  return TEKST[ezik].rafta(n);
 }
 
 /**
@@ -46,21 +82,29 @@ export interface SpokenModule {
  * там, където екранът го предлага — затова се подава отвън, вместо да
  * се предполага.
  */
-export function moduleSpeech(m: SpokenModule, open: boolean, removable = false): string {
+export function moduleSpeech(
+  m: SpokenModule,
+  open: boolean,
+  removable = false,
+  ezik: Ezik = 'bg',
+): string {
+  const t = TEKST[ezik];
   const state = canOpen(m.kind)
     ? open
-      ? 'отворен'
-      : 'затворен'
+      ? t.otvoren
+      : t.zatvoren
     : MODULES[m.kind].facade?.style === 'appliance'
-      ? 'уред'
-      : 'отворена секция';
+      ? t.ured
+      : t.otvorenaSektsiya;
 
-  const name = [m.code, m.spec.label].filter(Boolean).join(' ');
+  const name = [m.code && kod(m.code, ezik), prevedi(m.spec.label, ezik)].filter(Boolean).join(' ');
+  const sep = ezik === 'zh' ? '，' : ', ';
+  const end = ezik === 'zh' ? '。' : '.';
 
   return (
-    `${name}, ${state}, ${shelvesPhrase(shelfCount(m))}.` +
-    (canOpen(m.kind) ? ' Enter отваря и затваря.' : '') +
-    (acceptsShelves(m.kind) ? ' Плюс и минус менят рафтовете.' : '') +
-    (removable ? ' Delete го маха.' : '')
+    `${name}${sep}${state}${sep}${shelvesPhrase(shelfCount(m), ezik)}${end}` +
+    (canOpen(m.kind) ? t.enter : '') +
+    (acceptsShelves(m.kind) ? t.plusMinus : '') +
+    (removable ? t.delete : '')
   );
 }

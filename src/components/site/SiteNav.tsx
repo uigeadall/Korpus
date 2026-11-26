@@ -5,31 +5,54 @@
  * окото трябва да виждат на коя страница сме.
  */
 
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { Suspense } from 'react';
+import Link from '@/i18n/Link';
+import { useT } from '@/i18n/client';
+import { razdeli } from '@/i18n/ezik';
+import { SAIT } from '@/i18n/tekstove/sait';
 
 const NAV = [
-  { href: '/kak-rabotim', label: 'Как работим' },
-  { href: '/produkti', label: 'Продукти' },
-  { href: '/portfolio', label: 'Портфолио' },
+  { href: '/kak-rabotim', kluch: 'kakRabotim' },
+  { href: '/produkti', kluch: 'produkti' },
+  { href: '/portfolio', kluch: 'portfolio' },
   /*
    * Клиентът минава по два екрана: чертае жилището и прави проект за
    * всяка стая. Конфигураторът не е тук — той е техническият
    * инструмент на цеха, не нещо, което клиент отваря сам.
    */
-  { href: '/jilishte', label: 'Жилището' },
-  { href: '/proekt', label: 'Направи проект' },
-  { href: '/kontakt', label: 'Контакт' },
-];
+  { href: '/jilishte', kluch: 'jilishte' },
+  { href: '/proekt', kluch: 'proekt' },
+  { href: '/kontakt', kluch: 'kontakt' },
+] as const;
 
+/**
+ * На адрес, който не е известен при сборката (404, непознат проект),
+ * пътят се разбира чак в браузъра. Дотогава менюто стои без отметка —
+ * иначе цялата страница би чакала него.
+ */
 export function SiteNav() {
-  const pathname = usePathname();
+  return (
+    <Suspense fallback={<Menu pathname={null} />}>
+      <SNastoyashtiyaAdres />
+    </Suspense>
+  );
+}
+
+function SNastoyashtiyaAdres() {
+  // Без езика отпред: `/en/proekt` е същата страница като `/proekt`.
+  return <Menu pathname={razdeli(usePathname() || '/').put} />;
+}
+
+function Menu({ pathname }: { pathname: string | null }) {
+  const t = useT(SAIT).menu;
 
   return (
-    <nav aria-label="Основна навигация" className="nav-fade -mr-2 min-w-0 overflow-x-auto">
+    <nav aria-label={t.etiket} className="nav-fade -mr-2 min-w-0 overflow-x-auto">
       <ul className="flex items-center gap-0.5">
         {NAV.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const active =
+            pathname !== null && (pathname === item.href || pathname.startsWith(`${item.href}/`));
           return (
             <li key={item.href}>
               {/* Текущата страница се бележи с линия под нея, не с хапче:
@@ -41,7 +64,7 @@ export function SiteNav() {
                   active ? 'border-foreground text-foreground' : 'border-transparent text-muted'
                 }`}
               >
-                {item.label}
+                {t[item.kluch]}
               </Link>
             </li>
           );

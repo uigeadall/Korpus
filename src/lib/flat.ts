@@ -14,6 +14,8 @@
  */
 
 import type { RoomKind } from './cabinet-rules';
+import type { Ezik } from '@/i18n/ezik';
+import { prevedi } from '@/i18n/rechnik';
 
 /**
  * Видовете стаи. Първите три се обзавеждат с корпусна мебел; другите
@@ -78,8 +80,22 @@ export interface FlatRoom {
  * между двете натискания стаята не бива да остава без надпис. Тогава
  * се показва видът ѝ.
  */
-export function roomName(room: FlatRoom): string {
-  return room.name.trim() || FLAT_ROOM_LABEL[room.kind];
+export function roomName(room: FlatRoom, ezik: Ezik = 'bg'): string {
+  return imeNaEzik(room.name.trim(), ezik) || prevedi(FLAT_ROOM_LABEL[room.kind], ezik);
+}
+
+/**
+ * Име на стая на езика на страницата. Подразбиращите се имена („Кухня",
+ * „Спалня 2") се пазят на български — те са ключ — и се превеждат на
+ * показване. Име, което човек е написал сам, остава както е.
+ */
+export function imeNaEzik(name: string, ezik: Ezik): string {
+  if (ezik === 'bg') return name;
+  const m = /^(.+?)( \d+)?$/.exec(name);
+  if (m && (Object.values(FLAT_ROOM_LABEL) as string[]).includes(m[1])) {
+    return prevedi(m[1], ezik) + (m[2] ?? '');
+  }
+  return name;
 }
 
 /** Готова ли е стаята — има ли проект зад нея. */

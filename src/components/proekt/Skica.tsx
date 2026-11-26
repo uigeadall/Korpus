@@ -30,6 +30,8 @@ import { SKICA } from '@/lib/skica';
 import { DEFAULT_CAMERA, sceneFor } from '@/lib/scene3d';
 import { projectLink } from '@/lib/share';
 import { downloadBlob, imageName, svgToPng } from '@/components/configurator/iznasyane';
+import { useT } from '@/i18n/client';
+import { IZPRASHTANE } from '@/i18n/tekstove/izprashtane';
 
 /**
  * Кога се нулира дневният лимит, в часа на човека. Cloudflare нулира в
@@ -52,12 +54,6 @@ type Sastoyanie =
   | { vid: 'gotova'; src: string; pratena?: Pratena }
   | { vid: 'greshka'; said: string; prev?: string };
 
-const PRATENA_SAID: Record<Pratena, string> = {
-  spodelena: '✓ Изпратено.',
-  'svalena-i-kopiran':
-    '✓ Снимката е свалена, а линкът към проекта е копиран. Пратете ги по имейл, Viber или WhatsApp.',
-  svalena: '✓ Снимката е свалена. Пратете я заедно с линка към проекта.',
-};
 
 export function Skica({
   kitchen,
@@ -66,6 +62,12 @@ export function Skica({
   kitchen: Kitchen;
   view?: { yaw: number; pitch: number; distance: number };
 }) {
+  const t = useT(IZPRASHTANE).skica;
+  const PRATENA_SAID: Record<Pratena, string> = {
+    spodelena: t.spodelena,
+    'svalena-i-kopiran': t.svalenaIKopiran,
+    svalena: t.svalena,
+  };
   const [s, setS] = useState<Sastoyanie>({ vid: 'pokoj' });
 
   /** Снимката на екрана, каквото и да става в момента. */
@@ -99,7 +101,7 @@ export function Skica({
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]+,/, ''));
-        reader.onerror = () => reject(new Error('кадърът не се прочете'));
+        reader.onerror = () => reject(new Error(t.kadarNe));
         reader.readAsDataURL(png);
       });
 
@@ -114,15 +116,13 @@ export function Skica({
       });
 
       if (response.status === 503) {
-        fail('Снимките още не са включени при нас.');
+        fail(t.neSaVklyucheni);
         return;
       }
       if (response.status === 429) {
         const body = (await response.json().catch(() => ({}))) as { limit?: string };
         fail(
-          body.limit === 'day'
-            ? `Безплатният дневен лимит на AI снимките е изчерпан. Опитайте след ${resetTime()} ч.`
-            : 'Твърде много снимки наведнъж. Опитайте след малко.',
+          body.limit === 'day' ? t.limit(resetTime()) : t.tvardeMnogo,
         );
         return;
       }
@@ -131,7 +131,7 @@ export function Skica({
       const body = (await response.json()) as { image: string; mime: string };
       setS({ vid: 'gotova', src: `data:${body.mime};base64,${body.image}` });
     } catch {
-      fail('Снимката не се получи. Опитайте пак след малко.');
+      fail(t.neSePoluchi);
     }
   };
 
@@ -151,12 +151,12 @@ export function Skica({
     const src = s.src;
     const { blob, name } = await snimkata(src);
     const link = projectLink(window.location.origin, '/proekt', kitchen);
-    const text = `Харесва ми как ще изглежда стаята ми. Ето проекта: ${link}`;
+    const text = t.haresvaMi(link);
     const file = new File([blob], name, { type: blob.type || 'image/jpeg' });
 
     if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
       try {
-        await navigator.share({ files: [file], title: 'Моята стая', text });
+        await navigator.share({ files: [file], title: t.moyataStaya, text });
         setS({ vid: 'gotova', src, pratena: 'spodelena' });
         return;
       } catch (error) {
@@ -183,10 +183,7 @@ export function Skica({
     <div className="space-y-3">
       {!shown && (
         <>
-          <p className="text-[13px] leading-relaxed text-muted">
-            AI взима стаята точно както сте я наредили и я рисува като истинска снимка — със
-            светлина, материали и отражения. Отнема до половин минута.
-          </p>
+          <p className="text-[13px] leading-relaxed text-muted">{t.vavedenie}</p>
           <button
             type="button"
             onClick={() => napravi()}
@@ -194,7 +191,7 @@ export function Skica({
             aria-busy={chaka}
             className="btn btn-primary w-full py-3 disabled:opacity-50"
           >
-            {chaka ? 'AI рисува стаята…' : 'Генерирайте с AI'}
+            {chaka ? t.risuva : t.generirai}
           </button>
         </>
       )}
@@ -210,13 +207,11 @@ export function Skica({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={shown}
-            alt="Снимка на стаята, направена по проекта от модел. Впечатление, не чертеж."
+            alt={t.alt}
             className={`w-full rounded-[7px] border border-border transition-opacity ${chaka ? 'opacity-40' : ''}`}
           />
           <figcaption className="text-[13px] leading-relaxed text-muted">
-            <strong className="text-foreground">Това е впечатление, не чертеж.</strong> Моделът
-            рисува по вашия проект, но измисля подробности — дръжка, контакт, отражение. Това,
-            което отива в цеха, е PDF-ът с размерите.
+            <strong className="text-foreground">{t.vpechatlenie}</strong> {t.vpechatlenieText}
           </figcaption>
 
           <div className="grid grid-cols-2 gap-2">
@@ -226,7 +221,7 @@ export function Skica({
               disabled={s.vid !== 'gotova'}
               className="btn btn-primary py-3 text-[13px] disabled:opacity-50"
             >
-              Харесва ми — пратете я
+              {t.prati}
             </button>
             <button
               type="button"
@@ -235,7 +230,7 @@ export function Skica({
               aria-busy={chaka}
               className="btn btn-quiet py-3 text-[13px] disabled:opacity-50"
             >
-              {chaka ? 'AI рисува нова…' : 'Не ми харесва — нова'}
+              {chaka ? t.risuvaNova : t.nova}
             </button>
           </div>
 
@@ -246,7 +241,7 @@ export function Skica({
           )}
 
           <button type="button" onClick={svali} className="btn btn-quiet w-full py-2 text-[13px]">
-            Свалете снимката
+            {t.svali}
           </button>
         </figure>
       )}

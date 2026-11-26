@@ -15,7 +15,9 @@
  * всеки — две места за едно и също е по-лошо от едно неудобно.
  */
 
-import Link from 'next/link';
+import Link from '@/i18n/Link';
+import { useT } from '@/i18n/client';
+import { INSTRUMENTI } from '@/i18n/tekstove/instrumenti';
 
 interface Props {
   /** Колко модула са избрани. Нула значи, че бутоните спят. */
@@ -62,27 +64,28 @@ function Action({
 
 export function ActionBar({ count, onDuplicate, onWidth, onRemove, done }: Props) {
   const none = count === 0;
+  const t = useT(INSTRUMENTI).deistviya;
 
   return (
     <div
       role="toolbar"
-      aria-label="Действия върху избраното"
+      aria-label={t.etiket}
       className="sticky bottom-3 z-10 flex flex-wrap items-center gap-1 rounded-pill border border-border bg-surface/92 px-2 py-1.5 shadow-lg backdrop-blur"
     >
       <p className="px-2 text-[11px] text-muted" aria-live="polite">
-        {none ? 'Изберете модул' : count === 1 ? '1 избран' : `${count} избрани`}
+        {none ? t.izberete : t.izbrani(count)}
       </p>
 
       <span aria-hidden="true" className="mx-1 h-6 w-px bg-border" />
 
-      <Action sign="−" label="По-тясно" disabled={none} onClick={() => onWidth(-1)} />
-      <Action sign="+" label="По-широко" disabled={none} onClick={() => onWidth(1)} />
-      <Action sign="⧉" label="Копирай" disabled={none} onClick={onDuplicate} />
-      <Action sign="🗑" label="Изтрий" disabled={none} danger onClick={onRemove} />
+      <Action sign="−" label={t.poTyasno} disabled={none} onClick={() => onWidth(-1)} />
+      <Action sign="+" label={t.poShiroko} disabled={none} onClick={() => onWidth(1)} />
+      <Action sign="⧉" label={t.kopirai} disabled={none} onClick={onDuplicate} />
+      <Action sign="🗑" label={t.iztrii} disabled={none} danger onClick={onRemove} />
 
       {done && (
         <Link href={done} className="btn btn-primary ml-auto px-4 py-2 text-[13px]">
-          Готово
+          {t.gotovo}
         </Link>
       )}
     </div>

@@ -13,11 +13,15 @@
  */
 
 import { useEffect, useReducer, useRef, useState } from 'react';
+import { useAdres, useEzik, useT } from '@/i18n/client';
+import { metri } from '@/i18n/chisla';
+import { prevedi } from '@/i18n/rechnik';
+import { izbroi } from '@/i18n/tekst';
+import { JILISHTE } from '@/i18n/tekstove/jilishte';
 import {
   FLAT,
   FLAT_ROOM_LABEL,
   type Direction,
-  DIRECTION_LABEL,
   type FlatRoomKind,
   type FlatRoom,
   areaOf,
@@ -25,7 +29,8 @@ import {
   isDone,
   isFurnished,
   progressOf,
-  roomName,
+  roomName as roomNameBg,
+  imeNaEzik,
   neighboursOf,
   overlappingRooms,
   stepFrom,
@@ -61,7 +66,16 @@ const ARROWS: { dir: Direction; sign: string }[] = [
   { dir: 'right', sign: '→' },
 ];
 
+/** Квадратните метри с един знак след точката — както и досега. */
+const kv = (room: FlatRoom) => areaOf(room).toFixed(1);
+
 export function FlatEditor() {
+  const ezik = useEzik();
+  const t = useT(JILISHTE);
+  const kam = useAdres();
+  const roomName = (room: FlatRoom) => roomNameBg(room, ezik);
+  const vid = (kind: FlatRoomKind) => prevedi(FLAT_ROOM_LABEL[kind], ezik);
+  const m = (mm: number) => metri(mm, ezik);
   const [history, dispatch] = useReducer(flatHistoryReducer, undefined, () =>
     initFlatHistory(defaultFlat()),
   );
@@ -134,7 +148,7 @@ export function FlatEditor() {
       dispatch({ type: 'load', value: otLink });
       show({
         currentId: otLink.rooms[0]?.id,
-        said: `Отворено жилище от линк: ${otLink.rooms.length} помещения.`,
+        said: t.otLink(otLink.rooms.length),
       });
       return;
     }
@@ -163,12 +177,12 @@ export function FlatEditor() {
     if (done && project) {
       saveFlat(flatReducer(base, { type: 'finish', id: done, project }));
       dispatch({ type: 'finish', id: done, project });
-      goTo(done, 'Стаята е готова и е отметната в схемата.');
+      goTo(done, t.gotova);
       /*
        * Адресът се чисти, за да не се отмята наново при презареждане
        * и да не остане дълъг запис в лентата.
        */
-      window.history.replaceState(null, '', '/jilishte');
+      window.history.replaceState(null, '', kam('/jilishte'));
     }
 
     /*
@@ -188,16 +202,13 @@ export function FlatEditor() {
       const where = placed.flat.rooms.find((r) => r.id === placed.id);
       dispatch({ type: 'place', kind, width: size.width, depth: size.depth, project: dobavi, id });
       if (where) {
-        const m = (mm: number) => (mm / 1000).toFixed(2).replace('.', ',');
-        const how = where.id === id ? 'влезе като нова стая' : 'е заменена с проекта';
-        goTo(
-          where.id,
-          `„${roomName(where)}" ${how}: ${m(where.width)} × ${m(where.depth)} м, с мебелта си. ` +
-            'Отметната е като готова.',
-        );
-      } else show({ said: 'Жилището е пълно — махнете помещение, за да влезе ново.' });
-      window.history.replaceState(null, '', '/jilishte');
+        const kazhi = where.id === id ? t.vlezeNova : t.zamenena;
+        goTo(where.id, kazhi(roomName(where), m(where.width), m(where.depth)));
+      } else show({ said: t.palno });
+      window.history.replaceState(null, '', kam('/jilishte'));
     }
+    // Веднъж, при отваряне: езикът и речникът не се менят, докато стаята е отворена.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**
@@ -214,10 +225,10 @@ export function FlatEditor() {
     navigator.clipboard.writeText(url).then(
       () => {
         setKopirano(true);
-        show({ said: 'Линкът към жилището е копиран.' });
+        show({ said: t.linkKopiran });
         window.setTimeout(() => setKopirano(false), 2500);
       },
-      () => show({ said: 'Копирането не стана. Вземете адреса от лентата горе.' }),
+      () => show({ said: t.kopiraneNe }),
     );
   };
 
@@ -254,10 +265,10 @@ export function FlatEditor() {
     // Запис отпреди мерките да вървят заедно се отваря в мерките от
     // чертежа, ако мебелта се побира — иначе какъвто е.
     const project = room.project ? (fitProject(room.project, room) ?? room.project) : null;
-    return (
+    return kam(
       `/proekt?staya=${room.kind}&shirina=${room.width}&dalbochina=${room.depth}` +
-      `&stayaId=${encodeURIComponent(room.id)}` +
-      (project ? `&p=${project}` : '')
+        `&stayaId=${encodeURIComponent(room.id)}` +
+        (project ? `&p=${project}` : ''),
     );
   };
 
@@ -271,12 +282,7 @@ export function FlatEditor() {
     if (room?.project) {
       const next = clampFlatRoom({ ...room, width, depth });
       if (fitProject(room.project, next) === null) {
-        const m = (mm: number) => (mm / 1000).toFixed(2).replace('.', ',');
-        show({
-          said:
-            `Мебелта в „${roomName(room)}" не се побира в ${m(next.width)} × ${m(next.depth)} м. ` +
-            'За по-малка стая махнете шкаф от проекта ѝ.',
-        });
+        show({ said: t.neSePobira(roomName(room), m(next.width), m(next.depth)) });
         return;
       }
     }
@@ -291,10 +297,10 @@ export function FlatEditor() {
     if (!current) return;
     const next = stepFrom(flat, current.id, dir);
     if (!next) {
-      show({ said: `${DIRECTION_LABEL[dir]} няма накъде — това е краят на жилището.` });
+      show({ said: t.kraya(t.posoka[dir]) });
       return;
     }
-    goTo(next.id, `${roomName(next)}, ${areaOf(next).toFixed(1)} квадрата.`);
+    goTo(next.id, t.tuk(roomName(next), kv(next)));
   };
 
   /* Стрелките работят навсякъде, стига да не пишеш в поле. */
@@ -311,7 +317,7 @@ export function FlatEditor() {
         return;
       }
       // Ъгълът за опъване държи своите стрелки сам.
-      if (target?.getAttribute('aria-label')?.startsWith('Опънете')) return;
+      if (target?.hasAttribute('data-opvane')) return;
       const dirs: Record<string, Direction> = {
         ArrowUp: 'up',
         ArrowDown: 'down',
@@ -330,11 +336,8 @@ export function FlatEditor() {
   return (
     <main id="sadarzhanie" className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
       <header className="mb-6">
-        <h1 className="font-display text-3xl sm:text-4xl">Начертайте жилището</h1>
-        <p className="mt-2 max-w-2xl text-muted">
-          Сложете стаите една до друга както са при вас. Влачете ги, опъвайте ги за долния
-          десен ъгъл — лепят се сами. Стрелките ви водят от стая в стая.
-        </p>
+        <h1 className="font-display text-3xl sm:text-4xl">{t.zaglavie}</h1>
+        <p className="mt-2 max-w-2xl text-muted">{t.vavedenie}</p>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -358,7 +361,7 @@ export function FlatEditor() {
                  помещение води в него, както и щракването в плана. */
               onPick={(id) => {
                 const room = flat.rooms.find((r) => r.id === id);
-                goTo(id, room ? `${roomName(room)}, ${areaOf(room).toFixed(1)} квадрата.` : undefined);
+                goTo(id, room ? t.tuk(roomName(room), kv(room)) : undefined);
               }}
             />
           </div>
@@ -378,14 +381,16 @@ export function FlatEditor() {
             }}
             onFurnish={current && isFurnished(current.kind) ? furnishLink(current) : null}
             furnishLabel={
-              current ? `${isDone(current) ? 'Променете' : 'Обзаведете'} ${roomName(current).toLowerCase()}` : ''
+              current
+                ? (isDone(current) ? t.promenete : t.obzavedete)(roomName(current).toLowerCase())
+                : ''
             }
           />
         </div>
 
         <aside className="space-y-4">
           <section className="card p-4">
-            <h2 className="text-sm font-medium">Добавете помещение</h2>
+            <h2 className="text-sm font-medium">{t.dobavete}</h2>
             <div className="mt-3 flex flex-wrap gap-2">
               {KINDS.map((kind) => (
                 <button
@@ -395,19 +400,15 @@ export function FlatEditor() {
                   disabled={flat.rooms.length >= FLAT.MAX_ROOMS}
                   className="rounded-pill bg-surface-sunken px-3 py-1.5 text-[13px] transition-colors hover:bg-border disabled:opacity-50"
                 >
-                  + {FLAT_ROOM_LABEL[kind]}
+                  + {vid(kind)}
                 </button>
               ))}
             </div>
             <p className="mt-3 text-xs text-muted">
-              {flat.rooms.length} от {FLAT.MAX_ROOMS} помещения · {totalArea(flat).toFixed(1)} м²
-              общо
+              {t.broi(flat.rooms.length, FLAT.MAX_ROOMS, totalArea(flat).toFixed(1))}
             </p>
             {progress.total > 0 && (
-              <p className="mt-1 text-xs text-muted">
-                Обзаведени: {progress.done} от {progress.total}
-                {progress.done === progress.total ? ' — цялото жилище е готово' : ''}
-              </p>
+              <p className="mt-1 text-xs text-muted">{t.obzavedeni(progress.done, progress.total)}</p>
             )}
 
             {/*
@@ -419,16 +420,13 @@ export function FlatEditor() {
               onClick={kopirajLink}
               className="btn btn-quiet mt-3 w-full text-[13px]"
             >
-              {kopirano ? 'Линкът е копиран' : 'Копирайте линк към жилището'}
+              {kopirano ? t.linkatEKopiran : t.kopiraiLink}
             </button>
-            <p className="mt-2 text-[11px] leading-relaxed text-muted">
-              Линкът носи целия чертеж и обзаведените стаи. Отваря се на друго устройство и
-              може да се прати на нас.
-            </p>
+            <p className="mt-2 text-[11px] leading-relaxed text-muted">{t.linkatNosi}</p>
           </section>
 
           <section className="card p-4">
-            <h2 className="text-sm font-medium">Ходене</h2>
+            <h2 className="text-sm font-medium">{t.hodene}</h2>
             <div className="mt-3 grid w-max grid-cols-3 gap-1.5">
               <span />
               <ArrowButton item={ARROWS[0]} onWalk={walk} />
@@ -438,25 +436,25 @@ export function FlatEditor() {
               <ArrowButton item={ARROWS[3]} onWalk={walk} />
             </div>
             <p aria-live="polite" className="mt-3 min-h-[2.5rem] text-xs leading-relaxed text-muted">
-              {said || 'Натиснете стрелка, за да минете в съседната стая.'}
+              {said || t.natisnete}
             </p>
           </section>
 
           {current && (
             <section className="card p-4">
-              <h2 className="text-sm font-medium">Тази стая</h2>
+              <h2 className="text-sm font-medium">{t.tazi}</h2>
 
               <label className="mt-3 block">
-                <span className="text-[11px] text-muted">Име</span>
+                <span className="text-[11px] text-muted">{t.ime}</span>
                 <input
-                  value={current.name}
+                  value={imeNaEzik(current.name, ezik)}
                   onChange={(e) => dispatch({ type: 'rename', id: current.id, name: e.target.value })}
                   className="field mt-1 w-full py-1.5 text-sm"
                 />
               </label>
 
               <label className="mt-3 block">
-                <span className="text-[11px] text-muted">Вид</span>
+                <span className="text-[11px] text-muted">{t.vid}</span>
                 <select
                   value={current.kind}
                   onChange={(e) =>
@@ -466,7 +464,7 @@ export function FlatEditor() {
                 >
                   {KINDS.map((kind) => (
                     <option key={kind} value={kind}>
-                      {FLAT_ROOM_LABEL[kind]}
+                      {vid(kind)}
                     </option>
                   ))}
                 </select>
@@ -474,22 +472,22 @@ export function FlatEditor() {
 
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <Field
-                  label="Ширина"
+                  label={t.shirina}
                   value={current.width}
                   onChange={(width) => resize(current.id, width, current.depth)}
                 />
                 <Field
-                  label="Дълбочина"
+                  label={t.dalbochina}
                   value={current.depth}
                   onChange={(depth) => resize(current.id, current.width, depth)}
                 />
               </div>
 
               <p className="mt-3 text-xs text-muted">
-                {areaOf(current).toFixed(1)} м² ·{' '}
+                {kv(current)} {ezik === 'bg' ? 'м²' : 'm²'} ·{' '}
                 {neighbours.length
-                  ? `граничи с ${neighbours.map((n) => roomName(n.room)).join(', ')}`
-                  : 'не граничи с нищо — долепете я до друга стая'}
+                  ? t.granichi(izbroi(neighbours.map((n) => roomName(n.room)), ezik))
+                  : t.negranichi}
               </p>
 
               {isFurnished(current.kind) ? (
@@ -497,7 +495,7 @@ export function FlatEditor() {
                   {isDone(current) && (
                     <p className="mt-4 flex items-center gap-2 rounded-field bg-accent/10 px-3 py-2 text-xs text-foreground">
                       <span aria-hidden="true">✓</span>
-                      Готова е. Отворете я пак, за да я промените.
+                      {t.gotovaE}
                     </p>
                   )}
                   {/*
@@ -508,7 +506,7 @@ export function FlatEditor() {
                   */}
                   {!isDone(current) && (
                     <p className="mt-3 text-xs leading-relaxed text-muted">
-                      Още не е обзаведена. Бутонът е долу вдясно.
+                      {t.oshteNe}
                     </p>
                   )}
                   {isDone(current) && (
@@ -517,14 +515,13 @@ export function FlatEditor() {
                       onClick={() => dispatch({ type: 'unfinish', id: current.id })}
                       className="mt-2 block text-[13px] text-muted underline-offset-4 transition-colors hover:text-foreground hover:underline"
                     >
-                      Отметнете я като незавършена
+                      {t.nezavarshena}
                     </button>
                   )}
                 </>
               ) : (
                 <p className="mt-4 rounded-field bg-surface-sunken px-3 py-2 text-xs leading-relaxed text-muted">
-                  За {FLAT_ROOM_LABEL[current.kind].toLowerCase()} още нямаме правила за мебел.
-                  Влиза в плана, за да са верни размерите на съседните стаи.
+                  {t.nyamaPravila(vid(current.kind).toLowerCase())}
                 </p>
               )}
 
@@ -541,16 +538,19 @@ export function FlatEditor() {
                 }}
                 className="mt-3 block text-[13px] text-muted underline-offset-4 transition-colors hover:text-danger hover:underline"
               >
-                Изтрийте {roomName(current).toLowerCase()} от чертежа
+                {t.iztriite(roomName(current).toLowerCase())}
               </button>
             </section>
           )}
 
           {clashes.length > 0 && (
             <p role="alert" className="text-xs leading-relaxed text-danger">
-              Две помещения стоят на едно място:{' '}
-              {clashes.map(([a, b]) => `${roomName(a)} и ${roomName(b)}`).join(', ')}. Разделете ги —
-              жилището не се строи така.
+              {t.dveNaEdno(
+                izbroi(
+                  clashes.map(([a, b]) => t.i(roomName(a), roomName(b))),
+                  ezik,
+                ),
+              )}
             </p>
           )}
 
@@ -566,7 +566,7 @@ export function FlatEditor() {
               disabled={!canUndoFlat(history)}
               className="btn btn-quiet px-3 py-1.5 text-[13px] disabled:opacity-40"
             >
-              Отмени
+              {t.otmeni}
             </button>
             <button
               type="button"
@@ -574,14 +574,14 @@ export function FlatEditor() {
               disabled={!canRedoFlat(history)}
               className="btn btn-quiet px-3 py-1.5 text-[13px] disabled:opacity-40"
             >
-              Повтори
+              {t.povtori}
             </button>
             <button
               type="button"
               onClick={() => dispatch({ type: 'reset' })}
               className="btn btn-quiet px-3 py-1.5 text-[13px]"
             >
-              Отначало
+              {t.otnachalo}
             </button>
           </div>
         </aside>
@@ -591,11 +591,12 @@ export function FlatEditor() {
 }
 
 function ArrowButton({ item, onWalk }: { item: { dir: Direction; sign: string }; onWalk: (d: Direction) => void }) {
+  const t = useT(JILISHTE);
   return (
     <button
       type="button"
       onClick={() => onWalk(item.dir)}
-      aria-label={`Иди ${DIRECTION_LABEL[item.dir]}`}
+      aria-label={t.idi(t.posokaMalko[item.dir])}
       className="h-10 w-10 rounded-field bg-surface-sunken text-lg transition-colors hover:bg-border"
     >
       {item.sign}

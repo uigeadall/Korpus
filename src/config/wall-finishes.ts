@@ -331,12 +331,18 @@ export function finishesIn(category: FinishCategory): WallFinish[] {
 }
 
 /** Търсене по име, без значение от главни и малки букви. */
-export function searchFinishes(query: string): WallFinish[] {
-  const words = query.trim().toLocaleLowerCase('bg').split(/\s+/).filter(Boolean);
+/**
+ * Търсене по име и група. `prevod` дава името на езика на страницата —
+ * търси се и в него, и в българското, за да стига и „brick", и „тухла".
+ */
+export function searchFinishes(query: string, prevod?: (bg: string) => string): WallFinish[] {
+  const low = (s: string) => s.toLocaleLowerCase();
+  const words = low(query.trim()).split(/\s+/).filter(Boolean);
   if (!words.length) return [...WALL_FINISHES];
-  const groupName = new Map(FINISH_CATEGORIES.map((c) => [c.id, c.name.toLocaleLowerCase('bg')]));
+  const both = (bg: string) => (prevod ? `${low(bg)} ${low(prevod(bg))}` : low(bg));
+  const groupName = new Map(FINISH_CATEGORIES.map((c) => [c.id, both(c.name)]));
   return WALL_FINISHES.filter((f) => {
-    const hay = `${f.name.toLocaleLowerCase('bg')} ${groupName.get(f.category)}`;
+    const hay = `${both(f.name)} ${groupName.get(f.category)}`;
     return words.every((w) => hay.includes(w));
   });
 }

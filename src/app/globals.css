@@ -130,10 +130,15 @@
    * Inter Tight за заглавията, Inter за текста — един глас, две ширини.
    * Без характерни букви: характерът е в подредбата и в чертежа, не в
    * шрифта. Кирилицата е изрязана както трябва и в двата.
+   *
+   * Китайските йероглифи ги няма в Inter — за тях браузърът минава на
+   * системния шрифт: PingFang на Apple, YaHei на Windows, Noto другаде.
+   * Латиницата и цифрите и в китайския текст остават от Inter.
    */
-  --font-display: var(--font-inter-tight), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", monospace;
+  --font-cjk: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC";
+  --font-display: var(--font-inter-tight), -apple-system, BlinkMacSystemFont, system-ui, var(--font-cjk), sans-serif;
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, system-ui, var(--font-cjk), sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", monospace, var(--font-cjk);
 
   --radius-sheet: var(--radius);
   --radius-card: var(--radius);
