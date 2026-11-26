@@ -26,11 +26,13 @@ import {
   roomsOverlap,
 } from '@/lib/flat';
 import { capturePointer } from '@/components/pointer';
+import { useEzik, useT } from '@/i18n/client';
+import { metri } from '@/i18n/chisla';
+import { JILISHTE } from '@/i18n/tekstove/jilishte';
 
 /** Място около жилището, за да има къде да се хване и издърпа стая. */
 const MARGIN = 1200;
 
-const metres = (mm: number) => (mm / 1000).toFixed(2).replace('.', ',');
 
 /** Цвят на всеки вид — за да се чете планът без да се четат надписите. */
 const FILL: Record<string, string> = {
@@ -64,6 +66,9 @@ type Drag =
   | { kind: 'size'; id: string };
 
 export function FlatPlan({ flat, currentId, selected, onPick, onMove, onSize }: Props) {
+  const ezik = useEzik();
+  const t = useT(JILISHTE).plan;
+  const metres = (mm: number) => metri(mm, ezik);
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<Drag | null>(null);
 
@@ -125,7 +130,7 @@ export function FlatPlan({ flat, currentId, selected, onPick, onMove, onSize }: 
       viewBox={`${viewX} ${viewY} ${viewW} ${viewH}`}
       className="block h-auto w-full select-none [touch-action:none]"
       role="group"
-      aria-label={`План на жилището — ${flat.rooms.length} помещения`}
+      aria-label={t.etiket(flat.rooms.length)}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
@@ -161,11 +166,15 @@ export function FlatPlan({ flat, currentId, selected, onPick, onMove, onSize }: 
         const bad = clashing.has(room.id);
         const done = isDone(room);
         const marked = selected.includes(room.id);
-        const label =
-          `${roomName(room)}, ${metres(room.width)} на ${metres(room.depth)} метра, ` +
-          `${areaOf(room).toFixed(1)} квадрата` +
-          (done ? ', обзаведена' : isFurnished(room.kind) ? ', може да се обзаведе' : '') +
-          (current ? '. Тук сте. Стрелките водят в съседна стая.' : '');
+        const label = t.staya(
+          roomName(room, ezik),
+          metres(room.width),
+          metres(room.depth),
+          areaOf(room).toFixed(1),
+          done,
+          isFurnished(room.kind),
+          current,
+        );
 
         return (
           <g key={room.id}>
@@ -233,7 +242,7 @@ export function FlatPlan({ flat, currentId, selected, onPick, onMove, onSize }: 
               fill="var(--foreground)"
               style={{ pointerEvents: 'none' }}
             >
-              {roomName(room)}
+              {roomName(room, ezik)}
             </text>
             <text
               x={room.x + room.width / 2}
@@ -259,7 +268,8 @@ export function FlatPlan({ flat, currentId, selected, onPick, onMove, onSize }: 
                 className="cursor-nwse-resize"
                 role="button"
                 tabIndex={0}
-                aria-label={`Опънете ${room.name}. Стрелките менят размера.`}
+                data-opvane=""
+                aria-label={t.opanete(roomName(room, ezik))}
                 onPointerDown={(e) => {
                   e.stopPropagation();
                   capturePointer(e.currentTarget.ownerSVGElement, e.pointerId);

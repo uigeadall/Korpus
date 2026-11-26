@@ -7,8 +7,10 @@
  * така се вижда докъде стига едното и откъде почва другото.
  */
 
-import Link from 'next/link';
 import type { ReactNode } from 'react';
+import Link from '@/i18n/Link';
+import { getEzik } from '@/i18n/server';
+import { SAIT } from '@/i18n/tekstove/sait';
 
 export function Shell({ children }: { children: ReactNode }) {
   return (
@@ -115,11 +117,11 @@ export function Card({
 }
 
 /** Видима маркировка за текст, който още не е минал през юрист. */
-export function DraftNotice() {
+export async function DraftNotice() {
+  const t = SAIT[await getEzik()].chernova;
   return (
     <p className="mb-10 border-l-2 border-accent bg-accent-wash px-5 py-4 text-sm leading-relaxed text-muted">
-      <strong className="text-foreground">Чернова.</strong> Текстът е работен и подлежи на преглед
-      от юрист, преди сайтът да тръгне. Не го приемайте като окончателен правен документ.
+      <strong className="text-foreground">{t.zaglavie}</strong> {t.tekst}
     </p>
   );
 }
@@ -139,4 +141,39 @@ export function Prose({ children }: { children: ReactNode }) {
       {children}
     </div>
   );
+}
+
+/**
+ * Текст от речника с връзки и удебелено в него: `[думи](/adres)` и
+ * `**думи**`. Връзките водят на същия език. Друго форматиране няма —
+ * текстът трябва да се чете и в речника.
+ */
+export function Bogat({ text, linkClass }: { text: string; linkClass?: string }) {
+  const chasti: ReactNode[] = [];
+  const re = /\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*/g;
+  let posleden = 0;
+  for (const m of text.matchAll(re)) {
+    const i = m.index ?? 0;
+    if (i > posleden) chasti.push(text.slice(posleden, i));
+    if (m[1] !== undefined) {
+      chasti.push(
+        <Link
+          key={i}
+          href={m[2]}
+          className={linkClass ?? 'underline underline-offset-2 hover:text-accent'}
+        >
+          {m[1]}
+        </Link>,
+      );
+    } else {
+      chasti.push(
+        <strong key={i} className="text-foreground">
+          {m[3]}
+        </strong>,
+      );
+    }
+    posleden = i + m[0].length;
+  }
+  if (posleden < text.length) chasti.push(text.slice(posleden));
+  return <>{chasti}</>;
 }

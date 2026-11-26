@@ -95,15 +95,30 @@ export function parseSkica(raw: unknown): Validation {
  * „Не мести и не добавяй" стои най-отпред нарочно: моделът иначе
  * разкрасява — слага саксия, мести контакт, прави шкафа по-широк. За
  * нас това е лъжа, защото същата стая отива и в цеха.
+ *
+ * Кадърът е РАЗРЕЗ: стаята отгоре, с махнати стени, на бял фон. Без да
+ * му се каже, моделът го чете като снимка от нивото на очите и
+ * „дорисува" бялото — добавя стени, врати, прозорец, прави пода подиум.
+ * Проверено на живо на 24.11.2026 с FLUX.2 klein: с тези думи разрезът
+ * и белият фон остават, мебелта стои, а украсата е само дребна.
+ *
+ * Дребната украса — картина, растение, предмети по плота — е позволена
+ * нарочно: снимката е за „ето как ще изглежда", и гола стая изглежда
+ * по-зле от истинската. Мебел и уреди не се добавят: те са поръчката.
  */
 export function instruction(prompt: string): string {
   return [
-    'Turn this 3D render into a photorealistic interior photograph.',
-    'Keep the exact same layout, proportions and camera angle.',
-    'Do not move, add or remove any furniture, doors or windows.',
-    'Keep the same materials and colours.',
-    'Only add realistic lighting, texture and material detail.',
+    'Turn this 3D render into a photorealistic photograph of the same room, keeping everything that is in it.',
+    'This is a cutaway view: one room seen from above at an angle, with walls removed so we can look inside. ' +
+      'Keep this exact cutaway view and camera angle. The white area around the room is empty background: ' +
+      'keep it plain white. Do not extend the room and do not add walls, floor, ceiling, doors or windows.',
+    'Do not move, add or remove any cabinets, furniture, doors or windows: keep each one exactly as it is, ' +
+      'with the same number, size, position, colour and handles. Each piece stays the kind of furniture ' +
+      'listed below: do not turn shelves or cabinets into anything else.',
+    'Make materials, lighting and shadows realistic. You may lightly style the room with a few small ' +
+      'decorative touches: one or two framed pictures on empty wall space, a plant, a few books or small ' +
+      'objects on open shelves and surfaces. Do not add furniture, kitchen units, a sink or appliances.',
     '',
-    prompt,
+    `The room: ${prompt}`,
   ].join('\n');
 }

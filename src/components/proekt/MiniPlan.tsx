@@ -22,6 +22,9 @@ import {
   windowSpan,
 } from '@/lib/openings';
 import { capturePointer } from '@/components/pointer';
+import { useEzik, useT } from '@/i18n/client';
+import { MERKI, metri } from '@/i18n/chisla';
+import { INSTRUMENTI } from '@/i18n/tekstove/instrumenti';
 
 const PAD = 26;
 
@@ -29,7 +32,6 @@ const PAD = 26;
 const BOX_W = 320;
 const BOX_H = 190;
 
-const metres = (mm: number) => `${(mm / 1000).toFixed(2).replace('.', ',')} м`;
 
 export function MiniPlan({
   roomWidth,
@@ -52,6 +54,9 @@ export function MiniPlan({
   onWindowChange?: (win: RoomWindow) => void;
   moving?: 'door' | string;
 }) {
+  const ezik = useEzik();
+  const t = useT(INSTRUMENTI).miniPlan;
+  const metres = (mm: number) => `${metri(mm, ezik)} ${MERKI[ezik].m}`;
   const roomRef = useRef<SVGGElement>(null);
   const dragging = useRef(false);
 
@@ -97,13 +102,14 @@ export function MiniPlan({
       viewBox={`${-PAD} ${-PAD - 14} ${BOX_W + PAD * 2} ${BOX_H + PAD * 2 + 14}`}
       className={`block h-auto w-full ${editable ? 'cursor-pointer [touch-action:none]' : ''}`}
       role="img"
-      aria-label={`Стая ${metres(roomWidth)} на ${metres(roomDepth)}, мебел по горната стена ${metres(
-        wallLength,
-      )}, врата ${metres(door.width)} на ${WALL_WORD[door.side]} стена${
-        windows.length
-          ? `, ${windows.length === 1 ? 'прозорец' : `${windows.length} прозореца`}`
-          : ''
-      }`}
+      aria-label={t.etiket(
+        metres(roomWidth),
+        metres(roomDepth),
+        metres(wallLength),
+        t.strana[door.side],
+        metres(door.width),
+        windows.length,
+      )}
       onPointerDown={(e) => {
         if (!editable) return;
         capturePointer(e.currentTarget, e.pointerId);
@@ -270,10 +276,3 @@ export function MiniPlan({
     </svg>
   );
 }
-
-const WALL_WORD: Record<RoomDoor['side'], string> = {
-  top: 'горната',
-  right: 'дясната',
-  bottom: 'долната',
-  left: 'лявата',
-};

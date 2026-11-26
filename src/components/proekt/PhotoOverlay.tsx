@@ -18,11 +18,13 @@ import { elevation } from '@/lib/elevation';
 import { type P, type Quad, cssMatrix3d, homography } from '@/lib/homography';
 import { capturePointer } from '@/components/pointer';
 import { paletteFor } from '@/components/configurator/Scene3D';
+import { useEzik, useT } from '@/i18n/client';
+import { metri } from '@/i18n/chisla';
+import { IZPRASHTANE } from '@/i18n/tekstove/izprashtane';
 
 /** Ширината, в която се рисува чертежът, преди да се изкриви. */
 const BASE_W = 1000;
 
-const CORNER_LABEL = ['горе вляво', 'горе вдясно', 'долу вдясно', 'долу вляво'] as const;
 
 /** Начални ъгли — малко навътре от ръба на снимката, в дялове от нея. */
 const START: Quad = [
@@ -43,6 +45,8 @@ export function PhotoOverlay({
   rows: { base: PlacedModule[]; upper: PlacedModule[] };
   wallLength: number;
 }) {
+  const ezik = useEzik();
+  const t = useT(IZPRASHTANE).snimka;
   const [url, setUrl] = useState<string | null>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [corners, setCorners] = useState<Quad>(START);
@@ -134,30 +138,25 @@ export function PhotoOverlay({
         type="file"
         accept="image/*"
         className="sr-only"
-        aria-label="Снимка на стената"
+        aria-label={t.vhod}
         onChange={(e) => pick(e.target.files?.[0])}
       />
 
       {!url ? (
         <>
-          <p className="text-[13px] leading-relaxed text-muted">
-            Снимайте стената, на която ще стои мебелта, отпред и така, че да се виждат подът и
-            таванът. После посочете четирите ѝ ъгъла и ще видите шкафовете върху нея.
-          </p>
+          <p className="text-[13px] leading-relaxed text-muted">{t.vavedenie}</p>
           <button
             type="button"
             onClick={() => input.current?.click()}
             className="btn btn-quiet w-full py-3"
           >
-            Изберете снимка
+            {t.izberete}
           </button>
         </>
       ) : (
         <>
           <p className="text-[13px] leading-relaxed text-muted">
-            Завлечете четирите точки в ъглите на стената — долу при пода, горе при тавана, така
-            че между тях да е стената с мебелта ({(wallLength / 1000).toFixed(2).replace('.', ',')}{' '}
-            м).
+            {t.zavlechete(metri(wallLength, ezik))}
           </p>
 
           <div
@@ -174,7 +173,7 @@ export function PhotoOverlay({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={url}
-              alt="Вашата снимка на стената"
+              alt={t.alt}
               className="absolute inset-0 h-full w-full"
               onLoad={(e) =>
                 setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })
@@ -237,7 +236,7 @@ export function PhotoOverlay({
                 <button
                   key={i}
                   type="button"
-                  aria-label={`Ъгъл ${CORNER_LABEL[i]} — стрелките го местят`}
+                  aria-label={t.agal(t.agli[i])}
                   className="absolute h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-full border-2 border-white bg-accent shadow-md active:cursor-grabbing"
                   style={{ left: `${c.x * 100}%`, top: `${c.y * 100}%` }}
                   onPointerDown={(e) => {
@@ -264,14 +263,13 @@ export function PhotoOverlay({
 
           {!H && boxHeight > 0 && (
             <p role="status" className="text-[13px] text-danger">
-              Ъглите са се разбъркали — подредете ги по реда горе вляво, горе вдясно, долу вдясно,
-              долу вляво.
+              {t.razburkani}
             </p>
           )}
 
           <div className="grid grid-cols-2 gap-3 text-[13px]">
             <label className="block">
-              <span className="text-muted">Плътност на мебелта</span>
+              <span className="text-muted">{t.plutnost}</span>
               <input
                 type="range"
                 min={0.3}
@@ -283,7 +281,7 @@ export function PhotoOverlay({
               />
             </label>
             <label className="block">
-              <span className="text-muted">Височина до тавана, мм</span>
+              <span className="text-muted">{t.tavan}</span>
               <input
                 type="number"
                 min={2200}
@@ -298,7 +296,7 @@ export function PhotoOverlay({
 
           <div className="flex gap-2">
             <button type="button" onClick={() => input.current?.click()} className="btn btn-quiet flex-1 py-2.5">
-              Друга снимка
+              {t.druga}
             </button>
             <button
               type="button"
@@ -309,14 +307,14 @@ export function PhotoOverlay({
               }}
               className="btn btn-quiet flex-1 py-2.5"
             >
-              Махнете снимката
+              {t.mahni}
             </button>
           </div>
         </>
       )}
 
       <p className="text-[11px] leading-relaxed text-muted">
-        Снимката остава във вашия браузър — не се изпраща никъде и не се пази.
+        {t.ostava}
       </p>
     </div>
   );

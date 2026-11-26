@@ -16,7 +16,7 @@ test('без ключ казва честно, вместо да увисне', 
   await doKraya(page);
   await page.waitForTimeout(600);
 
-  const button = page.getByRole('button', { name: 'Направете снимка на стаята' });
+  const button = page.getByRole('button', { name: 'Генерирайте с AI' });
   await expect(button).toBeVisible();
   await button.click();
 
@@ -38,7 +38,7 @@ test('кадърът, който тръгва към модела, е истин
   await page.waitForTimeout(600);
 
   const zayavka = page.waitForRequest((r) => r.url().includes('/api/skica'));
-  await page.getByRole('button', { name: 'Направете снимка на стаята' }).click();
+  await page.getByRole('button', { name: 'Генерирайте с AI' }).click();
   const req = await zayavka;
 
   const body = JSON.parse(req.postData() ?? '{}') as {
@@ -79,7 +79,7 @@ test('върнатата снимка се показва, носи надпис
   await doKraya(page);
   await page.waitForTimeout(600);
 
-  await page.getByRole('button', { name: 'Направете снимка на стаята' }).click();
+  await page.getByRole('button', { name: 'Генерирайте с AI' }).click();
 
   const snimka = page.getByRole('img', { name: /Снимка на стаята/ });
   await expect(snimka).toBeVisible({ timeout: 15000 });
@@ -92,4 +92,99 @@ test('върнатата снимка се показва, носи надпис
     page.getByRole('button', { name: 'Свалете снимката' }).click(),
   ]);
   expect(download.suggestedFilename()).toMatch(/^korpus-kitchen-snimka-\d{4}-\d{2}-\d{2}\.png$/);
+});
+
+/*
+ * „Харесва ми" и „Не ми харесва". Моделът се подменя: проверява се
+ * пътят на човека, не моделът.
+ */
+const BYAL =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+const CHERVEN =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==';
+
+async function doSnimka(page: import('@playwright/test').Page) {
+  await otvoriChisto(page, '/proekt');
+  await page.waitForTimeout(500);
+  await page.getByRole('button', { name: /Кухня/ }).first().click();
+  await page.waitForTimeout(300);
+  await podrediPoPravilata(page);
+  await doKraya(page);
+  await page.waitForTimeout(600);
+  await page.getByRole('button', { name: 'Генерирайте с AI' }).click();
+  await expect(page.getByRole('img', { name: /Снимка на стаята/ })).toBeVisible({ timeout: 15000 });
+}
+
+test('„Не ми харесва" рисува нова, а старата стои, докато дойде', async ({ page }) => {
+  let pusni: () => void = () => {};
+  const vtora = new Promise<void>((r) => (pusni = r));
+  let broy = 0;
+  await page.route('**/api/skica', async (route) => {
+    broy++;
+    if (broy === 2) await vtora;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ image: broy === 1 ? BYAL : CHERVEN, mime: 'image/png' }),
+    });
+  });
+
+  await doSnimka(page);
+  const snimka = page.getByRole('img', { name: /Снимка на стаята/ });
+  expect(await snimka.getAttribute('src')).toContain(BYAL);
+
+  await page.getByRole('button', { name: 'Не ми харесва — нова' }).click();
+
+  // Докато моделът рисува: старата снимка е тук, бутонът казва какво става.
+  await expect(page.getByRole('button', { name: 'AI рисува нова…' })).toBeDisabled();
+  await expect(snimka).toBeVisible();
+  expect(await snimka.getAttribute('src')).toContain(BYAL);
+
+  pusni();
+  await expect.poll(() => snimka.getAttribute('src')).toContain(CHERVEN);
+  expect(broy).toBe(2);
+});
+
+test('„Харесва ми" праща снимката и линка към проекта през менюто за споделяне', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __spodeleno?: { files: number; type: string; text: string } };
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
+    Object.defineProperty(navigator, 'share', {
+      configurable: true,
+      value: async (data: { files: File[]; text: string }) => {
+        w.__spodeleno = { files: data.files.length, type: data.files[0].type, text: data.text };
+      },
+    });
+  });
+  await page.route('**/api/skica', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ image: BYAL, mime: 'image/png' }) }),
+  );
+
+  await doSnimka(page);
+  await page.getByRole('button', { name: 'Харесва ми — пратете я' }).click();
+
+  await expect(page.getByText('✓ Изпратено.')).toBeVisible();
+  const spodeleno = await page.evaluate(
+    () => (window as unknown as { __spodeleno?: { files: number; type: string; text: string } }).__spodeleno,
+  );
+  expect(spodeleno?.files).toBe(1);
+  expect(spodeleno?.type).toBe('image/png');
+  expect(spodeleno?.text).toContain('/proekt?p=');
+});
+
+test('„Харесва ми" без меню за споделяне сваля снимката', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true });
+  });
+  await page.route('**/api/skica', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ image: BYAL, mime: 'image/png' }) }),
+  );
+
+  await doSnimka(page);
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 15000 }),
+    page.getByRole('button', { name: 'Харесва ми — пратете я' }).click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^korpus-kitchen-snimka-\d{4}-\d{2}-\d{2}\.png$/);
+  await expect(page.getByText(/Снимката е свалена/)).toBeVisible();
 });

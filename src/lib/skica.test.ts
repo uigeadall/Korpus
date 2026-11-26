@@ -139,3 +139,18 @@ describe('разчитане на отговора', () => {
     expect(refusalFromGemini({ candidates: [{ finishReason: 'STOP' }] })).toBeNull();
   });
 });
+
+describe('указанието пази разреза и мебелта', () => {
+  it('казва, че кадърът е разрез на бял фон, който не се дорисува', () => {
+    const text = instruction('a living room');
+    expect(text).toContain('cutaway view');
+    expect(text).toContain('keep it plain white');
+    expect(text).toContain('do not add walls, floor, ceiling, doors or windows');
+  });
+
+  it('позволява само дребна украса — не мебел и не уреди', () => {
+    const text = instruction('a living room');
+    expect(text).toContain('framed pictures');
+    expect(text).toContain('Do not add furniture, kitchen units, a sink or appliances');
+  });
+});

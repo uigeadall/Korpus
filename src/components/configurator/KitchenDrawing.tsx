@@ -8,6 +8,9 @@
  * и на телефон (виж `fontSizeMm`).
  */
 
+import { useEzik, useT } from '@/i18n/client';
+import { kod, prevedi } from '@/i18n/rechnik';
+import { INSTRUMENTI } from '@/i18n/tekstove/instrumenti';
 import { useEffect, useRef, useState } from 'react';
 import { useElementWidth } from './useElementWidth';
 import {
@@ -151,6 +154,7 @@ export function KitchenDrawing({
   onDuplicate,
   onRemove,
 }: Props) {
+  const ti = useT(INSTRUMENTI).chertej;
   const { ref, width: pxWidth } = useElementWidth<HTMLDivElement>();
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -371,7 +375,7 @@ export function KitchenDrawing({
         // „group", не „img": вътре има модули и дръжка на стената, които се
         // хващат с Tab. При role="img" четецът скрива съдържанието им.
         role="group"
-        aria-label={`Фронтален чертеж на кухня, стена ${formatMm(wall.length)} мм`}
+        aria-label={ti.etiket(formatMm(wall.length))}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
@@ -683,6 +687,8 @@ function ModuleToolbar({
   onRemove?: (id: string) => void;
   onReorder?: (id: string, toIndex: number) => void;
 }) {
+  const ezik = useEzik();
+  const ti = useT(INSTRUMENTI).chertej;
   const box = moduleBox(view, m);
   const widths = MODULES[m.kind].widths;
   const at = widths.indexOf(m.width);
@@ -715,10 +721,10 @@ function ModuleToolbar({
       }
     >
       <div className="pointer-events-auto flex items-center gap-0.5 rounded-pill bg-surface p-1 shadow-[0_2px_16px_rgba(0,0,0,0.14)] ring-1 ring-border">
-        <span className="px-1.5 font-mono text-[11px] text-muted">{m.code}</span>
+        <span className="px-1.5 font-mono text-[11px] text-muted">{m.code && kod(m.code, ezik)}</span>
 
         <TinyButton
-          label="По-тесен"
+          label={ti.poTesen}
           disabled={at <= 0}
           onClick={() => onNudgeWidth?.(m.id, -1)}
         >
@@ -728,7 +734,7 @@ function ModuleToolbar({
           {m.width}
         </span>
         <TinyButton
-          label="По-широк"
+          label={ti.poShirok}
           disabled={at < 0 || at >= widths.length - 1}
           onClick={() => onNudgeWidth?.(m.id, 1)}
         >
@@ -738,14 +744,14 @@ function ModuleToolbar({
         <span className="mx-0.5 h-5 w-px bg-border" />
 
         <TinyButton
-          label="Премести наляво"
+          label={ti.nalyavo}
           disabled={index <= 0}
           onClick={() => onReorder?.(m.id, index - 1)}
         >
           ←
         </TinyButton>
         <TinyButton
-          label="Премести надясно"
+          label={ti.nadyasno}
           disabled={index < 0 || index >= count - 1}
           onClick={() => onReorder?.(m.id, index + 1)}
         >
@@ -754,7 +760,7 @@ function ModuleToolbar({
 
         {hinged && (
           <TinyButton
-            label={`Панти ${m.hingeSide === 'left' ? 'вляво' : 'вдясно'} — обърни`}
+            label={ti.panti(m.hingeSide === 'left')}
             onClick={() => onHinge?.(m.id)}
           >
             {m.hingeSide === 'left' ? '◀' : '▶'}
@@ -763,10 +769,10 @@ function ModuleToolbar({
 
         <span className="mx-0.5 h-5 w-px bg-border" />
 
-        <TinyButton label="Копие (⌘D)" onClick={() => onDuplicate?.(m.id)}>
+        <TinyButton label={ti.kopie} onClick={() => onDuplicate?.(m.id)}>
           ⧉
         </TinyButton>
-        <TinyButton label="Премахни (Delete)" danger onClick={() => onRemove?.(m.id)}>
+        <TinyButton label={ti.premahni} danger onClick={() => onRemove?.(m.id)}>
           ×
         </TinyButton>
       </div>
@@ -828,6 +834,7 @@ function Wall({
   onGrab?: (e: React.PointerEvent) => void;
   onKeyDown?: (e: React.KeyboardEvent) => void;
 }) {
+  const ti = useT(INSTRUMENTI).chertej;
   const top = toSvgY(view, DRAW_H);
   const gripY = toSvgY(view, DRAW_H / 2);
   const color = resizing ? 'var(--accent)' : 'var(--foreground)';
@@ -839,11 +846,11 @@ function Wall({
       tabIndex={resizable ? 0 : undefined}
       className={resizable ? 'cursor-ew-resize' : undefined}
       role={resizable ? 'slider' : undefined}
-      aria-label={resizable ? 'Дължина на стената, стрелките я променят' : undefined}
+      aria-label={resizable ? ti.dalzhina : undefined}
       aria-valuenow={resizable ? length : undefined}
       aria-valuemin={resizable ? DIM.WALL_MIN : undefined}
       aria-valuemax={resizable ? DIM.WALL_MAX : undefined}
-      aria-valuetext={resizable && length ? `${formatMm(length)} мм` : undefined}
+      aria-valuetext={resizable && length ? ti.mm(formatMm(length)) : undefined}
     >
       <rect x={x} y={top} width={WALL_T} height={DRAW_H} fill="url(#hatch)" opacity="0.7" />
       <rect
@@ -893,6 +900,7 @@ function Wall({
 
 /** Врата или прозорец: отвор в зида, с парапет при прозореца. */
 function Opening({ box, fs }: { box: OpeningBox; fs: (px: number) => number }) {
+  const ezik = useEzik();
   return (
     <g>
       <rect
@@ -926,7 +934,7 @@ function Opening({ box, fs }: { box: OpeningBox; fs: (px: number) => number }) {
         fill="var(--muted)"
         className="font-mono"
       >
-        {box.label}
+        {box.label.replace(/^\S+/, (w) => prevedi(w, ezik))}
       </text>
     </g>
   );
@@ -957,6 +965,8 @@ function Module({
   onGrab?: (e: React.PointerEvent) => void;
   onKeyDown?: (e: React.KeyboardEvent) => void;
 }) {
+  const ezik = useEzik();
+  const ti = useT(INSTRUMENTI).chertej;
   const box = moduleBox(view, m);
   const stroke = over ? 'var(--danger)' : dragging ? 'var(--accent)' : 'var(--foreground)';
   const facades = facadeRects(view, m);
@@ -981,8 +991,8 @@ function Module({
       role={interactive ? 'button' : undefined}
       aria-label={
         m.code
-          ? `${m.code} ${box.label} ${formatMm(m.width)} мм${draggable ? ', стрелките местят' : ''}`
-          : box.label
+          ? ti.modul(kod(m.code, ezik), prevedi(box.label, ezik), formatMm(m.width), Boolean(draggable))
+          : prevedi(box.label, ezik)
       }
       opacity={dragging ? 0.95 : undefined}
     >
@@ -1041,7 +1051,7 @@ function Module({
           className="font-mono"
           style={{ pointerEvents: 'none' }}
         >
-          {box.code}
+          {kod(box.code, ezik)}
         </text>
       )}
     </g>

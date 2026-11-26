@@ -21,13 +21,9 @@ import {
 import { type WallSide } from '@/lib/furniture/room';
 import { type WallFinishChoice, finishIdFor, hasOwnFinish } from '@/lib/wall-finish';
 import { type Pt, wallMarks } from '@/lib/wall-pattern';
-
-const SIDE_LABEL: Record<WallSide, string> = {
-  top: 'Горе',
-  right: 'Вдясно',
-  bottom: 'Долу',
-  left: 'Вляво',
-};
+import { useEzik, useT } from '@/i18n/client';
+import { prevedi } from '@/i18n/rechnik';
+import { INSTRUMENTI } from '@/i18n/tekstove/instrumenti';
 
 const SIDES: WallSide[] = ['top', 'right', 'bottom', 'left'];
 
@@ -48,14 +44,20 @@ export function WallFinishPanel({
    */
   onTargetChange?: (target: WallSide | 'all') => void;
 }) {
+  const ezik = useEzik();
+  const t = useT(INSTRUMENTI).steni;
+  const ime = (bg: string) => prevedi(bg, ezik);
   const [target, setTarget] = useState<WallSide | 'all'>('all');
   const current = target === 'all' ? finishById(choice?.all) : finishById(finishIdFor(choice, target));
   const [category, setCategory] = useState<FinishCategory>(current.category);
   const [query, setQuery] = useState('');
 
   const shown = useMemo(
-    () => (query.trim() ? searchFinishes(query) : finishesIn(category)),
-    [query, category],
+    () =>
+      query.trim()
+        ? searchFinishes(query, ezik === 'bg' ? undefined : (bg) => prevedi(bg, ezik))
+        : finishesIn(category),
+    [query, category, ezik],
   );
 
   const pickTarget = (next: WallSide | 'all') => {
@@ -68,10 +70,10 @@ export function WallFinishPanel({
   return (
     <div className="space-y-3">
       <div>
-        <p className="mb-1.5 text-[12px] text-muted">Къде</p>
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Коя стена">
+        <p className="mb-1.5 text-[12px] text-muted">{t.kade}</p>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={t.koyaStena}>
           <TargetChip active={target === 'all'} onClick={() => pickTarget('all')}>
-            Всички стени
+            {t.vsichki}
           </TargetChip>
           {SIDES.map((side) => (
             <TargetChip
@@ -79,9 +81,10 @@ export function WallFinishPanel({
               active={target === side}
               onClick={() => pickTarget(side)}
               marked={hasOwnFinish(choice, side)}
-              hint={side === focusSide ? 'с мебелта' : undefined}
+              hint={side === focusSide ? t.sMebelta : undefined}
+              markedLabel={t.svoe}
             >
-              {SIDE_LABEL[side]}
+              {t.strana[side]}
             </TargetChip>
           ))}
         </div>
@@ -91,27 +94,27 @@ export function WallFinishPanel({
             onClick={() => onChoose(target, finishById(choice?.all).id)}
             className="mt-1.5 text-[12px] text-accent underline-offset-2 hover:underline"
           >
-            ↺ като останалите стени
+            {t.kaktoOstanalite}
           </button>
         )}
       </div>
 
       <p className="text-[13px]">
-        <span className="text-muted">Избрано: </span>
-        {current.name}
+        <span className="text-muted">{t.izbrano}</span>
+        {ime(current.name)}
       </p>
 
       <input
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder={`Търсене в ${WALL_FINISHES.length} покрития — „тухла", „метро", „дъб"…`}
-        aria-label="Търсене на покритие"
+        placeholder={t.tarsene(WALL_FINISHES.length)}
+        aria-label={t.tarseneEtiket}
         className="w-full rounded-field border border-border bg-surface px-3 py-2 text-[13px] outline-none focus:border-accent"
       />
 
       {!query.trim() && (
-        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Вид покритие">
+        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label={t.vid}>
           {FINISH_CATEGORIES.map((c) => (
             <button
               key={c.id}
@@ -125,14 +128,14 @@ export function WallFinishPanel({
                   : 'bg-surface-sunken text-muted hover:bg-border/60'
               }`}
             >
-              {c.name} <span>{finishesIn(c.id).length}</span>
+              {ime(c.name)} <span>{finishesIn(c.id).length}</span>
             </button>
           ))}
         </div>
       )}
 
       {shown.length === 0 ? (
-        <p className="text-[13px] text-muted">Нищо не отговаря на „{query}“.</p>
+        <p className="text-[13px] text-muted">{t.nishto(query)}</p>
       ) : (
         <div className="grid max-h-[26rem] grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-4">
           {shown.map((f) => (
@@ -141,7 +144,7 @@ export function WallFinishPanel({
               type="button"
               onClick={() => onChoose(target, f.id)}
               aria-pressed={current.id === f.id}
-              title={f.name}
+              title={ime(f.name)}
               className={`rounded-field p-1 text-left ring-2 transition-all ${
                 current.id === f.id ? 'ring-accent' : 'ring-transparent hover:ring-border'
               }`}
@@ -149,7 +152,9 @@ export function WallFinishPanel({
               <FinishPreview finish={f} />
               <span className="mt-1 line-clamp-2 block text-[11px] leading-tight">
                 {/* Вътре в групата „Тапет:" пред всяко име е излишно. */}
-                {query.trim() ? f.name : f.name.replace(/^Тапет: /, '')}
+                {query.trim()
+                  ? ime(f.name)
+                  : ime(f.name).replace(/^(Тапет|Wallpaper|壁纸)[:：]\s*/, '')}
               </span>
             </button>
           ))}
@@ -164,6 +169,7 @@ function TargetChip({
   active,
   onClick,
   marked,
+  markedLabel,
   hint,
 }: {
   children: React.ReactNode;
@@ -171,6 +177,7 @@ function TargetChip({
   onClick: () => void;
   /** Стената има свое покритие. */
   marked?: boolean;
+  markedLabel?: string;
   hint?: string;
 }) {
   return (
@@ -185,7 +192,7 @@ function TargetChip({
       {children}
       {hint && <span>· {hint}</span>}
       {marked && (
-        <span aria-label="със свое покритие" className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
+        <span aria-label={markedLabel} className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
       )}
     </button>
   );

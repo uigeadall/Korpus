@@ -101,6 +101,22 @@ describe('когато нещо се обърка', () => {
     expect(text).toContain('не се получи');
   });
 
+  it('изчерпан дневен лимит се казва като такъв — без чуждия текст', async () => {
+    setSkicaModel({
+      name: 'измислен',
+      async generate() {
+        throw new ModelError('429 4006 daily free allocation, акаунт 3889', 'day');
+      },
+    });
+    const res = await POST(zayavka(dobro));
+    expect(res.status).toBe(429);
+    const text = await res.text();
+    expect(JSON.parse(text)).toMatchObject({ limit: 'day' });
+    expect(text).toContain('дневен лимит');
+    expect(text).not.toContain('3889');
+    expect(text).not.toContain('allocation');
+  });
+
   it('без ключ вратата го казва веднага, вместо да чака', async () => {
     setSkicaModel(null);
     const res = await POST(zayavka(dobro));

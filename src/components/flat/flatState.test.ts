@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { FLAT, type Flat, defaultFlat, overlappingRooms } from '@/lib/flat';
+import { emptyKitchen } from '@/lib/cabinet-rules';
+import { DEFAULT_ROOM_NEEDS, layoutFor } from '@/lib/autolayout';
+import { projectSize } from '@/lib/flat-furniture';
+import { decodeProject, encodeProject } from '@/lib/share';
 import {
   type FlatAction,
   canRedoFlat,
@@ -279,5 +283,49 @@ describe('няколко стаи наведнъж', () => {
     expect(flatReducer(flat, { type: 'removeMany', ids: ['няма'] })).toBe(flat);
     expect(flatReducer(flat, { type: 'moveMany', ids: [], x: 10, y: 10 })).toBe(flat);
     expect(flatReducer(flat, { type: 'duplicate', id: 'няма' })).toBe(flat);
+  });
+});
+
+describe('обзаведената стая и проектът ѝ имат едни мерки', () => {
+  /** Кухня с пълна стена от 3,60 и маса в дъното на стая 3,60 × 3,00. */
+  const code = () => {
+    const k = emptyKitchen(3600);
+    const l = layoutFor('kitchen', 3600, DEFAULT_ROOM_NEEDS);
+    return encodeProject({
+      ...k,
+      room: { width: 3600, depth: 3000 },
+      walls: [{ ...k.walls[0], base: l.base, upper: l.upper }],
+      furnishings: [{ id: 't', kind: 'dining-table', x: 1800, z: 2500, rotation: 0 }],
+    });
+  };
+  const furnished = () => {
+    const start = run([{ type: 'add', kind: 'kitchen' }]);
+    const id = start.rooms[0].id;
+    return { id, flat: flatReducer(start, { type: 'finish', id, project: code() }) };
+  };
+
+  it('„Готово" дава на стаята мерките от проекта', () => {
+    const { flat } = furnished();
+    expect(flat.rooms[0]).toMatchObject({ width: 3600, depth: 3000 });
+  });
+
+  it('по-плитка стая: масата се придърпва и мерките на проекта следват', () => {
+    const { id, flat } = furnished();
+    const after = flatReducer(flat, { type: 'size', id, width: 3600, depth: 2000 });
+    expect(after.rooms[0].depth).toBe(2000);
+    expect(projectSize(after.rooms[0].project!)).toEqual({ width: 3600, depth: 2000 });
+    const table = decodeProject(after.rooms[0].project!)!.furnishings![0];
+    expect(table.z).toBeLessThanOrEqual(2000 - 450);
+  });
+
+  it('стена, по-къса от шкафовете, не минава — стаята остава', () => {
+    const { id, flat } = furnished();
+    expect(flatReducer(flat, { type: 'size', id, width: 2400, depth: 3000 })).toBe(flat);
+  });
+
+  it('празната стая се оразмерява свободно', () => {
+    const start = run([{ type: 'add', kind: 'kitchen' }]);
+    const id = start.rooms[0].id;
+    expect(flatReducer(start, { type: 'size', id, width: 1500, depth: 1500 }).rooms[0].width).toBe(1500);
   });
 });

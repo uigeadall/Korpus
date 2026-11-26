@@ -15,6 +15,11 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useAdres, useEzik, useT } from '@/i18n/client';
+import { MERKI, metri } from '@/i18n/chisla';
+import { kod, prevedi } from '@/i18n/rechnik';
+import { izbroi } from '@/i18n/tekst';
+import { PROEKT } from '@/i18n/tekstove/proekt';
 import { useFitToViewport } from '@/components/useFitToViewport';
 import { ScrollMore } from '@/components/ScrollMore';
 import {
@@ -22,10 +27,10 @@ import {
   MODULES,
   type ModuleKind,
   ROOM_KIND_LABEL,
+  RULES_VERSION,
   type RoomDoor,
   type RoomKind,
   WALL_SIDES,
-  WALL_SIDE_LABEL,
   WINDOW,
   type RoomWindow,
   clampWindow,
@@ -41,7 +46,7 @@ import {
   kitchenRoom,
   isGapKind,
   moduleGeometry,
-  rulesNote,
+  rulesAreCurrent,
 } from '@/lib/cabinet-rules';
 import { ROOM, ceilingOf } from '@/lib/furniture/room';
 import { DOOR_HINGE_LABEL, doorClashes } from '@/lib/openings';
@@ -67,6 +72,7 @@ import { PhotoOverlay } from './PhotoOverlay';
 import { ScenePreview } from './ScenePreview';
 import { TEMPLATES, type Template, templateKitchen, templatePatch } from './templates';
 import { SendProject } from './SendProject';
+import { Skica } from './Skica';
 import {
   type Answers,
   ANSWERS_KEY,
@@ -94,19 +100,17 @@ import {
 
 
 
-const STEPS = ['Стаята', 'Размери', 'Какво да има', 'Как да изглежда', 'Готово'] as const;
+/** Петте стъпки; имената им са в `PROEKT.stapki`. */
+const STEPS = [0, 1, 2, 3, 4] as const;
 
-
-const ROOM_CARDS: { id: RoomKind; note: string }[] = [
-  { id: 'kitchen', note: 'Долен и горен ред, уреди, плот' },
-  { id: 'bedroom', note: 'Гардероб с лост, рафтове и антресол' },
-  { id: 'living', note: 'ТВ композиция, библиотека, стенен ред' },
-  { id: 'bath', note: 'Висящ шкаф с мивка, колона, огледало' },
-  { id: 'corridor', note: 'Плитки шкафове, закачалка, антресол' },
-  { id: 'hall', note: 'Шкаф за обувки и за връхни дрехи' },
+const ROOM_CARDS: { id: RoomKind }[] = [
+  { id: 'kitchen' },
+  { id: 'bedroom' },
+  { id: 'living' },
+  { id: 'bath' },
+  { id: 'corridor' },
+  { id: 'hall' },
 ];
-
-const metres = (mm: number) => (mm / 1000).toFixed(2).replace('.', ',');
 
 
 
@@ -114,6 +118,11 @@ const metres = (mm: number) => (mm / 1000).toFixed(2).replace('.', ',');
 
 export function ProjectWizard() {
   const router = useRouter();
+  const ezik = useEzik();
+  const t = useT(PROEKT);
+  const kam = useAdres();
+  const metres = (mm: number) => metri(mm, ezik);
+  const M = MERKI[ezik];
   /*
    * И стъпката е редуктор: споделеният линк скача направо на края, а
    * това става в ефект, където setState върти излишен цикъл рендери.
@@ -141,7 +150,7 @@ export function ProjectWizard() {
     (_current: string | null, id: string) => id,
     null as string | null,
   );
-  const copy = ROOM_COPY[a.room];
+  const copy = ROOM_COPY[ezik][a.room];
 
   /*
    * Стената и стаята се държат една друга. Шест метра мебел в двуметрова
@@ -251,16 +260,16 @@ export function ProjectWizard() {
    * стая не се пипа: тя се прибира и чака. Само същата стая с мебел в
    * нея би се загубила — затова тогава се пита.
    */
-  const applyTemplate = (t: Template) => {
+  const applyTemplate = (tpl: Template) => {
     const busy = furniture.walls[0].base.length + furniture.walls[0].upper.length > 0;
-    if (
-      t.room === a.room &&
-      busy &&
-      !window.confirm(`„${t.name}" ще замени мебелта, която вече е в стаята. Продължаваме ли?`)
-    ) {
+    if (tpl.room === a.room && busy && !window.confirm(t.zamyana(tpl.name[ezik]))) {
       return;
     }
-    set(templatePatch(t));
+    /*
+     * Дошли от жилището, стаята вече има мерки — тези от чертежа или
+     * сменените на втората стъпка. Шаблонът не ги пипа.
+     */
+    set(templatePatch(tpl, fromFlat ? { width: a.roomWidth, depth: a.roomDepth } : undefined));
     goTo(3);
   };
 
@@ -272,7 +281,8 @@ export function ProjectWizard() {
    * Резултатът става „донесен проект": оттук нататък въпросите не го
    * пренареждат, докато човек не пипне някой от тях.
    */
-  const [notice, flash] = useFlash();
+  const [notice, flashBg] = useFlash();
+  const flash = (text: string) => flashBg(prevedi(text, ezik));
   const edit = (action: Action) => {
     if (blockedByWall(furniture, action)) {
       flash(NO_ROOM);
@@ -293,7 +303,7 @@ export function ProjectWizard() {
   };
   const result = useMemo(() => computeKitchen(furniture), [furniture]);
   /** Какво ще пречи в стаята — вратата удря, хладилникът не се отваря… */
-  const notes = useMemo(() => ergonomics(furniture, result), [furniture, result]);
+  const notes = useMemo(() => ergonomics(furniture, result, ezik), [furniture, result, ezik]);
   const layout = useMemo(
     () => layoutFor(a.room, a.wallLength, a.needs),
     [a.room, a.wallLength, a.needs],
@@ -377,16 +387,16 @@ export function ProjectWizard() {
   return (
     <main id="sadarzhanie" className="mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-6 lg:px-8">
       <header className="mb-6">
-        <p className="eyebrow">Проект за пет минути</p>
+        <p className="eyebrow">{t.eyebrow}</p>
         <h1 className="font-display mt-2 text-4xl sm:text-5xl">{copy.title}</h1>
         <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted">
-          {copy.lead} Това не е оферта — точната цена идва след измерване на място.
+          {copy.lead} {t.neOferta}
         </p>
       </header>
 
       <ol className="mb-8 flex flex-wrap gap-x-1 gap-y-2 text-[13px]">
-        {STEPS.map((label, i) => (
-          <li key={label}>
+        {t.stapki.map((label, i) => (
+          <li key={i}>
             {/* Минатите стъпки се отварят с щракване — връщането назад не
                 бива да иска четири натискания на „Назад". */}
             <button
@@ -511,8 +521,8 @@ export function ProjectWizard() {
             */}
             <div className="min-w-0 border-t border-border bg-surface p-2.5 sm:max-h-none sm:min-h-0 sm:overflow-y-auto sm:border-t-0 sm:border-l">
               <div className="mb-2.5">
-                <p className="mb-1 text-[11px] tracking-wide text-muted uppercase">Стена</p>
-                <div className="grid grid-cols-2 gap-1" role="group" aria-label="Стена за мебелта">
+                <p className="mb-1 text-[11px] tracking-wide text-muted uppercase">{t.stena}</p>
+                <div className="grid grid-cols-2 gap-1" role="group" aria-label={t.stenaZaMebelta}>
                   {(['top', 'right', 'bottom', 'left'] as const).map((side) => {
                     const count = (() => {
                       const w = furniture.walls.find((x) => x.side === side);
@@ -530,7 +540,7 @@ export function ProjectWizard() {
                             : 'bg-surface-sunken text-muted hover:bg-border/60'
                         }`}
                       >
-                        {WALL_BUTTON[side]}
+                        {t.stenaButon[side]}
                         {/* С истински интервал — иначе четецът чете „Вляво·6" слято. */}
                         {count > 0 && <span className="tabular-nums">{` · ${count}`}</span>}
                       </button>
@@ -545,8 +555,8 @@ export function ProjectWizard() {
                 onAdd={(kind) =>
                   edit({ type: 'add', wallId: selWall.id!, row: MODULES[kind].row, kind })
                 }
-                hint="Завлечете модул в стаята и го пуснете до стената. Щракване го слага в края."
-                where="в стаята"
+                hint={t.paletaHint}
+                where={t.paletaKade}
               />
             </div>
           </div>
@@ -573,10 +583,7 @@ export function ProjectWizard() {
               />
 
               {a.opened && (
-                <p className="px-1 text-[12px] leading-relaxed text-muted">
-                  Подреждането вече е ваше. Върнете ли се на някой от въпросите, правилата ще
-                  подредят наново и промените по лентата ще отпаднат.
-                </p>
+                <p className="px-1 text-[12px] leading-relaxed text-muted">{t.podrezhdaneVashe}</p>
               )}
 
               <ActionBar
@@ -596,21 +603,24 @@ export function ProjectWizard() {
 
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[11px] text-muted">
             <span>
-              <span className="dim tabular-nums">{cabinets}</span> модула
+              <span className="dim tabular-nums">{cabinets}</span> {t.moduli(cabinets)}
             </span>
             <span>
-              стена <span className="dim tabular-nums">{metres(a.wallLength)} м</span>
+              {t.stenaMalko}{' '}
+              <span className="dim tabular-nums">
+                {metres(a.wallLength)} {M.m}
+              </span>
             </span>
             {a.room === 'kitchen' && (
               <span>
-                плот <span className="dim tabular-nums">{metres(worktopRun)} м</span>
+                {t.plotMalko}{' '}
+                <span className="dim tabular-nums">
+                  {metres(worktopRun)} {M.m}
+                </span>
               </span>
             )}
             <PriceEstimate kitchen={furniture} result={result} compact />
-            <span className="ml-auto">
-              Щракнете шкаф, за да се отвори; колелцето или два пръста приближават стаята.
-              Рафтовете се влачат вътре и влизат в разбивката.
-            </span>
+            <span className="ml-auto">{t.podskazkaObem}</span>
           </div>
 
           {/* Предупрежденията стоят до картината, не вътре в някоя стъпка:
@@ -619,7 +629,7 @@ export function ProjectWizard() {
             <div role="status" className="rounded-field bg-danger/8 px-4 py-3">
               {layout.dropped.map((text) => (
                 <p key={text} className="text-xs leading-relaxed text-danger">
-                  {text}
+                  {prevedi(text, ezik)}
                 </p>
               ))}
             </div>
@@ -638,16 +648,44 @@ export function ProjectWizard() {
           // спира, вместо да повлече и обема.
           className="space-y-4 lg:h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-width:thin]"
         >
+          {/*
+            Дошли от жилището — първото, което човек иска, е да се върне в
+            схемата и да види стаята отметната. Затова е най-отгоре на
+            последната стъпка, над всичко останало. Долу, под картите с
+            цената и снимките, в колона, която се скролира отделно, не се
+            виждаше: човек натискаше „Готово" горе, отиваше в жилището от
+            менюто и стаята си стоеше празна.
+          */}
+          {step === STEPS.length - 1 && fromFlat && (
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(
+                    kam(
+                      `/jilishte?gotova=${encodeURIComponent(fromFlat)}` +
+                        `&p=${encodeProject(furniture)}`,
+                    ),
+                  )
+                }
+                className="btn btn-primary w-full py-3"
+              >
+                {t.obratnoKamJilishteto}
+              </button>
+              <p className="text-[13px] leading-relaxed text-muted">{t.obratnoText}</p>
+            </div>
+          )}
+
           {/* Удобството стои най-горе, щом има мебел — пречи ли нещо, да се
               види преди цветовете. */}
           {step >= 2 && notes.length > 0 && (
-            <Card title="Удобство">
+            <Card title={t.udobstvo}>
               <ErgonomicsNotes notes={notes} />
             </Card>
           )}
 
           {step === 0 && (
-            <Card title="Коя стая обзавеждаме?">
+            <Card title={t.koyaStaya}>
               <div className="space-y-2">
                 {ROOM_CARDS.map((card) => (
                   <button
@@ -670,26 +708,27 @@ export function ProjectWizard() {
                         : 'bg-surface-sunken ring-transparent hover:bg-border/60'
                     }`}
                   >
-                    <span className="block font-medium">{ROOM_KIND_LABEL[card.id]}</span>
-                    <span className="block text-sm text-muted">{card.note}</span>
+                    <span className="block font-medium">
+                      {prevedi(ROOM_KIND_LABEL[card.id], ezik)}
+                    </span>
+                    <span className="block text-sm text-muted">{t.stai[card.id]}</span>
                   </button>
                 ))}
               </div>
               <p className="mt-3 border-t border-border pt-3 text-xs leading-relaxed text-muted">
-                Всяка стая си има своите правила за размери и обков. Размерите за спалня и
-                всекидневна са работни, докато мебелистът не потвърди своите.
+                {t.pravilaZaStaya}
               </p>
             </Card>
           )}
 
           {step === 0 && (
-            <Card title="Или започнете от готова">
+            <Card title={t.iliGotova}>
               <div className="grid grid-cols-2 gap-2">
-                {templates.map(({ t, kitchen }) => (
+                {templates.map(({ t: tpl, kitchen }) => (
                   <button
-                    key={t.id}
+                    key={tpl.id}
                     type="button"
-                    onClick={() => applyTemplate(t)}
+                    onClick={() => applyTemplate(tpl)}
                     className="rounded-field bg-surface-sunken p-1.5 text-left ring-1 ring-transparent transition-colors hover:ring-accent"
                   >
                     <span className="block overflow-hidden rounded-[7px] bg-surface">
@@ -698,16 +737,17 @@ export function ProjectWizard() {
                     <span className="mt-1.5 block text-[13px] leading-tight font-medium">
                       {/* Видимото име стои в името на бутона — гласовото
                           управление го намира по това, което човек чете. */}
-                      <span className="sr-only">Готова стая: </span>
-                      {t.name}
+                      <span className="sr-only">{t.gotovaStaya}</span>
+                      {tpl.name[ezik]}
                     </span>
-                    <span className="mt-0.5 block text-[11px] leading-snug text-muted">{t.note}</span>
+                    <span className="mt-0.5 block text-[11px] leading-snug text-muted">
+                      {tpl.note[ezik]}
+                    </span>
                   </button>
                 ))}
               </div>
               <p className="mt-3 border-t border-border pt-3 text-xs leading-relaxed text-muted">
-                Готовата стая е само начало: размерите, мебелта и цветовете се сменят в
-                следващите стъпки, както при всяка друга.
+                {t.gotovaNachalo}
               </p>
             </Card>
           )}
@@ -730,7 +770,7 @@ export function ProjectWizard() {
               </div>
 
               <Slider
-                label="Дължина на стената"
+                label={t.dalzhinaNaStenata}
                 value={a.wallLength}
                 min={1200}
                 max={6000}
@@ -741,7 +781,7 @@ export function ProjectWizard() {
 
               <div className="mt-5 grid grid-cols-2 gap-3 border-t border-border pt-4">
                 <Slider
-                  label="Ширина на стаята"
+                  label={t.shirinaNaStayata}
                   value={a.roomWidth}
                   min={1200}
                   max={8000}
@@ -750,7 +790,7 @@ export function ProjectWizard() {
                   compact
                 />
                 <Slider
-                  label="Дълбочина на стаята"
+                  label={t.dalbochinaNaStayata}
                   value={a.roomDepth}
                   min={1200}
                   max={8000}
@@ -763,7 +803,7 @@ export function ProjectWizard() {
               {/* Таванът решава дали антресол влиза и колко остава над него. */}
               <div className="mt-4">
                 <Slider
-                  label="Височина до тавана"
+                  label={t.visochinaDoTavana}
                   value={a.roomHeight ?? ROOM.HEIGHT}
                   min={ROOM.HEIGHT_MIN}
                   max={ROOM.HEIGHT_MAX}
@@ -771,9 +811,7 @@ export function ProjectWizard() {
                   onChange={(roomHeight) => set({ roomHeight })}
                   compact
                 />
-                <p className="mt-1 text-xs text-muted">
-                  Обикновено 2,50–2,70 м. Мебел, която не се побира под тавана, не влиза.
-                </p>
+                <p className="mt-1 text-xs text-muted">{t.obiknovenoTavan}</p>
               </div>
 
               <OpeningControls
@@ -788,28 +826,28 @@ export function ProjectWizard() {
 
               {doorBlocked.length > 0 && (
                 <p role="alert" className="mt-3 text-xs leading-relaxed text-danger">
-                  Вратата опира в {doorBlocked.length === 1 ? 'шкаф' : 'шкафове'}{' '}
-                  {doorBlocked.map((m) => m.code).join(', ')}. Преместете вратата или скъсете
-                  стената — иначе крилото няма да се отваря докрай.
+                  {t.vrataOpira(
+                    doorBlocked.length,
+                    izbroi(
+                      doorBlocked.map((m) => kod(m.code ?? '', ezik)),
+                      ezik,
+                    ),
+                  )}
                 </p>
               )}
             </Card>
           )}
 
           {step === 2 && (
-            <Card title="Наредете я">
-              <p className="text-sm leading-relaxed text-muted">
-                Стаята е празна. Модулите стоят до изгледа — хванете модул и го пуснете до
-                стената, където да застане. Пуснатото се вижда веднага в обема.
-              </p>
+            <Card title={t.naredeteYa}>
+              <p className="text-sm leading-relaxed text-muted">{t.praznaText}</p>
 
               <p className="mt-3 text-sm">
                 {cabinets === 0 ? (
-                  <span className="text-muted">Още няма нищо в стаята.</span>
+                  <span className="text-muted">{t.oshteNyama}</span>
                 ) : (
                   <>
-                    <span className="dim">{cabinets}</span>{' '}
-                    {cabinets === 1 ? 'модул' : 'модула'} в стаята
+                    <span className="dim">{cabinets}</span> {t.vStayata(cabinets)}
                   </>
                 )}
               </p>
@@ -820,7 +858,7 @@ export function ProjectWizard() {
                   onClick={() => set({ byHand: true, hand: { base: [], upper: [] } })}
                   className="btn btn-quiet mt-3 text-[13px]"
                 >
-                  Изпразнете стаята
+                  {t.izprazni}
                 </button>
               )}
             </Card>
@@ -829,17 +867,15 @@ export function ProjectWizard() {
           {step === 2 && (
             <Card title={copy.needsQuestion}>
               <p className="mb-3 text-xs leading-relaxed text-muted">
-                {a.byHand
-                  ? 'Ако не искате да редите сами: отговорете тук и правилата ще подредят стаята наведнъж.'
-                  : 'Правилата подреждат стаята по тези отговори. Пипнете ли ги, подреждат наново.'}
+                {a.byHand ? t.akoNeIskate : t.pravilataPodrezhdat}
               </p>
               <div className="space-y-2">
                 {a.room === 'kitchen' &&
                   KITCHEN_SWITCHES.map((s) => (
                     <Toggle
-                      key={s.label}
-                      label={s.label}
-                      note={s.note}
+                      key={s.label.bg}
+                      label={s.label[ezik]}
+                      note={s.note[ezik]}
                       on={s.get(a.needs.kitchen)}
                       onChange={(on) =>
                         set((p) => ({
@@ -851,9 +887,9 @@ export function ProjectWizard() {
                 {a.room === 'bedroom' &&
                   BEDROOM_SWITCHES.map((s) => (
                     <Toggle
-                      key={s.label}
-                      label={s.label}
-                      note={s.note}
+                      key={s.label.bg}
+                      label={s.label[ezik]}
+                      note={s.note[ezik]}
                       on={s.get(a.needs.bedroom)}
                       onChange={(on) =>
                         set((p) => ({
@@ -865,9 +901,9 @@ export function ProjectWizard() {
                 {a.room === 'living' &&
                   LIVING_SWITCHES.map((s) => (
                     <Toggle
-                      key={s.label}
-                      label={s.label}
-                      note={s.note}
+                      key={s.label.bg}
+                      label={s.label[ezik]}
+                      note={s.note[ezik]}
                       on={s.get(a.needs.living)}
                       onChange={(on) =>
                         set((p) => ({
@@ -879,9 +915,9 @@ export function ProjectWizard() {
                 {a.room === 'bath' &&
                   BATH_SWITCHES.map((s) => (
                     <Toggle
-                      key={s.label}
-                      label={s.label}
-                      note={s.note}
+                      key={s.label.bg}
+                      label={s.label[ezik]}
+                      note={s.note[ezik]}
                       on={s.get(a.needs.bath)}
                       onChange={(on) =>
                         set((p) => ({
@@ -893,9 +929,9 @@ export function ProjectWizard() {
                 {(a.room === 'corridor' || a.room === 'hall') &&
                   HALL_SWITCHES.map((s) => (
                     <Toggle
-                      key={s.label}
-                      label={s.label}
-                      note={s.note}
+                      key={s.label.bg}
+                      label={s.label[ezik]}
+                      note={s.note[ezik]}
                       on={s.get(a.needs.hall)}
                       onChange={(on) =>
                         set((p) => ({
@@ -912,7 +948,7 @@ export function ProjectWizard() {
                   onClick={() => set({ byHand: false })}
                   className="btn btn-quiet mt-4 text-[13px]"
                 >
-                  Подредете я по тези отговори
+                  {t.podredetePoOtgovori}
                 </button>
               )}
 
@@ -923,7 +959,7 @@ export function ProjectWizard() {
           )}
 
           {step === 2 && (
-            <Card title="Обзавеждане">
+            <Card title={t.obzavezhdane}>
               <div className="flex flex-wrap gap-2">
                 {furnishingsFor(a.room).map((spec) => (
                   <button
@@ -932,7 +968,7 @@ export function ProjectWizard() {
                     onClick={() => set((p) => ({ furnishings: [...p.furnishings, place(p, spec.kind)] }))}
                     className="rounded-pill bg-surface-sunken px-3.5 py-2 text-[13px] transition-colors hover:bg-border"
                   >
-                    + {spec.label}
+                    + {prevedi(spec.label, ezik)}
                   </button>
                 ))}
               </div>
@@ -941,13 +977,14 @@ export function ProjectWizard() {
                 <ul className="mt-4 divide-y divide-border border-t border-border">
                   {a.furnishings.map((f) => (
                     <li key={f.id} className="flex items-center gap-2 py-2">
-                      <span className="text-sm">{FURNISHINGS[f.kind].label}</span>
+                      <span className="text-sm">{prevedi(FURNISHINGS[f.kind].label, ezik)}</span>
                       <span className="dim ml-auto text-[11px] tabular-nums">
-                        {metres(FURNISHINGS[f.kind].width)} × {metres(FURNISHINGS[f.kind].depth)} м
+                        {metres(FURNISHINGS[f.kind].width)} × {metres(FURNISHINGS[f.kind].depth)}{' '}
+                        {M.m}
                       </span>
                       <button
                         type="button"
-                        aria-label={`Завърти ${FURNISHINGS[f.kind].label}`}
+                        aria-label={t.zavarti(prevedi(FURNISHINGS[f.kind].label, ezik))}
                         onClick={() =>
                           set((p) => ({
                             furnishings: p.furnishings.map((x) =>
@@ -963,7 +1000,7 @@ export function ProjectWizard() {
                       </button>
                       <button
                         type="button"
-                        aria-label={`Махни ${FURNISHINGS[f.kind].label}`}
+                        aria-label={t.mahni(prevedi(FURNISHINGS[f.kind].label, ezik))}
                         onClick={() =>
                           set((p) => ({
                             furnishings: p.furnishings.filter((x) => x.id !== f.id),
@@ -979,23 +1016,18 @@ export function ProjectWizard() {
               )}
 
               {a.furnishings.length > 0 && (
-                <p className="mt-3 text-xs text-muted">
-                  Влачете ги по пода направо в изгледа; щракнете предмет там, за да го завъртите
-                  или махнете.
-                </p>
+                <p className="mt-3 text-xs text-muted">{t.vlachete}</p>
               )}
 
               <p className="mt-3 border-t border-border pt-3 text-xs leading-relaxed text-muted">
-                Това са готови изделия, не мебел по мярка. Показваме ги, за да видите дали
-                стаята работи — не влизат в проекта за производство и не се включват в
-                разбивката.
+                {t.gotoviIzdeliya}
               </p>
             </Card>
           )}
 
           {step === 3 && (
             <>
-              <Card title="Цвят на фасадите">
+              <Card title={t.tsvyatFasadi}>
                 <Swatches
                   options={FACADE_COLORS}
                   value={a.facadeColor}
@@ -1003,7 +1035,7 @@ export function ProjectWizard() {
                 />
               </Card>
 
-              <Card title="Цвят на корпуса">
+              <Card title={t.tsvyatKorpus}>
                 <Swatches
                   options={CARCASS_COLORS}
                   value={a.carcassColor}
@@ -1011,7 +1043,7 @@ export function ProjectWizard() {
                 />
               </Card>
 
-              <Card title="Стени">
+              <Card title={t.steni}>
                 <WallFinishPanel
                   choice={furniture.wallFinish}
                   onChoose={(side, id) =>
@@ -1022,7 +1054,7 @@ export function ProjectWizard() {
                 />
               </Card>
 
-              <Card title="Под">
+              <Card title={t.pod}>
                 <FloorFinishPanel
                   value={furniture.floorFinish}
                   onChoose={(id) => set({ floorFinish: id ?? undefined })}
@@ -1030,7 +1062,7 @@ export function ProjectWizard() {
               </Card>
 
               {a.room === 'kitchen' && (
-                <Card title="Плот">
+                <Card title={t.plot}>
                   <div className="grid grid-cols-2 gap-2">
                     {WORKTOPS.map((w) => (
                       <Choice
@@ -1038,24 +1070,22 @@ export function ProjectWizard() {
                         selected={a.worktop === w.id}
                         onClick={() => set({ worktop: w.id })}
                       >
-                        {w.name}
+                        {prevedi(w.name, ezik)}
                       </Choice>
                     ))}
                   </div>
                 </Card>
               )}
 
-              <Card title="Подредба">
+              <Card title={t.podredba}>
                 {(a.room === 'kitchen'
                   ? KITCHEN_CHOICES
                   : a.room === 'bedroom'
                     ? BEDROOM_CHOICES
                     : LIVING_CHOICES
                 ).map((group) => (
-                  <div key={group.label} className="mb-4 last:mb-0">
-                    <p className="mb-2 text-sm text-muted">
-                      {group.label}
-                    </p>
+                  <div key={group.label.bg} className="mb-4 last:mb-0">
+                    <p className="mb-2 text-sm text-muted">{group.label[ezik]}</p>
                     <div
                       className={`grid gap-2 ${
  group.options.length === 2 ? 'grid-cols-2' : 'grid-cols-3'
@@ -1079,7 +1109,7 @@ export function ProjectWizard() {
                             }))
                           }
                         >
-                          {option.label}
+                          {option.label[ezik]}
                         </Choice>
                       ))}
                     </div>
@@ -1091,65 +1121,74 @@ export function ProjectWizard() {
 
           {step === 4 && (
             <>
-              {rulesNote(furniture) && (
+              {!rulesAreCurrent(furniture) && (
                 <p role="status" className="well px-4 py-3 text-sm text-muted">
-                  {rulesNote(furniture)}
+                  {t.pravilaNovi(furniture.rulesVersion ?? '—', RULES_VERSION)}
                 </p>
               )}
 
-              <Card title="Ето какво се получи">
+              <Card title={t.rezultat}>
                 <dl className="space-y-2 text-sm">
-                  <Line term="Стая" value={ROOM_KIND_LABEL[a.room]} />
-                  <Line term="Стена" value={`${metres(a.wallLength)} м`} />
+                  <Line term={t.term.staya} value={prevedi(ROOM_KIND_LABEL[a.room], ezik)} />
+                  <Line term={t.term.stena} value={`${metres(a.wallLength)} ${M.m}`} />
                   <Line
-                    term="До тавана"
-                    value={`${metres(ceilingOf(room))} м${
-                      cabinets > 0 ? ` · над мебелта остават ${Math.round(ceilingOf(room) - furnitureTop)} мм` : ''
+                    term={t.term.doTavana}
+                    value={`${metres(ceilingOf(room))} ${M.m}${
+                      cabinets > 0 ? t.nadMebelta(Math.round(ceilingOf(room) - furnitureTop)) : ''
                     }`}
                   />
-                  <Line
-                    term="Врата"
-                    value={`${WALL_SIDE_LABEL[door.side].toLowerCase()} стена, ${door.width} мм`}
-                  />
+                  <Line term={t.term.vrata} value={t.vrataStoinost(t.strana[door.side], door.width)} />
                   {windows.length > 0 && (
                     <Line
-                      term="Прозорци"
-                      value={windows
-                        .map((w) => `${WALL_SIDE_LABEL[w.side].toLowerCase()} ${w.width} мм`)
-                        .join(', ')}
+                      term={t.term.prozortsi}
+                      value={izbroi(
+                        windows.map((w) => t.prozorecStoinost(t.strana[w.side], w.width)),
+                        ezik,
+                      )}
                     />
                   )}
-                  <Line term="Модули" value={`${cabinets} броя`} />
-                  <Line term="Състав" value={compositionOf(a.room, a.needs)} />
+                  <Line term={t.term.moduli} value={t.broi(cabinets)} />
+                  <Line term={t.term.sastav} value={compositionOf(a.room, a.needs, ezik)} />
                   {a.furnishings.length > 0 && (
                     <Line
-                      term="Обзавеждане"
-                      value={a.furnishings
-                        .map((f) => FURNISHINGS[f.kind].label.toLowerCase())
-                        .join(', ')}
+                      term={t.term.obzavezhdane}
+                      value={izbroi(
+                        a.furnishings.map((f) =>
+                          prevedi(FURNISHINGS[f.kind].label, ezik).toLowerCase(),
+                        ),
+                        ezik,
+                      )}
                     />
                   )}
-                  <Line term="Фасади" value={a.facadeColor} />
+                  <Line term={t.term.fasadi} value={prevedi(a.facadeColor, ezik)} />
                   {a.room === 'kitchen' && (
                     <Line
-                      term="Плот"
-                      value={WORKTOPS.find((w) => w.id === a.worktop)?.name ?? '—'}
+                      term={t.term.plot}
+                      value={prevedi(WORKTOPS.find((w) => w.id === a.worktop)?.name ?? '—', ezik)}
                     />
                   )}
                 </dl>
 
                 <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-muted">
-                  Размерите и обковът са сметнати по нашите правила, версия {result.rulesVersion}.
-                  Това е работен проект, не оферта: точните размери излизат след измерване на
-                  място.
+                  {t.pravilaVersiya(result.rulesVersion)}
                 </p>
               </Card>
 
-              <Card title="Ориентировъчна цена">
+              {/*
+                Стаята е готова — първото, което човек иска, е да я види
+                като истинска. Затова е тук, а не на дъното при изпращането.
+              */}
+              {cabinets > 0 && (
+                <Card title={t.kakSnimka}>
+                  <Skica kitchen={furniture} view={a.view} />
+                </Card>
+              )}
+
+              <Card title={t.tsena}>
                 <PriceEstimate kitchen={furniture} result={result} />
               </Card>
 
-              <Card title="Вижте я на снимка на стената">
+              <Card title={t.naSnimka}>
                 <PhotoOverlay
                   kitchen={furniture}
                   rows={result.placed[0]}
@@ -1158,48 +1197,21 @@ export function ProjectWizard() {
               </Card>
 
               {/*
-                Дошли от жилището — първото, което човек иска, е да се
-                върне в схемата и да види стаята отметната.
-              */}
-              {fromFlat && (
-                <div className="flex flex-col gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      router.push(
-                        `/jilishte?gotova=${encodeURIComponent(fromFlat)}` +
-                          `&p=${encodeProject(furniture)}`,
-                      )
-                    }
-                    className="btn btn-primary w-full py-3"
-                  >
-                    Готово — обратно към жилището
-                  </button>
-                  <p className="text-[13px] leading-relaxed text-muted">
-                    Стаята се отмята в схемата. Можете да се върнете в нея и да я промените по
-                    всяко време.
-                  </p>
-                </div>
-              )}
-
-              {/*
                 Направено без чертежа — готовата стая може да влезе в
-                жилището: в чакаща стая от същия вид или като нова. Там се
-                вижда с мебелта си в макета на цялото жилище.
+                жилището: заменя стаята от същия вид с мерките и мебелта си,
+                а ако такава няма — влиза като нова. Там се вижда с мебелта
+                си в макета на цялото жилище.
               */}
               {!fromFlat && cabinets > 0 && (
                 <div className="flex flex-col gap-2">
                   <button
                     type="button"
-                    onClick={() => router.push(`/jilishte?dobavi=${encodeProject(furniture)}`)}
+                    onClick={() => router.push(kam(`/jilishte?dobavi=${encodeProject(furniture)}`))}
                     className="btn btn-quiet w-full py-3"
                   >
-                    Добавете я в жилището
+                    {t.dobavi}
                   </button>
-                  <p className="text-[13px] leading-relaxed text-muted">
-                    Стаята влиза в чертежа на жилището, отметната като готова, и се вижда там с
-                    мебелта си. Можете да се върнете в нея по всяко време.
-                  </p>
+                  <p className="text-[13px] leading-relaxed text-muted">{t.dobaviText}</p>
                 </div>
               )}
 
@@ -1215,7 +1227,7 @@ export function ProjectWizard() {
               disabled={step === 0}
               className="rounded-pill px-4 py-2 text-sm text-muted transition-colors hover:bg-surface-sunken disabled:opacity-30"
             >
-              Назад
+              {t.nazad}
             </button>
             {step < STEPS.length - 1 && (
               <button
@@ -1223,7 +1235,7 @@ export function ProjectWizard() {
                 onClick={() => goTo('next')}
                 className="btn btn-primary px-6"
               >
-                Напред
+                {t.napred}
               </button>
             )}
           </div>
@@ -1262,6 +1274,7 @@ function Slider({
   onChange: (value: number) => void;
   compact?: boolean;
 }) {
+  const ezik = useEzik();
   return (
     <label className="block">
       {/* В тясна колона името и числото са едно под друго — иначе и двете
@@ -1273,7 +1286,7 @@ function Slider({
       >
         <span className="text-sm text-muted">{label}</span>
         <span className={`dim tabular-nums whitespace-nowrap ${compact ? 'text-sm' : 'text-xl'}`}>
-          {metres(value)} м
+          {metri(value, ezik)} {MERKI[ezik].m}
         </span>
       </span>
       <input
@@ -1335,6 +1348,7 @@ function Swatches({
   value: string;
   onChange: (name: string) => void;
 }) {
+  const ezik = useEzik();
   return (
     <div className="grid grid-cols-3 gap-2">
       {options.map((option) => (
@@ -1352,7 +1366,7 @@ function Swatches({
             className="block h-12 w-full rounded-[7px]"
             style={{ background: option.hex }}
           />
-          <span className="mt-1 block text-[11px] leading-tight">{option.name}</span>
+          <span className="mt-1 block text-[11px] leading-tight">{prevedi(option.name, ezik)}</span>
         </button>
       ))}
     </div>
@@ -1386,12 +1400,6 @@ function Choice({
   );
 }
 
-const WALL_BUTTON: Record<WallSide, string> = {
-  top: 'Горе',
-  right: 'Вдясно',
-  bottom: 'Долу',
-  left: 'Вляво',
-};
 
 /**
  * Къде се влиза и откъде идва светлината.
@@ -1420,6 +1428,8 @@ function OpeningControls({
   onDoor: (door: RoomDoor) => void;
   onWindows: (windows: RoomWindow[]) => void;
 }) {
+  const ezik = useEzik();
+  const t = useT(PROEKT);
   const win = windows.find((w) => w.id === editing);
   const side = win ? win.side : door.side;
   const wall = side === 'top' || side === 'bottom' ? room.width : room.depth;
@@ -1453,18 +1463,18 @@ function OpeningControls({
   return (
     <section className="mt-5 border-t border-border pt-4">
       <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-sm font-medium">Врата и прозорци</h3>
-        <p className="text-xs text-muted">плъзнете по плана</p>
+        <h3 className="text-sm font-medium">{t.vrataIProzortsi}</h3>
+        <p className="text-xs text-muted">{t.plaznetePoPlana}</p>
       </div>
 
       {/* кой отвор се мести */}
       <div className="mt-3 flex flex-wrap gap-2">
         <Choice selected={editing === 'door'} onClick={() => onEdit('door')}>
-          Врата
+          {t.vrata}
         </Choice>
         {windows.map((w, i) => (
           <Choice key={w.id} selected={editing === w.id} onClick={() => onEdit(w.id)}>
-            Прозорец {i + 1}
+            {t.prozorec(i + 1)}
           </Choice>
         ))}
         <button
@@ -1473,21 +1483,21 @@ function OpeningControls({
           disabled={windows.length >= WINDOW.MAX_COUNT}
           className="rounded-field bg-surface-sunken px-3 py-2 text-[13px] text-muted transition-colors hover:bg-border/60 disabled:opacity-50"
         >
-          + Прозорец
+          {t.plusProzorec}
         </button>
       </div>
 
       <div className="mt-4 grid grid-cols-4 gap-2">
         {WALL_SIDES.map((s) => (
           <Choice key={s} selected={side === s} onClick={() => edit({ side: s })}>
-            {WALL_BUTTON[s]}
+            {t.stenaButon[s]}
           </Choice>
         ))}
       </div>
 
       <div className="mt-4">
         <Slider
-          label="Отстояние от левия ъгъл"
+          label={t.otstoyanie}
           value={x}
           min={0}
           max={Math.max(0, wall - width)}
@@ -1501,7 +1511,7 @@ function OpeningControls({
         <>
           <div className="mt-4 grid grid-cols-3 gap-3">
             <Slider
-              label="Ширина"
+              label={t.shirina}
               value={win.width}
               min={WINDOW.MIN_WIDTH}
               max={Math.min(WINDOW.MAX_WIDTH, wall)}
@@ -1510,7 +1520,7 @@ function OpeningControls({
               compact
             />
             <Slider
-              label="Парапет"
+              label={t.parapet}
               value={win.sill}
               min={WINDOW.MIN_SILL}
               max={WINDOW.MAX_SILL}
@@ -1519,7 +1529,7 @@ function OpeningControls({
               compact
             />
             <Slider
-              label="Височина"
+              label={t.visochina}
               value={win.height}
               min={WINDOW.MIN_HEIGHT}
               max={WINDOW.MAX_HEIGHT}
@@ -1533,14 +1543,14 @@ function OpeningControls({
             onClick={removeWindow}
             className="mt-3 text-[13px] text-muted underline-offset-4 transition-colors hover:text-danger hover:underline"
           >
-            Махнете този прозорец
+            {t.mahniProzoreca}
           </button>
         </>
       ) : (
         // Ширините са четири и искат цял ред — в половин колона „1000" опираше в ръба.
         <div className="mt-4 space-y-4">
           <div>
-            <span className="text-sm text-muted">Ширина, мм</span>
+            <span className="text-sm text-muted">{t.shirinaMm}</span>
             <div className="mt-2 grid grid-cols-4 gap-1.5">
               {DOOR.WIDTHS.map((w) => (
                 <Choice key={w} selected={door.width === w} onClick={() => editDoor({ width: w })}>
@@ -1550,7 +1560,7 @@ function OpeningControls({
             </div>
           </div>
           <div>
-            <span className="text-sm text-muted">Панти</span>
+            <span className="text-sm text-muted">{t.panti}</span>
             <div className="mt-2 grid grid-cols-2 gap-1.5 sm:max-w-[60%]">
               {(['left', 'right'] as const).map((hinge) => (
                 <Choice
@@ -1558,7 +1568,7 @@ function OpeningControls({
                   selected={door.hinge === hinge}
                   onClick={() => editDoor({ hinge })}
                 >
-                  {DOOR_HINGE_LABEL[hinge]}
+                  {prevedi(DOOR_HINGE_LABEL[hinge], ezik)}
                 </Choice>
               ))}
             </div>

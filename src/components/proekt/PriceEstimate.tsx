@@ -12,13 +12,46 @@ import { useMemo } from 'react';
 import type { Kitchen, KitchenResult } from '@/lib/cabinet-rules';
 import { CURRENCY, PRICES, PRICE_STATUS } from '@/config/prices';
 import { type PriceLine, estimatePrice, formatMoney } from '@/lib/price';
+import { useEzik, useT } from '@/i18n/client';
+import type { Ezik } from '@/i18n/ezik';
+import { prevedi } from '@/i18n/rechnik';
+import { INSTRUMENTI } from '@/i18n/tekstove/instrumenti';
 
 const GROUPS: PriceLine['group'][] = ['Материали', 'Фасади', 'Плот', 'Обков', 'Изработка'];
 
+/**
+ * Редът от сметката на езика. Имената идват от правилата на български:
+ * „Фасади — МДФ боядисан", „Кант 2 мм (корпус)", „ПДЧ 18".
+ */
+const KANT = {
+  en: { korpus: 'carcass', fasadi: 'fronts', kant: 'Edging' },
+  zh: { korpus: '柜体', fasadi: '门板', kant: '封边' },
+};
+const MATERIAL = {
+  'ПДЧ 18': { en: 'Chipboard 18', zh: '刨花板 18' },
+  'ПДЧ 16': { en: 'Chipboard 16', zh: '刨花板 16' },
+} as Record<string, { en: string; zh: string }>;
+
+function red(label: string, ezik: Ezik): string {
+  if (ezik === 'bg') return label;
+  const kant = /^Кант (\S+) мм \((корпус|фасади)\)$/.exec(label);
+  if (kant) {
+    const k = KANT[ezik];
+    const chast = kant[2] === 'корпус' ? k.korpus : k.fasadi;
+    return ezik === 'zh' ? `${k.kant} ${kant[1]} mm（${chast}）` : `${k.kant} ${kant[1]} mm (${chast})`;
+  }
+  if (MATERIAL[label]) return MATERIAL[label][ezik];
+  return label
+    .split(' — ')
+    .map((part) => prevedi(part, ezik))
+    .join(' — ');
+}
+
 function Draft() {
+  const t = useT(INSTRUMENTI).tsena;
   return (
     <span className="rounded-pill bg-surface-sunken px-2 py-0.5 text-[11px] text-muted ring-1 ring-border">
-      примерни цени — чакат потвърждение
+      {t.chernova}
     </span>
   );
 }
@@ -33,6 +66,8 @@ export function PriceEstimate({
   /** Един ред до картината вместо цялата разбивка. */
   compact?: boolean;
 }) {
+  const ezik = useEzik();
+  const t = useT(INSTRUMENTI).tsena;
   const e = useMemo(() => estimatePrice(kitchen, result), [kitchen, result]);
   if (PRICE_STATUS === 'скрита') return null;
 
@@ -42,17 +77,15 @@ export function PriceEstimate({
     if (e.total === 0) return null;
     return (
       <span data-testid="cena-kratko">
-        ориентировъчно <span className="dim tabular-nums text-foreground">{range}</span>
-        {PRICE_STATUS === 'чернова' && <span className="ml-1">(примерни цени)</span>}
+        {t.orientirovachno} <span className="dim tabular-nums text-foreground">{range}</span>
+        {PRICE_STATUS === 'чернова' && <span className="ml-1">{t.primerni}</span>}
       </span>
     );
   }
 
   if (e.total === 0) {
     return (
-      <p className="text-[13px] text-muted">
-        Сложете поне един шкаф в стаята и тук ще излезе ориентировъчна цена.
-      </p>
+      <p className="text-[13px] text-muted">{t.prazno}</p>
     );
   }
 
@@ -64,14 +97,13 @@ export function PriceEstimate({
           <Draft />
         </div>
       )}
-      <p className="text-[13px] leading-relaxed text-muted">
-        Смятаме я от материалите, обкова и шкафовете във вашия проект, с изработка, монтаж и
-        доставка, с ДДС. Точната цена идва след измерване на място.
-      </p>
+      <p className="text-[13px] leading-relaxed text-muted">{t.kakSmyatame}</p>
 
       <details className="group rounded-field bg-surface-sunken px-3 py-2">
         <summary className="cursor-pointer text-[13px] marker:content-none">
-          <span className="text-accent underline-offset-2 group-open:underline">Как е сметната</span>
+          <span className="text-accent underline-offset-2 group-open:underline">
+            {t.kakESmetnata}
+          </span>
         </summary>
         <table className="mt-2 w-full text-[12px]">
           <tbody>
@@ -81,14 +113,15 @@ export function PriceEstimate({
               return [
                 <tr key={group}>
                   <th colSpan={3} className="pt-2 pb-1 text-left font-medium">
-                    {group}
+                    {prevedi(group, ezik)}
                   </th>
                 </tr>,
                 ...rows.map((l) => (
                   <tr key={`${group}-${l.label}`} className="text-muted">
-                    <td className="py-0.5 pr-2">{l.label}</td>
+                    <td className="py-0.5 pr-2">{red(l.label, ezik)}</td>
                     <td className="py-0.5 pr-2 text-right whitespace-nowrap tabular-nums">
-                      {String(l.qty).replace('.', ',')} {l.unit}
+                      {ezik === 'bg' ? String(l.qty).replace('.', ',') : String(l.qty)}{' '}
+                      {prevedi(l.unit, ezik)}
                     </td>
                     <td className="py-0.5 text-right whitespace-nowrap tabular-nums">
                       {formatMoney(l.total)} {CURRENCY}
@@ -99,7 +132,7 @@ export function PriceEstimate({
             })}
             <tr>
               <td colSpan={2} className="border-t border-border pt-1.5 font-medium">
-                Сума по сметката
+                {t.suma}
               </td>
               <td className="border-t border-border pt-1.5 text-right font-medium tabular-nums">
                 {formatMoney(e.total)} {CURRENCY}
@@ -108,7 +141,7 @@ export function PriceEstimate({
           </tbody>
         </table>
         <p className="mt-2 text-[11px] leading-relaxed text-muted">
-          Диапазонът е ±{Math.round(PRICES.spread * 100)}% около сумата: мерките още не са взети на място.
+          {t.diapazon(Math.round(PRICES.spread * 100))}
         </p>
       </details>
     </div>

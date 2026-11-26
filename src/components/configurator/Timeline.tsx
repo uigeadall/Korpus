@@ -20,9 +20,11 @@ import {
   type PlacedModule,
   type RowId,
   type RoomKind,
-  WALL_SIDE_LABEL,
   type WallSide,
 } from '@/lib/cabinet-rules';
+import { useEzik, useT } from '@/i18n/client';
+import { kod, prevedi } from '@/i18n/rechnik';
+import { INSTRUMENTI } from '@/i18n/tekstove/instrumenti';
 import { formatMm } from '@/lib/drawing';
 import { clipsInRange, canTrim, idsBetween, rowEnd, trimWidth } from '@/lib/timeline';
 import { capturePointer } from '@/components/pointer';
@@ -34,14 +36,6 @@ const GRIP = 12;
 /** Под колко пиксела влаченето брои за щракване. */
 const THRESHOLD = 4;
 
-const ROW_TITLE: Record<RoomKind, Record<RowId, string>> = {
-  kitchen: { base: 'Долен ред', upper: 'Горен ред' },
-  bedroom: { base: 'Гардероб', upper: 'Антресол' },
-  living: { base: 'Долен ред', upper: 'Стенен ред' },
-  bath: { base: 'Долен ред', upper: 'Над мивката' },
-  corridor: { base: 'Шкафове', upper: 'Антресол' },
-  hall: { base: 'Шкафове', upper: 'Антресол' },
-};
 
 interface Props {
   roomKind: RoomKind;
@@ -69,6 +63,8 @@ export function Timeline({
   onReorder,
   onWidth,
 }: Props) {
+  const ezik = useEzik();
+  const t = useT(INSTRUMENTI).lenta;
   const drag = useRef<Drag | null>(null);
   const [live, setLive] = useState<Drag | null>(null);
 
@@ -204,18 +200,16 @@ export function Timeline({
   return (
     <section
       className="card select-none p-3"
-      aria-label={`Лента на ${WALL_SIDE_LABEL[side].toLowerCase()} стена`}
+      aria-label={t.etiket(t.strana[side])}
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={end}
       onPointerCancel={end}
     >
       <div className="mb-2 flex items-baseline justify-between gap-2 px-1">
-        <h2 className="font-display text-sm">Лента</h2>
+        <h2 className="font-display text-sm">{t.zaglavie}</h2>
         <p className="text-[11px] text-muted">
-          {selected.length > 1
-            ? `${selected.length} избрани`
-            : 'влачи клип · хвани ръба, за да опънеш · тегли рамка за няколко'}
+          {selected.length > 1 ? t.izbrani(selected.length) : t.podskazka}
         </p>
       </div>
 
@@ -227,7 +221,7 @@ export function Timeline({
         return (
           <div key={row} className="mb-2 last:mb-0">
             <p className="px-1 pb-1 text-[11px] uppercase tracking-wide text-muted">
-              {ROW_TITLE[roomKind][row]}
+              {t.redove[roomKind][row]}
             </p>
 
             <div
@@ -244,7 +238,8 @@ export function Timeline({
                  * иначе гласовото управление не го намира. Нишите
                  * нямат код, затова носят името на вида си.
                  */
-                const head = m.code ?? spec.label;
+                const ime = prevedi(spec.label, ezik);
+                const head = m.code ? kod(m.code, ezik) : ime;
                 const isOn = selected.includes(m.id);
                 const leftPct = (m.x / wallLength) * 100;
                 const widthPct = (m.width / wallLength) * 100;
@@ -260,12 +255,13 @@ export function Timeline({
                      * Иначе гласовото управление не го намира: казваш
                      * „К1 600", а името започва с друго.
                      */
-                    aria-label={
-                      `${head} ${formatMm(m.width)} мм` +
-                      (head === spec.label ? '' : ` — ${spec.label}`) +
-                      `, ${i + 1} от ${list.length}.` +
-                      ' Стрелките го местят, плюс и минус менят ширината.'
-                    }
+                    aria-label={t.klip(
+                      head,
+                      formatMm(m.width),
+                      head === ime ? null : ime,
+                      i + 1,
+                      list.length,
+                    )}
                     className={`absolute top-1 bottom-1 cursor-grab overflow-hidden rounded-[10px] border px-2 py-1 text-left transition-colors ${
                       isOn
                         ? 'border-accent bg-accent/15'
@@ -296,7 +292,7 @@ export function Timeline({
                   >
                     <span className="block truncate text-[11px] leading-tight">{head}</span>{' '}
                     <span className="dim block truncate text-[11px] leading-tight text-muted">
-                      {formatMm(m.width)} мм
+                      {formatMm(m.width)} {ezik === 'bg' ? 'мм' : 'mm'}
                     </span>
 
                     {/* дръжките за опъване, като краищата на клип */}
@@ -330,7 +326,7 @@ export function Timeline({
 
               {!list.length && (
                 <p className="pointer-events-none absolute inset-0 grid place-items-center text-[11px] text-muted">
-                  Празно. Завлечете модул от палитрата.
+                  {t.prazno}
                 </p>
               )}
             </div>

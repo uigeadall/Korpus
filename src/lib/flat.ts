@@ -14,6 +14,8 @@
  */
 
 import type { RoomKind } from './cabinet-rules';
+import type { Ezik } from '@/i18n/ezik';
+import { prevedi } from '@/i18n/rechnik';
 
 /**
  * Видовете стаи. Първите три се обзавеждат с корпусна мебел; другите
@@ -78,8 +80,22 @@ export interface FlatRoom {
  * между двете натискания стаята не бива да остава без надпис. Тогава
  * се показва видът ѝ.
  */
-export function roomName(room: FlatRoom): string {
-  return room.name.trim() || FLAT_ROOM_LABEL[room.kind];
+export function roomName(room: FlatRoom, ezik: Ezik = 'bg'): string {
+  return imeNaEzik(room.name.trim(), ezik) || prevedi(FLAT_ROOM_LABEL[room.kind], ezik);
+}
+
+/**
+ * Име на стая на езика на страницата. Подразбиращите се имена („Кухня",
+ * „Спалня 2") се пазят на български — те са ключ — и се превеждат на
+ * показване. Име, което човек е написал сам, остава както е.
+ */
+export function imeNaEzik(name: string, ezik: Ezik): string {
+  if (ezik === 'bg') return name;
+  const m = /^(.+?)( \d+)?$/.exec(name);
+  if (m && (Object.values(FLAT_ROOM_LABEL) as string[]).includes(m[1])) {
+    return prevedi(m[1], ezik) + (m[2] ?? '');
+  }
+  return name;
 }
 
 /** Готова ли е стаята — има ли проект зад нея. */
@@ -365,10 +381,18 @@ export function addRoom(flat: Flat, kind: FlatRoomKind, id: string): Flat {
 /**
  * Готов проект, пренесен в жилището.
  *
- * Има ли стая от същия вид, която още чака обзавеждане, проектът отива
- * в нея — човек е направил кухнята си, а кухнята вече е начертана. Няма
- * ли, жилището получава нова стая с мерките на проекта. Връща жилището и
- * името на стаята, в която е влязъл проектът.
+ * Заменя стаята от същия вид: тя остава на мястото си и с името си, но
+ * взема мерките на проекта и цялата му мебел. Първо чакащата; ако всички
+ * от вида са обзаведени — първата от тях. Само жилище без такава стая
+ * получава нова. Връща жилището и стаята, в която е влязъл проектът.
+ *
+ * Досега проектът търсеше чакаща стая, в която да се побере. Готовата
+ * кухня от 4,20 не влизаше в начертаната от 3,60 и ставаше нова стая
+ * някъде встрани — а начертаната си стоеше празна и изглеждаше, че
+ * „Добави в жилището" не прави нищо.
+ *
+ * `fit` пренася записа в мерките на стаята. Те са на проекта, но стъпката
+ * на чертежа е по-едра и може да ги закръгли.
  */
 export function placeProject(
   flat: Flat,
@@ -376,25 +400,26 @@ export function placeProject(
   size: { width: number; depth: number },
   project: string,
   id: string,
-  /** Колко е дълга стената с мебелта — чакаща стая, по-тясна от нея, не става. */
-  wallLength = 0,
+  fit: (room: FlatRoom) => string | null = () => project,
 ): { flat: Flat; id: string | null } {
-  // Мебел по-дълга от стаята би минала през зида ѝ в макета.
-  const waiting = flat.rooms.find((r) => r.kind === kind && !r.project && r.width >= wallLength);
-  if (waiting) {
+  const withProject = (room: FlatRoom): FlatRoom => {
+    const sized = clampFlatRoom({ ...room, width: size.width, depth: size.depth });
+    return { ...sized, project: fit(sized) ?? project };
+  };
+
+  const same = flat.rooms.filter((r) => r.kind === kind);
+  const target = same.find((r) => !r.project) ?? same[0];
+  if (target) {
     return {
-      flat: { rooms: flat.rooms.map((r) => (r.id === waiting.id ? { ...r, project } : r)) },
-      id: waiting.id,
+      flat: { rooms: flat.rooms.map((r) => (r.id === target.id ? withProject(r) : r)) },
+      id: target.id,
     };
   }
+
   const added = addRoom(flat, kind, id);
   if (added === flat) return { flat, id: null };
   return {
-    flat: {
-      rooms: added.rooms.map((r) =>
-        r.id === id ? clampFlatRoom({ ...r, width: size.width, depth: size.depth, project }) : r,
-      ),
-    },
+    flat: { rooms: added.rooms.map((r) => (r.id === id ? withProject(r) : r)) },
     id,
   };
 }

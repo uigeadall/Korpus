@@ -13,7 +13,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Flat } from '@/lib/flat';
-import { FLAT_ROOM_LABEL, roomName } from '@/lib/flat';
+import { FLAT_ROOM_LABEL, roomName as roomNameBg } from '@/lib/flat';
+import { useEzik, useT } from '@/i18n/client';
+import { prevedi } from '@/i18n/rechnik';
+import { JILISHTE } from '@/i18n/tekstove/jilishte';
 import { flatDistance, flatScene, flatTarget } from '@/lib/flat-scene';
 import { furnitureBoxes, roomOfKey, roomProject } from '@/lib/flat-furniture';
 import { floorById } from '@/config/floor-finishes';
@@ -116,6 +119,9 @@ export function FlatScene({
   /** Щракване по стая в макета. Без него макетът е само за гледане. */
   onPick?: (id: string) => void;
 }) {
+  const ezik = useEzik();
+  const t = useT(JILISHTE).maket;
+  const roomName = (room: Parameters<typeof roomNameBg>[0]) => roomNameBg(room, ezik);
   const { x: goalX, z: goalZ } = flatTarget(flat, currentId);
   const whole = flatTarget(flat, null);
   const [eye, setEye] = useState({ x: goalX, z: goalZ });
@@ -195,7 +201,7 @@ export function FlatScene({
   if (!flat.rooms.length) {
     return (
       <p className="px-4 py-10 text-center text-sm text-muted">
-        Още няма нито едно помещение. Добавете първото отдясно.
+        {t.prazno}
       </p>
     );
   }
@@ -208,12 +214,7 @@ export function FlatScene({
         className="block h-auto w-full"
         style={{ aspectRatio: String(aspect) }}
         role="img"
-        aria-label={
-          current
-            ? `Макет на жилището. Сега сте в: ${roomName(current)}.` +
-              (onPick ? ' Щракнете по помещение, за да отидете в него.' : '')
-            : 'Макет на жилището отгоре.'
-        }
+        aria-label={current ? t.etiket(roomName(current), Boolean(onPick)) : t.otgore}
       >
         {faces.map((face) => {
           /*
@@ -244,16 +245,17 @@ export function FlatScene({
       <figcaption className="mt-2 flex flex-wrap items-baseline justify-between gap-2 px-1 text-xs text-muted">
         <span>
           {current
-            ? `Тук сте: ${roomName(current)}${
-                roomName(current) === FLAT_ROOM_LABEL[current.kind]
-                  ? ''
-                  : ` (${FLAT_ROOM_LABEL[current.kind].toLowerCase()})`
-              }`
-            : 'Изберете стая от плана'}
+            ? t.tukSte(
+                roomName(current),
+                roomName(current) === prevedi(FLAT_ROOM_LABEL[current.kind], ezik)
+                  ? null
+                  : prevedi(FLAT_ROOM_LABEL[current.kind], ezik).toLowerCase(),
+              )
+            : t.izberete}
         </span>
         <span>
-          Зидовете са снижени, за да се вижда вътре. Готовите стаи са с мебелта си.
-          {onPick ? ' Щракнете по помещение, за да отидете в него.' : ''}
+          {t.zidove}
+          {onPick ? t.shtraknete : ''}
         </span>
       </figcaption>
     </figure>

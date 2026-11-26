@@ -22,6 +22,7 @@ import {
   MODULES,
   ROOM_KIND_LABEL,
   type Kitchen,
+  type ModuleKind,
   type RoomKind,
   type WorktopType,
   computeKitchen,
@@ -32,6 +33,76 @@ import {
 } from './cabinet-rules';
 import { type FinishCategory, finishById } from '@/config/wall-finishes';
 import type { WallSide } from './furniture/room';
+import { FURNISHINGS, type FurnishingKind } from './furnishings';
+
+/** Свободностоящата мебел на модела: едно и много. */
+const FURNISHING_EN: Record<FurnishingKind, [string, string]> = {
+  'dining-table': ['a dining table', 'dining tables'],
+  chair: ['a chair', 'chairs'],
+  sofa: ['a sofa', 'sofas'],
+  armchair: ['an armchair', 'armchairs'],
+  'coffee-table': ['a coffee table', 'coffee tables'],
+  bed: ['a bed', 'beds'],
+  nightstand: ['a nightstand', 'nightstands'],
+};
+
+const COUNT_EN = ['no', 'one', 'two', 'three', 'four', 'five', 'six'];
+const countEn = (n: number) => COUNT_EN[n] ?? String(n);
+
+/**
+ * Всеки модул по име, едно и много.
+ *
+ * „7 модула с кремави фронтове" не казва нищо на модела и той си
+ * избира: в една всекидневна от библиотека и стенни рафтове направи
+ * кухня с мивка. Назован по вид, модулът остава това, което е.
+ * Празните места не се казват — те са въздух, не мебел.
+ */
+const MODULE_EN: Record<ModuleKind, [string, string]> = {
+  column: ['a tall fridge column', 'tall fridge columns'],
+  door: ['a base cabinet with a door', 'base cabinets with doors'],
+  drawers: ['a base unit with three drawers', 'base units with three drawers'],
+  sink: ['a sink base cabinet', 'sink base cabinets'],
+  oven: ['a built-in oven cabinet', 'built-in oven cabinets'],
+  dw: ['an integrated dishwasher', 'integrated dishwashers'],
+  lgap: ['', ''],
+  upper: ['a wall cabinet', 'wall cabinets'],
+  hood: ['a wall cabinet above the cooker hood', 'wall cabinets above the cooker hood'],
+  ugap: ['', ''],
+  wardrobe: ['a wardrobe with a hanging rail', 'wardrobes with hanging rails'],
+  'wardrobe-shelves': ['a wardrobe with shelves', 'wardrobes with shelves'],
+  'wardrobe-drawers': ['a chest of drawers', 'chests of drawers'],
+  'wardrobe-open': ['an open wardrobe section', 'open wardrobe sections'],
+  attic: ['a top cabinet above the wardrobe', 'top cabinets above the wardrobe'],
+  wgap: ['', ''],
+  tv: ['a TV unit with drawers', 'TV units with drawers'],
+  lowboard: ['a low sideboard with a door', 'low sideboards with doors'],
+  bookcase: ['an open bookcase', 'open bookcases'],
+  wallbox: ['a wall-mounted cabinet', 'wall-mounted cabinets'],
+  wallshelf: ['a floating wall shelf', 'floating wall shelves'],
+  vgap: ['', ''],
+  vanity: ['a vanity unit with a washbasin', 'vanity units with washbasins'],
+  'bath-drawers': ['a bathroom drawer unit', 'bathroom drawer units'],
+  'bath-tall': ['a tall bathroom cabinet', 'tall bathroom cabinets'],
+  washer: ['a washing machine niche', 'washing machine niches'],
+  bgap: ['', ''],
+  'bath-mirror': ['a mirror cabinet', 'mirror cabinets'],
+  'bath-shelf': ['an open bathroom shelf', 'open bathroom shelves'],
+  'hall-wardrobe': ['a coat cupboard', 'coat cupboards'],
+  shoe: ['a shoe cabinet', 'shoe cabinets'],
+  'hall-open': ['an open coat rack with a shelf', 'open coat racks with shelves'],
+  bench: ['a shoe bench', 'shoe benches'],
+  hgap: ['', ''],
+  'hall-attic': ['a top cabinet', 'top cabinets'],
+};
+
+/** „one open bookcase, two floating wall shelves" — по реда, в който се срещат. */
+function countedList<K extends string>(kinds: K[], names: Record<K, [string, string]>): string {
+  const counts = new Map<K, number>();
+  for (const k of kinds) counts.set(k, (counts.get(k) ?? 0) + 1);
+  return [...counts]
+    .map(([k, n]) => (n === 1 ? names[k][0] : `${countEn(n)} ${names[k][1]}`))
+    .join(', ');
+}
 
 /** Как се казва всяка стая на модела. */
 const ROOM_EN: Record<RoomKind, string> = {
@@ -148,7 +219,10 @@ export function describeProject(kitchen: Kitchen): Opisanie {
     const run = Math.round(solids.reduce((s, m) => s + m.width, 0) / 100) / 10;
     parts.push({
       bg: `${solids.length} модула, ${String(run).replace('.', ',')} метра мебел`,
-      en: `${solids.length} built-in cabinet modules, ${run} metres of fitted furniture`,
+      en: `${run} metres of built-in furniture, exactly: ${countedList(
+        solids.map((m) => m.kind),
+        MODULE_EN,
+      )}`,
     });
   } else {
     parts.push({ bg: 'без мебел — голи стени', en: 'an empty room, bare walls' });
@@ -188,20 +262,50 @@ export function describeProject(kitchen: Kitchen): Opisanie {
     parts.push({ bg: 'без прозорец — мека обща светлина', en: 'soft even indoor lighting' });
   }
 
+  /*
+   * Колко врати и прозорци — с число, и „no windows", когато няма.
+   * Без него моделът добавя прозорец, за да има откъде да влезе
+   * светлината, и втора врата в празната стена.
+   */
   const door = kitchenDoor(kitchen);
+  const panes =
+    windows.length === 0
+      ? 'no windows'
+      : `${countEn(windows.length)} window${windows.length === 1 ? '' : 's'} and no other windows`;
   parts.push({
     bg: `врата на ${SIDE_BG[door.side]}`,
-    en: `a door in ${SIDE_EN[door.side]}`,
+    en: `exactly one door, in ${SIDE_EN[door.side]}, ${panes}`,
   });
+
+  /*
+   * Свободностоящата мебел — диван, маса, столове. Тя е в кадъра и
+   * трябва да остане; неназована, моделът я мести или я сменя.
+   */
+  const furnishings = (kitchen.furnishings ?? []).map((f) => f.kind);
+  if (furnishings.length) {
+    const counts = new Map<FurnishingKind, number>();
+    for (const k of furnishings) counts.set(k, (counts.get(k) ?? 0) + 1);
+    parts.push({
+      bg: `обзавеждане: ${[...counts]
+        .map(([k, n]) => `${n > 1 ? `${n} × ` : ''}${FURNISHINGS[k].label.toLowerCase()}`)
+        .join(', ')}`,
+      en: `freestanding furniture, exactly: ${countedList(furnishings, FURNISHING_EN)}`,
+    });
+  }
 
   /*
    * Накрая — какво да е това като картина. Без него моделът избира сам
    * и връща ту снимка, ту рисунка, и шестте стаи изглеждат от шест
    * различни апартамента.
+   *
+   * Без „eye-level view" и „natural daylight": кадърът е отгоре, а стая
+   * без прозорец няма откъде да има дневна светлина — и двете караха
+   * модела да преначертае стаята. Без „uncluttered": дребната украса е
+   * позволена (виж `instruction`).
    */
   const style =
-    'photorealistic interior photograph, natural daylight, eye-level view, ' +
-    'no people, no text, clean and uncluttered, architectural photography';
+    'photorealistic, high-end interior design photography, realistic materials, ' +
+    'soft realistic shadows, no people, no text';
 
   return {
     promptEn: `${parts.map((p) => p.en).join(', ')}. ${style}.`,

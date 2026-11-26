@@ -7,6 +7,9 @@
  * уточнява. Влиза в запитването и в писмото.
  */
 
+import type { Ezik } from '@/i18n/ezik';
+import { izbroi, tekstove } from '@/i18n/tekst';
+
 export const OGLED_DAYS = ['pon', 'vt', 'sr', 'chet', 'pet', 'sab'] as const;
 export type OgledDay = (typeof OGLED_DAYS)[number];
 
@@ -29,6 +32,52 @@ export const TIME_LABEL: Record<OgledTime, { name: string; hours: string }> = {
   vecher: { name: 'вечер', hours: '18–20 ч.' },
 };
 
+/** Дните и часовете на трите езика. Българският е и в `DAY_LABEL` / `TIME_LABEL`. */
+export const OGLED_TEKST = tekstove<{
+  dni: Record<OgledDay, { short: string; long: string }>;
+  chasove: Record<OgledTime, { name: string; hours: string }>;
+  vseki: string;
+  delnichni: string;
+}>({
+  bg: { dni: DAY_LABEL, chasove: TIME_LABEL, vseki: 'всеки ден без неделя', delnichni: 'делнични дни' },
+  en: {
+    dni: {
+      pon: { short: 'Mon', long: 'Monday' },
+      vt: { short: 'Tue', long: 'Tuesday' },
+      sr: { short: 'Wed', long: 'Wednesday' },
+      chet: { short: 'Thu', long: 'Thursday' },
+      pet: { short: 'Fri', long: 'Friday' },
+      sab: { short: 'Sat', long: 'Saturday' },
+    },
+    chasove: {
+      sutrin: { name: 'morning', hours: '9–12' },
+      obed: { name: 'midday', hours: '12–15' },
+      sledobed: { name: 'afternoon', hours: '15–18' },
+      vecher: { name: 'evening', hours: '18–20' },
+    },
+    vseki: 'every day except Sunday',
+    delnichni: 'weekdays',
+  },
+  zh: {
+    dni: {
+      pon: { short: '一', long: '周一' },
+      vt: { short: '二', long: '周二' },
+      sr: { short: '三', long: '周三' },
+      chet: { short: '四', long: '周四' },
+      pet: { short: '五', long: '周五' },
+      sab: { short: '六', long: '周六' },
+    },
+    chasove: {
+      sutrin: { name: '上午', hours: '9–12 点' },
+      obed: { name: '中午', hours: '12–15 点' },
+      sledobed: { name: '下午', hours: '15–18 点' },
+      vecher: { name: '晚上', hours: '18–20 点' },
+    },
+    vseki: '除周日外每天',
+    delnichni: '工作日',
+  },
+});
+
 export interface Ogled {
   days: OgledDay[];
   times: OgledTime[];
@@ -49,14 +98,18 @@ export function parseOgled(raw: unknown): Ogled | null {
 }
 
 /** „делнични дни · следобед (15–18 ч.)" — за писмото и за списъка. */
-export function ogledText(o: Ogled | null): string {
+export function ogledText(o: Ogled | null, ezik: Ezik = 'bg'): string {
   if (!o) return '';
+  const t = OGLED_TEKST[ezik];
   const weekdays = OGLED_DAYS.slice(0, 5);
   const allWeekdays = weekdays.every((d) => o.days.includes(d));
   let days: string;
-  if (o.days.length === OGLED_DAYS.length) days = 'всеки ден без неделя';
-  else if (allWeekdays) days = 'делнични дни';
-  else days = o.days.map((d) => DAY_LABEL[d].long).join(', ');
-  const times = o.times.map((t) => `${TIME_LABEL[t].name} (${TIME_LABEL[t].hours})`).join(', ');
+  if (o.days.length === OGLED_DAYS.length) days = t.vseki;
+  else if (allWeekdays) days = t.delnichni;
+  else days = izbroi(o.days.map((d) => t.dni[d].long), ezik);
+  const times = izbroi(
+    o.times.map((x) => `${t.chasove[x].name} (${t.chasove[x].hours})`),
+    ezik,
+  );
   return [days, times].filter(Boolean).join(' · ');
 }

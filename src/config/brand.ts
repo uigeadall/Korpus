@@ -1,3 +1,5 @@
+import type { Ezik } from '@/i18n/ezik';
+
 /**
  * Име, лого и контакти на едно място.
  * Марката още не е избрана — „Корпус" е работно име (виж SPEC, раздел 11.1).
@@ -7,6 +9,8 @@
 export const brand = {
   /** Работно име. ПРОМЕНИ, когато марката е избрана. */
   name: 'Корпус',
+  /** Същото име на латиница — за английския и китайския сайт. */
+  nameLatin: 'Korpus',
   /** Подзаглавие под логото */
   tagline: 'Корпусна мебел по индивидуален проект',
   /** Пътят до логото в /public. Докато няма лого, се ползва текстов знак. */
@@ -19,10 +23,10 @@ export const brand = {
     email: '', // предстои
     /** Адрес на студиото — предстои */
     studio: '',
-    city: 'България',
+    city: { bg: 'България', en: 'Bulgaria', zh: '保加利亚' } satisfies Record<Ezik, string>,
   },
   /** Работно време за показване в контактите */
-  hours: 'по уговорка',
+  hours: { bg: 'по уговорка', en: 'by appointment', zh: '需提前预约' } satisfies Record<Ezik, string>,
   /** Получател на запитванията (вътрешен имейл на екипа) */
   inboxEmail: process.env.TEAM_INBOX_EMAIL ?? '',
 } as const;
@@ -34,3 +38,8 @@ export const legal = {
   /** Срок на съхранение на запитвания без поръчка, месеци */
   inquiryRetentionMonths: 12,
 } as const;
+
+/** Името, както се пише на дадения език: кирилица у дома, латиница навън. */
+export function imeNaMarkata(ezik: Ezik): string {
+  return ezik === 'bg' ? brand.name : brand.nameLatin;
+}

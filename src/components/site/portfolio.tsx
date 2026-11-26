@@ -5,22 +5,26 @@
  */
 
 import Image from 'next/image';
-import Link from 'next/link';
+import Link from '@/i18n/Link';
 import {
-  SCOPE_LABELS,
+  SCOPE_LABELS_PO_EZIK,
   formatCompleted,
+  naEzik,
   type Project,
   type ProjectFact,
   type ProjectImage,
 } from '@/content/portfolio';
+import { getEzik } from '@/i18n/server';
+import { STRANICI } from '@/i18n/tekstove/stranici';
 
-export function ProjectPhoto({
+export async function ProjectPhoto({
   image,
   priority = false,
 }: {
   image: ProjectImage;
   priority?: boolean;
 }) {
+  const t = STRANICI[await getEzik()].portfolio;
   return (
     <figure>
       <div className="paper-grid relative flex aspect-[4/3] items-center justify-center overflow-hidden border border-border">
@@ -35,7 +39,7 @@ export function ProjectPhoto({
           />
         ) : (
           <span className="px-4 text-center text-sm text-muted">
-            {image.alt} — предстои заснемане
+            {image.alt} — {t.predstoiZasnemane}
           </span>
         )}
       </div>
@@ -47,7 +51,11 @@ export function ProjectPhoto({
 }
 
 /** Каре в галерията: първият кадър, видът обзавеждане, място и месец. */
-export function ProjectCard({ project }: { project: Project }) {
+export async function ProjectCard({ project: osnova }: { project: Project }) {
+  const ezik = await getEzik();
+  const t = STRANICI[ezik].portfolio;
+  const project = naEzik(osnova, ezik);
+  const obhvat = SCOPE_LABELS_PO_EZIK[ezik][project.scope];
   return (
     <article>
       <Link
@@ -65,7 +73,7 @@ export function ProjectCard({ project }: { project: Project }) {
             />
           ) : (
             <span className="px-4 text-center text-sm text-muted">
-              {SCOPE_LABELS[project.scope]} — предстои заснемане
+              {obhvat} — {t.predstoiZasnemane}
             </span>
           )}
         </div>
@@ -74,8 +82,8 @@ export function ProjectCard({ project }: { project: Project }) {
         </h3>
       </Link>
       <p className="mt-1 text-xs text-muted">
-        {SCOPE_LABELS[project.scope]} · {project.city} ·{' '}
-        <span className="dim">{formatCompleted(project.completed)}</span>
+        {obhvat} · {project.city} ·{' '}
+        <span className="dim">{formatCompleted(project.completed, ezik)}</span>
       </p>
     </article>
   );
@@ -96,12 +104,11 @@ export function FactList({ facts }: { facts: ProjectFact[] }) {
 }
 
 /** Видима маркировка, че записът е мостра, а не наш обект. */
-export function ExampleNotice() {
+export async function ExampleNotice() {
+  const t = STRANICI[await getEzik()].portfolio;
   return (
     <p className="mb-8 well px-4 py-3 text-xs leading-relaxed text-muted">
-      <strong className="text-foreground">Примерен запис.</strong> Показва как изглежда страница на
-      проект. Числата са от контролната кухня в спецификацията, не от завършен обект, и кадрите още
-      не са заснети.
+      <strong className="text-foreground">{t.primerZaglavie}</strong> {t.primerText}
     </p>
   );
 }

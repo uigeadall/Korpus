@@ -63,6 +63,9 @@ import {
 } from '@/lib/zoom';
 import { FURNISHINGS, halfExtent } from '@/lib/furnishings';
 import { isOperable, moduleSpeech } from '@/lib/speech';
+import { useEzik, useT } from '@/i18n/client';
+import { kod, prevedi } from '@/i18n/rechnik';
+import { INSTRUMENTI } from '@/i18n/tekstove/instrumenti';
 import { SHADE_STEPS, gradientsFor, litColor, paletteFor } from '@/lib/render';
 
 export { litColor, paletteFor } from '@/lib/render';
@@ -135,6 +138,9 @@ export function Scene3D({
   view?: { yaw: number; pitch: number; distance: number };
   onView?: (view: { yaw: number; pitch: number; distance: number }) => void;
 }) {
+  const ezik = useEzik();
+  const t = useT(INSTRUMENTI).obem;
+  const ime = (bg: string) => prevedi(bg, ezik);
   const [camera, setCameraState] = useState<Camera>(() =>
     view ? { ...DEFAULT_CAMERA(room), ...view } : DEFAULT_CAMERA(room),
   );
@@ -264,8 +270,8 @@ export function Scene3D({
     if (!m) return;
     noteShelf(
       acceptsShelves(m.kind)
-        ? `${m.code ?? m.spec.label} е пълен — най-много ${maxShelves(m.kind)} рафта при тази височина.`
-        : `В „${m.spec.label}" рафт не влиза.`,
+        ? t.palen(m.code ? kod(m.code, ezik) : ime(m.spec.label), maxShelves(m.kind))
+        : t.neVliza(ime(m.spec.label)),
     );
   };
 
@@ -980,7 +986,7 @@ export function Scene3D({
           carrying ? 'cursor-copy' : 'cursor-grab active:cursor-grabbing'
         }`}
         role="group"
-        aria-label={`Обемен изглед в стая ${room.width} на ${room.depth} мм. Стрелките въртят изгледа.`}
+        aria-label={t.etiket(room.width, room.depth)}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerLeave={leaveScene}
@@ -1117,7 +1123,7 @@ export function Scene3D({
               paintOrder="stroke"
               className="font-mono"
             >
-              {`← ${grid.left} мм · решетка ${grid.step} мм`}
+              {t.reshetka(grid.left, grid.step)}
             </text>
           </g>
         )}
@@ -1152,7 +1158,7 @@ export function Scene3D({
               pointerEvents="none"
               role={isOperable(m.kind, Boolean(onRemoveModule)) ? 'button' : 'img'}
               tabIndex={0}
-              aria-label={moduleSpeech(m, open, Boolean(onRemoveModule))}
+              aria-label={moduleSpeech(m, open, Boolean(onRemoveModule), ezik)}
               onKeyDown={(e) => {
                 if ((e.key === 'Enter' || e.key === ' ') && canOpen(m.kind)) {
                   e.preventDefault();
@@ -1203,7 +1209,7 @@ export function Scene3D({
               : 'bg-surface/90 text-muted ring-1 ring-border hover:text-foreground'
           }`}
         >
-          {carrying ? 'Пуснете го в шкаф…' : '＋ Рафт — завлечете го в шкаф'}
+          {carrying ? t.pusnete : t.raft}
         </button>
       )}
 
@@ -1216,14 +1222,14 @@ export function Scene3D({
         <div className="flex flex-wrap gap-2">
           {pickedItem && (onRotateFurnishing || onRemoveFurnishing) && (
             <div className="pointer-events-auto flex items-center gap-2 rounded-pill bg-surface/95 px-3 py-1.5 shadow-sm ring-1 ring-accent backdrop-blur">
-              <span className="text-[11px] text-muted">{FURNISHINGS[pickedItem.kind].label}</span>
+              <span className="text-[11px] text-muted">{ime(FURNISHINGS[pickedItem.kind].label)}</span>
               {onRotateFurnishing && (
                 <button
                   type="button"
                   onClick={() => onRotateFurnishing(pickedItem.id)}
                   className="rounded-pill bg-surface-sunken px-2.5 py-1 text-[11px] transition-colors hover:bg-border"
                 >
-                  ⟳ завърти
+                  {t.zavarti}
                 </button>
               )}
               {onRemoveFurnishing && (
@@ -1235,7 +1241,7 @@ export function Scene3D({
                   }}
                   className="rounded-pill bg-surface-sunken px-2.5 py-1 text-[11px] transition-colors hover:bg-danger hover:text-accent-contrast"
                 >
-                  × махни
+                  {t.mahni}
                 </button>
               )}
             </div>
@@ -1244,7 +1250,7 @@ export function Scene3D({
           {chosen && onRemoveModule && (
             <div className="pointer-events-auto flex items-center gap-2 rounded-pill bg-surface/95 px-3 py-1.5 shadow-sm ring-1 ring-accent backdrop-blur">
               <span className="text-[11px] text-muted">
-                {[chosen.code, chosen.spec.label].filter(Boolean).join(' ')}
+                {[chosen.code && kod(chosen.code, ezik), ime(chosen.spec.label)].filter(Boolean).join(' ')}
               </span>
               <button
                 type="button"
@@ -1254,7 +1260,7 @@ export function Scene3D({
                 }}
                 className="rounded-pill bg-surface-sunken px-2.5 py-1 text-[11px] transition-colors hover:bg-danger hover:text-accent-contrast"
               >
-                × махни
+                {t.mahni}
               </button>
             </div>
           )}
@@ -1266,7 +1272,7 @@ export function Scene3D({
             onClick={() => setAll(!anyOpen)}
             className="rounded-pill bg-surface/90 px-3 py-1.5 text-[11px] text-muted shadow-sm ring-1 ring-border backdrop-blur transition-colors hover:text-foreground"
           >
-            {anyOpen ? 'Затвори всички' : 'Отвори всички'}
+            {anyOpen ? t.zatvori : t.otvori}
           </button>
           <button
             type="button"
@@ -1277,7 +1283,7 @@ export function Scene3D({
             }}
             className="rounded-pill bg-surface/90 px-3 py-1.5 text-[11px] text-muted shadow-sm ring-1 ring-border backdrop-blur transition-colors hover:text-foreground"
           >
-            Изправи изгледа
+            {t.izpravi}
           </button>
         </div>
       </div>

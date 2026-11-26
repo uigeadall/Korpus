@@ -9,12 +9,15 @@
  */
 
 import { useSyncExternalStore } from 'react';
+import { useT } from '@/i18n/client';
+import { SAIT } from '@/i18n/tekstove/sait';
 import { abonirai, naSarvara, tekushta, zadai } from './tema';
 
 export function ThemeToggle() {
+  const t = useT(SAIT).tema;
   const tema = useSyncExternalStore(abonirai, tekushta, naSarvara);
   const kam = tema === 'dark' ? 'light' : 'dark';
-  const nadpis = kam === 'dark' ? 'Включете тъмната тема' : 'Включете светлата тема';
+  const nadpis = kam === 'dark' ? t.kamTamna : t.kamSvetla;
 
   return (
     <button
