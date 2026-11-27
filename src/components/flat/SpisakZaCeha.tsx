@@ -10,31 +10,27 @@
  * Жилището пътува като запис, не като шест проекта: същото, което се
  * копира в линк. Сметката е на сървъра, със същите правила, с които се
  * реже — браузърът само казва „искам" и сваля.
+ *
+ * Самите файлове са на български: те отиват в цеха, не при клиента, и
+ * там се чете един език. Преведено е това, което стои на екрана.
  */
 
 import { useState } from 'react';
 import { downloadResponse } from '@/components/configurator/iznasyane';
+import { useT } from '@/i18n/client';
+import { JILISHTE } from '@/i18n/tekstove/jilishte';
 import { type Flat, progressOf } from '@/lib/flat';
 import { encodeFlat } from '@/lib/flat-share';
 
 type Vid = 'pdf' | 'xlsx';
 
-const VRATA: Record<Vid, { path: string; name: string; label: string; hint: string }> = {
-  pdf: {
-    path: '/api/export/flat-pdf',
-    name: 'korpus-jilishte.pdf',
-    label: 'Свалете списък за цеха (PDF)',
-    hint: 'Корица със сбора, после чертеж на всяка стена.',
-  },
-  xlsx: {
-    path: '/api/export/flat-xlsx',
-    name: 'korpus-jilishte.xlsx',
-    label: 'Свалете таблица за цеха (XLSX)',
-    hint: 'Разкрой, заявка по шкафове и легенда на позициите.',
-  },
+const VRATA: Record<Vid, { path: string; name: string }> = {
+  pdf: { path: '/api/export/flat-pdf', name: 'korpus-jilishte.pdf' },
+  xlsx: { path: '/api/export/flat-xlsx', name: 'korpus-jilishte.xlsx' },
 };
 
 export function SpisakZaCeha({ flat }: { flat: Flat }) {
+  const t = useT(JILISHTE).spisak;
   const [busy, setBusy] = useState<Vid | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,34 +49,34 @@ export function SpisakZaCeha({ flat }: { flat: Flat }) {
 
       if (!response.ok) {
         /*
-         * Вратата казва какво ѝ е. Съобщението ѝ е на български и е
-         * писано за човек — предава се както е, вместо да се заменя с
-         * „нещо се обърка".
+         * Вратата казва какво ѝ е и съобщението ѝ е писано за човек —
+         * предава се както е, вместо да се заменя с „нещо се обърка".
          */
         const said = await response
           .json()
           .then((b: { error?: string }) => b.error)
           .catch(() => null);
-        throw new Error(said ?? `Грешка ${response.status}`);
+        throw new Error(said ?? t.greshka(response.status));
       }
 
       await downloadResponse(response, VRATA[vid].name);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Файлът не се получи.');
+      setError(e instanceof Error ? e.message : t.ne);
     } finally {
       setBusy(null);
     }
   };
 
+  const BUTON: Record<Vid, { label: string; hint: string }> = {
+    pdf: { label: t.pdf, hint: t.pdfPod },
+    xlsx: { label: t.xlsx, hint: t.xlsxPod },
+  };
+
   return (
     <section className="card p-4">
-      <h2 className="text-sm font-medium">Списък за цеха</h2>
+      <h2 className="text-sm font-medium">{t.zaglavie}</h2>
       <p className="mt-1 text-xs text-muted">
-        {nothing
-          ? 'Обзаведете поне една стая и списъкът става за сваляне.'
-          : progress.done === 1
-            ? 'Една обзаведена стая в един файл, с общ разкрой.'
-            : `Всички ${progress.done} обзаведени стаи в един файл, с общ разкрой.`}
+        {nothing ? t.nishto : progress.done === 1 ? t.edna : t.mnogo(progress.done)}
       </p>
 
       <div className="mt-3 space-y-2">
@@ -92,9 +88,9 @@ export function SpisakZaCeha({ flat }: { flat: Flat }) {
               disabled={nothing || busy !== null}
               className="btn btn-quiet w-full text-[13px] disabled:opacity-50"
             >
-              {busy === vid ? 'Сглобява се…' : VRATA[vid].label}
+              {busy === vid ? t.chaka : BUTON[vid].label}
             </button>
-            <p className="mt-1 text-[11px] leading-relaxed text-muted">{VRATA[vid].hint}</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted">{BUTON[vid].hint}</p>
           </div>
         ))}
       </div>
@@ -110,9 +106,7 @@ export function SpisakZaCeha({ flat }: { flat: Flat }) {
         докато каталогът не се провери — това не бива да се премълчава
         точно пред човека, който ще ги даде на цеха.
       */}
-      <p className="mt-3 text-[11px] leading-relaxed text-muted">
-        Това не е оферта. Точната цена следва след измерване на място.
-      </p>
+      <p className="mt-3 text-[11px] leading-relaxed text-muted">{t.neEOferta}</p>
     </section>
   );
 }

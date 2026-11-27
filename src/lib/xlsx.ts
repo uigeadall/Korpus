@@ -242,7 +242,7 @@ function addFlatSummary(book: ExcelJS.Workbook, flat: FlatBreakdown): void {
     const warn = sheet.addRow([
       `ВНИМАНИЕ: ${flat.broken.length} ${
         flat.broken.length === 1 ? 'стая не се разчете' : 'стаи не се разчетоха'
-      } и ЛИПСВАТ от този списък: ${flat.broken.map(roomName).join(', ')}.`,
+      } и ЛИПСВАТ от този списък: ${flat.broken.map((r) => roomName(r)).join(', ')}.`,
     ]);
     warn.font = { bold: true, color: { argb: 'FFB4342A' }, size: 10 };
     sheet.addRow([]);

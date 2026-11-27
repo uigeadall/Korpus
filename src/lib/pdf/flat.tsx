@@ -62,7 +62,7 @@ function CoverPage({ flat, date }: { flat: FlatBreakdown; date: Date }) {
           <Text style={{ fontSize: 9, color: WARN }}>
             ВНИМАНИЕ: {flat.broken.length}{' '}
             {flat.broken.length === 1 ? 'стая не се разчете и ЛИПСВА' : 'стаи не се разчетоха и ЛИПСВАТ'}{' '}
-            от този списък — {flat.broken.map(roomName).join(', ')}. Поръчката не е пълна.
+            от този списък — {flat.broken.map((r) => roomName(r)).join(', ')}. Поръчката не е пълна.
           </Text>
         </View>
       )}
