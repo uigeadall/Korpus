@@ -7,7 +7,17 @@ import { doKraya, otvoriChisto, podrediPoPravilata } from './pomoshtni';
  * Без ключ моделът го няма и това трябва да се каже — не да се върти
  * безкрайно. С ключ пътят е същият, само отговорът е картинка.
  */
-test('без ключ казва честно, вместо да увисне', async ({ page }) => {
+test('без ключ казва честно, вместо да увисне', async ({ page, request }) => {
+  /*
+   * Проверката пита как се държи вратата БЕЗ ключ. Има ли ключ в
+   * средата (`.env.local` при разработка), отговорът е друг и тя
+   * няма какво да мери — пропуска се с причина, вместо да падне и
+   * да изглежда като счупване. Същинската проверка на разчитането
+   * е в `src/lib/skica.test.ts` и тя върви винаги.
+   */
+  const door = await request.post('/api/skica', { data: { image: 'x', prompt: 'x' } });
+  test.skip(door.status() !== 503, 'средата има ключ — няма „без ключ" за мерене');
+
   await otvoriChisto(page, '/proekt');
   await page.waitForTimeout(500);
   await page.getByRole('button', { name: /Кухня/ }).first().click();

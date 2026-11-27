@@ -39,7 +39,7 @@ export const DISCLAIMER =
 let fontsReady = false;
 
 /** Шрифтовете се вграждат — иначе кирилицата изпада. */
-function registerFonts(): void {
+export function registerFonts(): void {
   if (fontsReady) return;
   const dir = path.join(process.cwd(), 'src', 'assets', 'fonts');
   Font.register({ family: 'Korpus', src: path.join(dir, 'Onest-var.ttf') });
@@ -53,7 +53,7 @@ const ACCENT = '#1c5873';
 const MUTED = '#6f6a62';
 const BORDER = '#e8e4dc';
 
-const s = StyleSheet.create({
+export const s = StyleSheet.create({
   page: {
     fontFamily: 'Korpus',
     fontSize: 9,
@@ -109,7 +109,7 @@ const s = StyleSheet.create({
   contacts: { fontSize: 8, color: MUTED, textAlign: 'right' },
 });
 
-function Pair({ label, value }: { label: string; value: string }) {
+export function Pair({ label, value }: { label: string; value: string }) {
   return (
     <View style={s.row}>
       <Text style={[s.label, { color: MUTED }]}>{label}</Text>
@@ -118,40 +118,70 @@ function Pair({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function OfferDocument({
+/** Долният ред на всяка страница. Текстът е задължителен. */
+export function PdfFooter() {
+  return (
+    <View style={s.footer}>
+      <Text style={s.disclaimer}>{DISCLAIMER}</Text>
+      <Text style={s.contacts}>
+        {[brand.contacts.phone, brand.contacts.email].filter(Boolean).join(' · ') ||
+          'Контактите следват'}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Страниците на една стая — по една на стена.
+ *
+ * Функция, а не компонент: `Document` получава масив от `Page`, точно
+ * както когато страниците се правеха на място. Ползва се и от офертата
+ * за една стая, и от списъка за цялото жилище (`flat.tsx`), за да има
+ * един вид страница, а не два, които се разминават.
+ *
+ * `posOf` е за жилището: там шкафът носи и позиция през цялото жилище
+ * (`П7`), защото кодът `Д2` се повтаря в друга стая.
+ */
+export function roomPages({
   kitchen,
   result,
   date = new Date(),
+  heading,
+  posOf,
 }: {
   kitchen: Kitchen;
   result: KitchenResult;
   date?: Date;
-}) {
+  /** Какво пише вместо „Права кухня" — името на стаята в жилището. */
+  heading?: string;
+  posOf?: (code: string) => string | undefined;
+}): React.ReactElement[] {
   const m = kitchen.materials;
   const summary = result.summary;
   const room = kitchenRoom(kitchen);
 
-  return (
-    <Document title={`${brand.name} — конфигурация на кухня`} author={brand.name}>
-      {/* Всяка стена е на отделна страница — чертежът трябва да е едър. */}
-      {kitchen.walls.map((wall, i) => {
-        const placed = result.placed[i];
-        const named = [...placed.base, ...placed.upper].filter((x) => x.code);
-        const side = WALL_SIDE_LABEL[wallSide(wall, i)].toLowerCase();
+  // Всяка стена е на отделна страница — чертежът трябва да е едър.
+  return kitchen.walls.map((wall, i) => {
+    const placed = result.placed[i];
+    const named = [...placed.base, ...placed.upper].filter((x) => x.code);
+    const side = WALL_SIDE_LABEL[wallSide(wall, i)].toLowerCase();
+    // „Права кухня" важи за кухня. В спалня същият надпис е лъжа.
+    const where =
+      kitchen.walls.length > 1
+        ? `${side} стена — ${i + 1} от ${kitchen.walls.length}`
+        : (kitchen.roomKind ?? 'kitchen') === 'kitchen'
+          ? 'Права кухня на една стена'
+          : 'Една стена';
 
-        return (
-      <Page key={wall.id ?? i} size="A4" orientation="landscape" style={s.page}>
+    return (
+      <Page key={`${heading ?? ''}-${wall.id ?? i}`} size="A4" orientation="landscape" style={s.page}>
         <View style={s.header}>
           <View>
-            <Text style={s.brand}>{brand.name}</Text>
-            <Text style={s.tagline}>{brand.tagline}</Text>
+            <Text style={s.brand}>{heading ?? brand.name}</Text>
+            <Text style={s.tagline}>{heading ? brand.name : brand.tagline}</Text>
           </View>
           <View>
-            <Text style={s.meta}>
-              {kitchen.walls.length > 1
-                ? `${side} стена — ${i + 1} от ${kitchen.walls.length}`
-                : 'Права кухня на една стена'}
-            </Text>
+            <Text style={s.meta}>{where}</Text>
             <Text style={s.meta}>
               Стена {formatMm(wall.length)} мм · стая {formatMm(room.width)} ×{' '}
               {formatMm(room.depth)} · {date.toLocaleDateString('bg-BG')}
@@ -164,7 +194,7 @@ export function OfferDocument({
           <View style={s.drawing}>
             <PdfDrawing
               wall={wall}
-              openings={kitchenWallOpenings(kitchen, wallSide(wall))}
+              openings={kitchenWallOpenings(kitchen, wallSide(wall, i))}
               placed={placed}
               worktop={m.worktop}
               maxWidthPt={520}
@@ -177,8 +207,11 @@ export function OfferDocument({
               <Text style={s.caption}>Модули</Text>
               {named.map((mod) => (
                 <View key={mod.id} style={s.row}>
-                  <Text style={s.code}>{mod.code}</Text>
-                  <Text style={s.label}>{MODULES[mod.kind].label}</Text>
+                  <Text style={s.code}>{posOf?.(mod.code!) ?? mod.code}</Text>
+                  <Text style={s.label}>
+                    {MODULES[mod.kind].label}
+                    {posOf ? ` · ${mod.code}` : ''}
+                  </Text>
                   <Text style={s.value}>{formatMm(mod.width)}</Text>
                 </View>
               ))}
@@ -195,26 +228,44 @@ export function OfferDocument({
             </View>
 
             <View style={s.block}>
-              <Text style={s.caption}>Обобщение за цялата кухня, мм</Text>
+              <Text style={s.caption}>
+                {heading ? `Обобщение за ${heading.toLowerCase()}, мм` : 'Обобщение за цялата кухня, мм'}
+              </Text>
               <Pair label="Шкафове" value={String(summary.cabinets)} />
-              <Pair label="Височина до плота" value={formatMm(summary.worktopHeight)} />
-              <Pair label="Дължина на плота" value={formatMm(summary.worktopLength)} />
-              <Pair label="Дълбочина на плота" value={formatMm(summary.worktopDepth)} />
-              <Pair label="Цокъл" value={formatMm(summary.plinthLength)} />
+              {/* Плот има в кухня и баня. В спалня „височина до плота"
+                  е число без смисъл — не се пише. */}
+              {summary.worktopLength > 0 && (
+                <>
+                  <Pair label="Височина до плота" value={formatMm(summary.worktopHeight)} />
+                  <Pair label="Дължина на плота" value={formatMm(summary.worktopLength)} />
+                  <Pair label="Дълбочина на плота" value={formatMm(summary.worktopDepth)} />
+                </>
+              )}
+              {summary.plinthLength > 0 && (
+                <Pair label="Цокъл" value={formatMm(summary.plinthLength)} />
+              )}
             </View>
           </View>
         </View>
 
-        <View style={s.footer}>
-          <Text style={s.disclaimer}>{DISCLAIMER}</Text>
-          <Text style={s.contacts}>
-            {[brand.contacts.phone, brand.contacts.email].filter(Boolean).join(' · ') ||
-              'Контактите следват'}
-          </Text>
-        </View>
+        <PdfFooter />
       </Page>
-        );
-      })}
+    );
+  });
+}
+
+export function OfferDocument({
+  kitchen,
+  result,
+  date = new Date(),
+}: {
+  kitchen: Kitchen;
+  result: KitchenResult;
+  date?: Date;
+}) {
+  return (
+    <Document title={`${brand.name} — конфигурация на кухня`} author={brand.name}>
+      {roomPages({ kitchen, result, date })}
     </Document>
   );
 }

@@ -16,7 +16,6 @@ import {
   type WorktopType,
 } from '@/lib/cabinet-rules';
 import {
-  DRAW_H,
   FLOOR_T,
   WALL_T,
   chainForModules,
@@ -24,6 +23,7 @@ import {
   formatMm,
   hatchLines,
   heightMarks,
+  contentTopOf,
   moduleBox,
   openingBox,
   toSvgY,
@@ -52,7 +52,11 @@ export function PdfDrawing({ wall, openings, placed, worktop, maxWidthPt, maxHei
     ...placed.base.map((m) => m.x + m.width),
     ...placed.upper.map((m) => m.x + m.width),
   );
-  const view = viewBoxFor(wall.length, contentRight);
+  const view = viewBoxFor(
+    wall.length,
+    contentRight,
+    contentTopOf([...placed.base, ...placed.upper]),
+  );
 
   // Чертежът се вписва в даденото място, без да се реже.
   const ratio = view.width / view.height;
@@ -112,15 +116,16 @@ export function PdfDrawing({ wall, openings, placed, worktop, maxWidthPt, maxHei
         />
       </G>
 
-      {/* стени в разрез */}
+      {/* стени в разрез — до върха на рамката, за да не свършват под
+          антресола, когато той е по-висок от кухненския ръст */}
       {[-WALL_T, wall.length].map((x) => (
         <G key={x}>
-          {hatch(x, toSvgY(view, DRAW_H), WALL_T, DRAW_H)}
+          {hatch(x, 0, WALL_T, floorY)}
           <Rect
             x={x}
-            y={toSvgY(view, DRAW_H)}
+            y={0}
             width={WALL_T}
-            height={DRAW_H}
+            height={floorY}
             fill="none"
             stroke={INK}
             strokeWidth={w(0.5)}
@@ -246,9 +251,14 @@ export function PdfDrawing({ wall, openings, placed, worktop, maxWidthPt, maxHei
       })}
 
       {/* вериги */}
+      {/*
+        Веригата стои над най-високия шкаф в реда, не над височината на
+        кухненския горен ред: антресолът стига 2600 и фиксираното число
+        падаше вътре в него.
+      */}
       <Chain
         segments={chainForModules(placed.upper, wall.length)}
-        y={toSvgY(view, DIM.UPPER_BOTTOM + DIM.UPPER_H) - 110}
+        y={toSvgY(view, Math.max(DIM.UPPER_BOTTOM + DIM.UPPER_H, contentTopOf(placed.upper))) - 110}
         above
         w={w}
         fs={fs}

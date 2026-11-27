@@ -418,7 +418,9 @@ const DRAWERS: DrawerGeometry = {
   boxHeights: DRAWER_BOX_H,
 };
 
-const SHEET: SheetSpec = {
+/** Плочата, от която се реже, и фирата. Изнесена, защото разкроят на
+ *  цялото жилище (`flat-export.ts`) смята по същите числа. */
+export const SHEET: SheetSpec = {
   length: DIM.SHEET_L,
   width: DIM.SHEET_W,
   waste: DIM.SHEET_WASTE,
@@ -2000,7 +2002,7 @@ export function hardware(kitchen: Kitchen): HardwareLine[] {
 /* 9. Обобщение                                                        */
 /* ------------------------------------------------------------------ */
 
-function edgeLabel(thickness: number): string {
+export function edgeLabel(thickness: number): string {
   return thickness === DIM.EDGE_CORPUS
     ? `Кант ${thickness} мм (корпус)`
     : `Кант ${thickness} мм (фасади)`;

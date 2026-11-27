@@ -56,22 +56,42 @@ export interface ViewBox {
  * @param wallLength дължина на стената
  * @param contentRight най-десният край на съдържанието; при надвишаване е
  *   по-голям от стената, за да не изпадат размерите извън рамката
+ * @param contentTop най-високата точка на съдържанието над пода.
+ *   `DRAW_H` е ръстът на кухнята; антресолът над гардероба стига 2600 и
+ *   без това рамката го отрязваше отгоре, а веригата с размерите падаше
+ *   вътре в него. Рамката расте нагоре, вместо чертежът да се реже.
  */
-export function viewBoxFor(wallLength: number, contentRight = wallLength): ViewBox {
+export function viewBoxFor(
+  wallLength: number,
+  contentRight = wallLength,
+  contentTop = DRAW_H,
+): ViewBox {
   const right = Math.max(wallLength, contentRight);
+  const floorY = Math.max(DRAW_H, Math.ceil(contentTop));
   const x = -(PAD.left + WALL_T);
   const y = -PAD.top;
   const width = PAD.left + WALL_T + right + WALL_T + PAD.right;
-  const height = PAD.top + DRAW_H + PAD.bottom;
+  const height = PAD.top + floorY + PAD.bottom;
   return {
     x,
     y,
     width,
     height,
-    floorY: DRAW_H,
+    floorY,
     wallLength,
     value: `${x} ${y} ${width} ${height}`,
   };
+}
+
+/** Най-високата точка на модулите над пода. Иска само вида — мястото
+ *  по стената не влияе на височината. */
+export function contentTopOf(modules: { kind: ModuleKind }[]): number {
+  let top = 0;
+  for (const m of modules) {
+    const g = moduleGeometry(m.kind);
+    top = Math.max(top, g.y + g.height);
+  }
+  return top;
 }
 
 /** Преобразува височина над пода в SVG Y. */

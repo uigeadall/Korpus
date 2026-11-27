@@ -68,6 +68,22 @@ export function downloadBlob(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+/**
+ * Името, което сървърът е дал на файла.
+ *
+ * Той го смята от датата и вида; браузърът няма защо да го гадае
+ * втори път. Няма ли заглавка, остава резервното.
+ */
+export function filenameFrom(response: Response, fallback: string): string {
+  const said = response.headers.get('content-disposition') ?? '';
+  return /filename="([^"]+)"/.exec(said)?.[1] ?? fallback;
+}
+
+/** Сваля отговора на заявка, под името, което сървърът е дал. */
+export async function downloadResponse(response: Response, fallback: string): Promise<void> {
+  downloadBlob(await response.blob(), filenameFrom(response, fallback));
+}
+
 /** Име на файла: по стая и по дата, за да не се трупат „(1)" в папката. */
 export function imageName(room: string, pass: string): string {
   const d = new Date();

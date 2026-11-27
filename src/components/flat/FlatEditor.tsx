@@ -54,6 +54,7 @@ import {
 import { defaultFlat, placeProject } from '@/lib/flat';
 import { fitProject } from '@/lib/flat-furniture';
 import { decodeFlat, encodeFlat } from '@/lib/flat-share';
+import { SpisakZaCeha } from './SpisakZaCeha';
 import { decodeProject } from '@/lib/share';
 import { kitchenRoom } from '@/lib/cabinet-rules';
 
@@ -424,6 +425,8 @@ export function FlatEditor() {
             </button>
             <p className="mt-2 text-[11px] leading-relaxed text-muted">{t.linkatNosi}</p>
           </section>
+
+          <SpisakZaCeha flat={flat} />
 
           <section className="card p-4">
             <h2 className="text-sm font-medium">{t.hodene}</h2>

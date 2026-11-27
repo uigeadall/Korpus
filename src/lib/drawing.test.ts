@@ -6,6 +6,7 @@ import {
   PAD,
   WALL_T,
   chainFromRanges,
+  contentTopOf,
   dropIndex,
   insertIndexAt,
   facadeRects,
@@ -43,6 +44,32 @@ describe('viewBox', () => {
     expect(wide.width).toBe(PAD.left + WALL_T + 4200 + WALL_T + PAD.right);
     expect(wide.wallLength).toBe(3600);
     expect(viewBoxFor(3600, 2000).width).toBe(view.width);
+  });
+
+  it('при по-висок шкаф рамката расте нагоре, вместо да го реже', () => {
+    /*
+     * Антресолът над гардероба стига 2600, а ръстът на кухнята е 2320.
+     * Преди това рамката го отрязваше отгоре, а веригата с размерите
+     * падаше вътре в него.
+     */
+    const tall = viewBoxFor(3600, 3600, 2600);
+    expect(tall.floorY).toBe(2600);
+    expect(tall.height).toBe(PAD.top + 2600 + PAD.bottom);
+    expect(toSvgY(tall, 2600)).toBe(0);
+    expect(toSvgY(tall, 2600)).toBeGreaterThan(tall.y);
+  });
+
+  it('по-нисък шкаф не свива рамката — кухнята си остава с ръста си', () => {
+    expect(viewBoxFor(3600, 3600, 1200).floorY).toBe(DRAW_H);
+    expect(viewBoxFor(3600, 3600, 1200).height).toBe(view.height);
+  });
+
+  it('най-високата точка излиза от самите модули', () => {
+    expect(contentTopOf([])).toBe(0);
+    const attic = contentTopOf([mod('attic', 900)]);
+    const upper = contentTopOf([mod('upper', 600)]);
+    expect(attic).toBeGreaterThan(upper);
+    expect(contentTopOf([mod('upper', 600), mod('attic', 900)])).toBe(attic);
   });
 
   it('подът е на floorY, височините се обръщат', () => {

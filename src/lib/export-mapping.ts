@@ -22,6 +22,8 @@ import {
   moduleGeometry,
 } from './cabinet-rules';
 import { formatMm } from './drawing';
+import type { FlatBreakdown } from './flat-export';
+import { roomName } from './flat';
 
 export interface ExportRow {
   /** Номер на детайла или номерата на обединените */
@@ -197,6 +199,123 @@ export function toCabinetRows(result: KitchenResult, materials: Materials): Cabi
       note: notes.join('; '),
     };
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Цялото жилище                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Същият ред, плюс стаята и позицията.
+ *
+ * `no` и `cabinet` носят позицията през цялото жилище (`П7-03`, `П7`),
+ * защото кодовете в стаите се повтарят. `code` е кодът, който човекът
+ * вижда на екрана — цехът не го ползва, но по телефона се говори с
+ * него.
+ */
+export interface FlatExportRow extends ExportRow {
+  room: string;
+  code: string;
+}
+
+export const FLAT_EXPORT_COLUMNS: Column<FlatExportRow>[] = [
+  { key: 'no', header: '№' },
+  { key: 'room', header: 'Стая' },
+  { key: 'cabinet', header: 'Поз.' },
+  { key: 'code', header: 'Код в стаята' },
+  { key: 'part', header: 'Детайл' },
+  { key: 'material', header: 'Материал' },
+  { key: 'length', header: 'Дължина', format: (r) => formatMm(r.length) },
+  { key: 'width', header: 'Ширина', format: (r) => formatMm(r.width) },
+  { key: 'qty', header: 'Брой' },
+  { key: 'edgeL', header: 'Кант Д' },
+  { key: 'edgeW', header: 'Кант Ш' },
+  { key: 'edgeMm', header: 'Кант мм', format: (r) => formatMm(r.edgeMm) },
+  { key: 'note', header: 'Бележка' },
+];
+
+/**
+ * Детайлите на жилището, по шкафове или по материал.
+ *
+ * По материал стаята не се пише: един и същ детайл в кухнята и в
+ * банята се реже от една плоча и редът е общ. Кои точно са, казват
+ * номерата — и те сочат позиции, които съществуват само веднъж.
+ */
+export function toFlatExportRows(flat: FlatBreakdown, view: ExportView): FlatExportRow[] {
+  if (view === 'material') {
+    return flat.byMaterial.map((p) => ({ ...rowFromMerged(p), room: '—', code: '—' }));
+  }
+  return flat.rooms.flatMap((r) =>
+    r.cabinets.flatMap((c) =>
+      c.parts.map((p) => ({ ...rowFromPart(p), room: c.room, code: c.code })),
+    ),
+  );
+}
+
+export interface FlatCabinetRow extends CabinetSummaryRow {
+  room: string;
+  pos: string;
+}
+
+export const FLAT_CABINET_COLUMNS: Column<FlatCabinetRow>[] = [
+  { key: 'pos', header: 'Поз.' },
+  { key: 'room', header: 'Стая' },
+  { key: 'cabinet', header: 'Код в стаята' },
+  ...CABINET_COLUMNS.filter((c) => c.key !== 'cabinet'),
+] as Column<FlatCabinetRow>[];
+
+/**
+ * Заявката по шкафове за цялото жилище.
+ *
+ * Материалите се четат от своята стая, не от първата: две стаи могат
+ * да имат различни чекмеджета и различно отваряне, а колоната
+ * „Механизми" казва точно кое се купува.
+ */
+export function toFlatCabinetRows(flat: FlatBreakdown): FlatCabinetRow[] {
+  return flat.rooms.flatMap((r) => {
+    const rows = toCabinetRows(r.result, r.kitchen.materials);
+    // Редът е същият: `cabinets` е построен точно върху
+    // `result.cabinets`, затова мястото в двата списъка си отговаря.
+    return rows.map((row, i) => ({
+      ...row,
+      room: r.cabinets[i]?.room ?? roomName(r.room),
+      pos: r.cabinets[i]?.pos ?? '',
+    }));
+  });
+}
+
+/** Коя позиция в кой шкаф и в коя стая — легендата към списъка. */
+export interface FlatLegendRow {
+  pos: string;
+  room: string;
+  code: string;
+  type: string;
+  width: number;
+}
+
+export const FLAT_LEGEND_COLUMNS: Column<FlatLegendRow>[] = [
+  { key: 'pos', header: 'Поз.' },
+  { key: 'room', header: 'Стая' },
+  { key: 'code', header: 'Код в стаята' },
+  { key: 'type', header: 'Тип' },
+  { key: 'width', header: 'Ширина', format: (r) => formatMm(r.width) },
+];
+
+export function toFlatLegendRows(flat: FlatBreakdown): FlatLegendRow[] {
+  return flat.rooms.flatMap((r) =>
+    r.cabinets.map((c) => ({
+      pos: c.pos,
+      room: c.room,
+      code: c.code,
+      type: c.label,
+      width: c.width,
+    })),
+  );
+}
+
+/** Цялото жилище: korpus-jilishte-2026-11-27.xlsx */
+export function flatWorkbookFileName(date = new Date()): string {
+  return `korpus-jilishte-${date.toISOString().slice(0, 10)}.xlsx`;
 }
 
 /* ------------------------------------------------------------------ */

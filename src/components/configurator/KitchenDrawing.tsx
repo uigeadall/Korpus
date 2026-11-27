@@ -31,10 +31,10 @@ import {
 import {
   type ChainSegment,
   type ViewBox,
-  DRAW_H,
   FLOOR_T,
   WALL_T,
   chainForModules,
+  contentTopOf,
   dropIndex,
   insertIndexAt,
   facadeRects,
@@ -164,7 +164,13 @@ export function KitchenDrawing({
     ...placed.base.map((m) => m.x + m.width),
     ...placed.upper.map((m) => m.x + m.width),
   );
-  const view = viewBoxFor(wall.length, contentRight);
+  // Рамката расте и нагоре: антресолът над гардероба стига 2600, а
+  // ръстът на кухнята е 2320 — без това го режеше.
+  const view = viewBoxFor(
+    wall.length,
+    contentRight,
+    contentTopOf([...placed.base, ...placed.upper]),
+  );
   const fs = (px: number) => fontSizeMm(view, pxWidth, px);
 
   const worktopT = WORKTOP_THICKNESS[worktop];
@@ -543,7 +549,7 @@ export function KitchenDrawing({
         {/* вериги */}
         <Chain
           segments={upperChain}
-          y={toSvgY(view, DIM.UPPER_BOTTOM + DIM.UPPER_H) - 110}
+          y={toSvgY(view, Math.max(DIM.UPPER_BOTTOM + DIM.UPPER_H, contentTopOf(placed.upper))) - 110}
           fs={fs}
           labelAbove
           danger={overflow.upper}
@@ -835,8 +841,11 @@ function Wall({
   onKeyDown?: (e: React.KeyboardEvent) => void;
 }) {
   const ti = useT(INSTRUMENTI).chertej;
-  const top = toSvgY(view, DRAW_H);
-  const gripY = toSvgY(view, DRAW_H / 2);
+  // Стената стига до върха на рамката, а не до кухненския ръст: иначе
+  // свършва под антресола, когато той е по-висок.
+  const top = 0;
+  const wallH = view.floorY;
+  const gripY = view.floorY / 2;
   const color = resizing ? 'var(--accent)' : 'var(--foreground)';
 
   return (
@@ -852,12 +861,12 @@ function Wall({
       aria-valuemax={resizable ? DIM.WALL_MAX : undefined}
       aria-valuetext={resizable && length ? ti.mm(formatMm(length)) : undefined}
     >
-      <rect x={x} y={top} width={WALL_T} height={DRAW_H} fill="url(#hatch)" opacity="0.7" />
+      <rect x={x} y={top} width={WALL_T} height={wallH} fill="url(#hatch)" opacity="0.7" />
       <rect
         x={x}
         y={top}
         width={WALL_T}
-        height={DRAW_H}
+        height={wallH}
         fill={resizing ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'none'}
         stroke={color}
         strokeWidth={resizing ? 2 : 1}
