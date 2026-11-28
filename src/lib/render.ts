@@ -33,8 +33,9 @@ import {
   wallSurface,
 } from './wall-finish';
 import { type Pt, wallMarks } from './wall-pattern';
-import type { Room } from './furniture/room';
+import { WALL_SIDES, type Room, type WallSide } from './furniture/room';
 import { dressFace, faceSurface, glossByRole, povarhnostFor } from './povarhnost';
+import { AO_INK, type Contact, baseContacts, floorContacts, gradientEnds, wallContacts } from './ao';
 import {
   type Box,
   type BoxRole,
@@ -293,6 +294,89 @@ function surfaceMarkup(
   );
 }
 
+/**
+ * Меката тъмнина в една среща — ивица, която гасне навътре.
+ *
+ * Преливката върви в екранни координати от средата на тъмния ръб до
+ * средата на светлия. `userSpaceOnUse` е задължително: ивицата е
+ * произволен четириъгълник в перспектива и преливка по рамката му би
+ * сочила накъдето ѝ хрумне.
+ */
+function contactMarkup(c: Contact, cam: Camera, id: string): string {
+  const points = c.corners
+    .map((p) => {
+      const q = project(p, cam);
+      return `${q.x.toFixed(1)},${q.y.toFixed(1)}`;
+    })
+    .join(' ');
+  const ends = gradientEnds(c);
+  const a = project(ends.dark, cam);
+  const b = project(ends.light, cam);
+
+  return (
+    `<defs><linearGradient id="${id}" gradientUnits="userSpaceOnUse"` +
+    ` x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}">` +
+    `<stop offset="0" stop-color="${AO_INK}" stop-opacity="${c.strength}"/>` +
+    `<stop offset="1" stop-color="${AO_INK}" stop-opacity="0"/>` +
+    `</linearGradient></defs>` +
+    `<polygon points="${points}" fill="url(#${id})"/>`
+  );
+}
+
+/**
+ * Ивиците, отрязани по лицето, върху което лежат.
+ *
+ * Отрязването не е спретнатост. Зид с врата се рисува на парчета и
+ * ивицата в ъгъла му се простира по цялата височина на стаята — без
+ * отрязване тя ляга и върху отвора, в който няма зид.
+ */
+function clippedContacts(list: Contact[], cam: Camera, face: Face, id: string): string {
+  if (!list.length) return '';
+  const clip = face.corners
+    .map((p) => {
+      const q = project(p, cam);
+      return `${q.x.toFixed(1)},${q.y.toFixed(1)}`;
+    })
+    .join(' ');
+
+  return (
+    `<defs><clipPath id="${id}-c"><polygon points="${clip}"/></clipPath></defs>` +
+    `<g clip-path="url(#${id}-c)">` +
+    list.map((c, n) => contactMarkup(c, cam, `${id}-${n}`)).join('') +
+    `</g>`
+  );
+}
+
+
+/**
+ * Меките срещи, подредени по повърхността, върху която лежат.
+ *
+ * Правят се веднъж на кадър. Без стая срещи няма: те се знаят от
+ * геометрията ѝ, а изглед без стая е гол обем на бял фон.
+ */
+function contactsFor(
+  boxes: Box[],
+  room: Room | undefined,
+  cam: Camera,
+  pass: Pass,
+): {
+  onFloor: (face: Face, i: number) => string;
+  onWall: (side: WallSide, face: Face, i: number) => string;
+} {
+  // Картата на дълбочината и картата на частите са за машина: там
+  // тъмнината в ъгъла е втора област, не сянка.
+  if (!room || pass !== 'material') return { onFloor: () => '', onWall: () => '' };
+
+  const floor = [...floorContacts(room), ...baseContacts(boxes, room)];
+  const byWall = new Map<WallSide, Contact[]>();
+  for (const side of WALL_SIDES) byWall.set(side, wallContacts(room, side));
+
+  return {
+    onFloor: (face, i) => clippedContacts(floor, cam, face, `aof${i}`),
+    onWall: (side, face, i) => clippedContacts(byWall.get(side) ?? [], cam, face, `aow${i}`),
+  };
+}
+
 export interface RenderOptions {
   /** Ширина в пиксели. Височината следва формата на кадъра. */
   width?: number;
@@ -372,6 +456,13 @@ export function renderScene(
    */
   const glossOf = glossByRole(kitchen.materials, palette);
   const gradients = gradientsFor(faces, palette, glossOf);
+
+  /*
+   * Меките срещи се рисуват върху своята повърхност, веднага след нея.
+   * Подреждането по дълбочина не ги подрежда: те лежат В равнината на
+   * пода и на зида, а равни дълбочини се разменят при всяко завъртане.
+   */
+  const ao = contactsFor(boxes, room, cam, pass);
   const range = pass === 'depth' ? depthRange(faces, cam) : { near: 0, far: 1 };
 
   const points = (face: Face) =>
@@ -395,7 +486,13 @@ export function renderScene(
         return `<polygon points="${points(face)}" fill="${PART_COLOR[face.role] ?? '#ffffff'}"/>`;
       }
       if (face.role === 'shadow') {
-        return `<polygon points="${points(face)}" fill="${palette.shadow}" opacity="0.17"/>`;
+        /*
+         * Размазана, не изрязана с ножица — както е и на екрана.
+         * Дотук износът я рисуваше с остър ръб и картинката, която
+         * тръгва по пощата, показваше друго от това, което човекът е
+         * видял.
+         */
+        return `<polygon points="${points(face)}" fill="${palette.shadow}" opacity="0.17" filter="url(#f-shadow)"/>`;
       }
 
       /*
@@ -404,17 +501,24 @@ export function renderScene(
        * показва плосък цвят там, където човек вижда шарка.
        */
       const floor = floorById(kitchen.floorFinish);
-      // Без избрана настилка подът си остава какъвто е бил — рисува се
-      // като всяко друго лице, с цвета от палитрата.
-      if (floor && isFloorTop(face.role, face.normal)) {
-        return surfaceMarkup(face, floorSurface(face.corners), floor, cam, `s${i}`);
+      if (isFloorTop(face.role, face.normal)) {
+        // Без избрана настилка подът си остава какъвто е бил — рисува се
+        // като всяко друго лице, с цвета от палитрата. Срещите му със
+        // зида и с мебелта са там и в двата случая.
+        const body = floor
+          ? surfaceMarkup(face, floorSurface(face.corners), floor, cam, `s${i}`)
+          : `<polygon points="${points(face)}" fill="url(#g-${gradients.idOf(face)})"/>`;
+        return body + ao.onFloor(face, i);
       }
       const plane = room && face.role === 'wall'
         ? innerWallPlane(face.corners, face.normal, room)
         : null;
       if (plane) {
         const finish = finishById(finishIdFor(kitchen.wallFinish, plane.side));
-        return surfaceMarkup(face, wallSurface(plane, face.corners), finish, cam, `s${i}`);
+        return (
+          surfaceMarkup(face, wallSurface(plane, face.corners), finish, cam, `s${i}`) +
+          ao.onWall(plane.side, face, i)
+        );
       }
 
       /*
@@ -455,7 +559,8 @@ export function renderScene(
 
   const defs =
     pass === 'material'
-      ? `<defs>${gradients.defs
+      ? `<defs><filter id="f-shadow" x="-30%" y="-30%" width="160%" height="160%">` +
+        `<feGaussianBlur stdDeviation="11"/></filter>${gradients.defs
           .map(
             (g) =>
               `<linearGradient id="g-${g.id}" x1="0" y1="0" x2="0" y2="1">` +

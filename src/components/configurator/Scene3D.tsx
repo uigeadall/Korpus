@@ -9,7 +9,7 @@
  * рафтове се влачат вътре. Рафтът не е картинка — влиза в разкроя.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   acceptsShelves,
   canOpen,
@@ -27,7 +27,7 @@ import {
 } from '@/lib/cabinet-rules';
 import { type DropTarget, dropTargetAt, moveTargetAt, slideTargetAt } from '@/lib/drop3d';
 import { gridStep, wallPoint } from '@/lib/slide';
-import { footprint, type Room, type WallSide } from '@/lib/furniture/room';
+import { WALL_SIDES, footprint, type Room, type WallSide } from '@/lib/furniture/room';
 import {
   type Box,
   type Camera,
@@ -68,6 +68,14 @@ import { kod, prevedi } from '@/i18n/rechnik';
 import { INSTRUMENTI } from '@/i18n/tekstove/instrumenti';
 import { SHADE_STEPS, glossSpread, gradientsFor, litColor, paletteFor } from '@/lib/render';
 import { dressFace, faceSurface, glossByRole, povarhnostFor } from '@/lib/povarhnost';
+import {
+  AO_INK,
+  type Contact,
+  baseContacts,
+  floorContacts,
+  gradientEnds,
+  wallContacts,
+} from '@/lib/ao';
 
 export { litColor, paletteFor } from '@/lib/render';
 
@@ -331,6 +339,22 @@ export function Scene3D({
   const faces = visibleFaces(boxes, cam);
   const palette = paletteFor(kitchen);
   const gradients = gradientsFor(faces, palette, glossByRole(kitchen.materials, palette));
+
+  /*
+   * Меките срещи: подът до зида, ъглите между стените, основата на
+   * шкафовете. Рисуват се върху своята повърхност, веднага след нея —
+   * подреждането по дълбочина не ги подрежда, защото лежат В нейната
+   * равнина, а равни дълбочини се разменят при всяко завъртане.
+   *
+   * Смятат се наново при всяко рисуване и това е нарочно: една обиколка
+   * на обемите и няколко десетки обекта. Запомняне би искало ключ, по
+   * който стаята и обемите се различават, а той струва повече от
+   * самата сметка.
+   */
+  const aoFloor = [...floorContacts(room), ...baseContacts(boxes, room)];
+  const aoWalls = new Map<WallSide, Contact[]>(
+    WALL_SIDES.map((side) => [side, wallContacts(room, side)]),
+  );
 
   /* --- Пускане на модул от палитрата -------------------------------- */
 
@@ -1034,20 +1058,40 @@ export function Scene3D({
            * лица на зида — горният ръб, челата до отворите — са както
            * преди: те са самият зид, не облицовката му.
            */
+          /*
+           * Подът без избрана настилка се рисува като всяко друго лице,
+           * но срещите му със зида и с мебелта са си там.
+           */
+          if (!floor && isFloorTop(face.role, face.normal)) {
+            return (
+              <g key={face.key}>
+                <Polygon
+                  face={face}
+                  cam={cam}
+                  palette={palette}
+                  highlight={false}
+                  gradientId={gradients.idOf(face)}
+                />
+                <Contacts list={aoFloor} cam={cam} face={face} />
+              </g>
+            );
+          }
           if (floor && isFloorTop(face.role, face.normal)) {
             const amount = Math.round(shade(face.normal) * SHADE_STEPS) / SHADE_STEPS;
             const warmth = tint(face.normal);
             return (
-              <WallSurface
-                key={face.key}
-                face={face}
-                surface={floorSurface(face.corners)}
-                finish={floor}
-                cam={cam}
-                top={litColor(floor.hex, Math.min(1.2, amount * 1.07), warmth)}
-                bottom={litColor(floor.hex, amount * 0.9, warmth)}
-                light={(hex) => litColor(hex, amount, warmth)}
-              />
+              <g key={face.key}>
+                <WallSurface
+                  face={face}
+                  surface={floorSurface(face.corners)}
+                  finish={floor}
+                  cam={cam}
+                  top={litColor(floor.hex, Math.min(1.25, amount * 1.07), warmth)}
+                  bottom={litColor(floor.hex, amount * 0.9, warmth)}
+                  light={(hex) => litColor(hex, amount, warmth)}
+                />
+                <Contacts list={aoFloor} cam={cam} face={face} />
+              </g>
             );
           }
           const plane = face.role === 'wall' ? innerWallPlane(face.corners, face.normal, room) : null;
@@ -1056,16 +1100,18 @@ export function Scene3D({
             const amount = Math.round(shade(face.normal) * SHADE_STEPS) / SHADE_STEPS;
             const warmth = tint(face.normal);
             return (
-              <WallSurface
-                key={face.key}
-                face={face}
-                surface={wallSurface(plane, face.corners)}
-                finish={finish}
-                cam={cam}
-                top={litColor(finish.hex, Math.min(1.2, amount * 1.07), warmth)}
-                bottom={litColor(finish.hex, amount * 0.9, warmth)}
-                light={(hex) => litColor(hex, amount, warmth)}
-              />
+              <g key={face.key}>
+                <WallSurface
+                  face={face}
+                  surface={wallSurface(plane, face.corners)}
+                  finish={finish}
+                  cam={cam}
+                  top={litColor(finish.hex, Math.min(1.25, amount * 1.07), warmth)}
+                  bottom={litColor(finish.hex, amount * 0.9, warmth)}
+                  light={(hex) => litColor(hex, amount, warmth)}
+                />
+                <Contacts list={aoWalls.get(plane.side) ?? []} cam={cam} face={face} />
+              </g>
             );
           }
           const m = face.moduleId ? moduleById.get(face.moduleId) : undefined;
@@ -1327,6 +1373,65 @@ export function Scene3D({
       </div>
 
     </div>
+  );
+}
+
+
+/**
+ * Меките срещи — тъмнина, която гасне навътре от ръба.
+ *
+ * Преливката върви в екранни координати от средата на тъмния ръб до
+ * средата на светлия. `userSpaceOnUse` е задължително: ивицата е
+ * произволен четириъгълник в перспектива, а преливка по рамката му би
+ * сочила накъдето ѝ хрумне.
+ */
+function Contacts({ list, cam, face }: { list: Contact[]; cam: Camera; face: Face }) {
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!list.length) return null;
+
+  const toPoints = (ps: readonly { x: number; y: number; z: number }[]) =>
+    ps
+      .map((p) => {
+        const q = project(p, cam);
+        return `${q.x.toFixed(1)},${q.y.toFixed(1)}`;
+      })
+      .join(' ');
+
+  return (
+    <g pointerEvents="none" clipPath={`url(#${uid}-c)`}>
+      <defs>
+        {/*
+          Отрязването не е спретнатост. Зид с врата се рисува на парчета,
+          а ивицата в ъгъла му се простира по цялата височина на стаята —
+          без отрязване тя ляга и върху отвора, в който няма зид.
+        */}
+        <clipPath id={`${uid}-c`}>
+          <polygon points={toPoints(face.corners)} />
+        </clipPath>
+        {list.map((c, i) => {
+          const ends = gradientEnds(c);
+          const a = project(ends.dark, cam);
+          const b = project(ends.light, cam);
+          return (
+            <linearGradient
+              key={c.key}
+              id={`${uid}-${i}`}
+              gradientUnits="userSpaceOnUse"
+              x1={a.x}
+              y1={a.y}
+              x2={b.x}
+              y2={b.y}
+            >
+              <stop offset="0" stopColor={AO_INK} stopOpacity={c.strength} />
+              <stop offset="1" stopColor={AO_INK} stopOpacity="0" />
+            </linearGradient>
+          );
+        })}
+      </defs>
+      {list.map((c, i) => (
+        <polygon key={c.key} points={toPoints(c.corners)} fill={`url(#${uid}-${i})`} />
+      ))}
+    </g>
   );
 }
 

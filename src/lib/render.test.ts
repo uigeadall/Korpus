@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_ROOM_NEEDS, layoutFor } from './autolayout';
 import { computeKitchen, emptyKitchen, kitchenRoom, type Kitchen } from './cabinet-rules';
 import { PART_COLOR, depthRange, paletteFor, renderScene, tightViewBox } from './render';
+import { AO_INK } from './ao';
 import { DEFAULT_CAMERA, project, sceneFor, viewBoxFor, visibleFaces } from './scene3d';
 import { WALL_FINISHES } from '@/config/wall-finishes';
 import { FLOOR_FINISHES } from '@/config/floor-finishes';
@@ -126,6 +127,38 @@ describe('износът показва същото като екрана', () 
     const cam = DEFAULT_CAMERA(room);
     const boxes = sceneFor(k, room, computeKitchen(k).placed, k.materials.worktop);
     expect(renderScene(boxes, cam, k, { width: 900 }).svg).toContain('</svg>');
+  });
+
+  it('меките срещи влизат в картинката', () => {
+    /*
+     * Ъглите на стаята тъмнеят. Без стая срещите не се знаят — това е
+     * и единствената разлика, която `room` прави освен покритията.
+     */
+    const k = kuhnya();
+    const room = kitchenRoom(k);
+    const cam = DEFAULT_CAMERA(room);
+    const boxes = sceneFor(k, room, computeKitchen(k).placed, k.materials.worktop);
+    const svg = renderScene(boxes, cam, k, { width: 900, room }).svg;
+    expect(svg).toContain('gradientUnits="userSpaceOnUse"');
+    expect(svg).toContain(AO_INK);
+  });
+
+  it('картите за машината остават без тъмнина в ъглите', () => {
+    // Там тъмнината в ъгъла е втора област, не сянка.
+    const { k, cam, boxes } = kadar();
+    for (const pass of ['depth', 'parts'] as const) {
+      const svg = renderScene(boxes, cam, k, { pass, room: kitchenRoom(k) }).svg;
+      expect(svg, pass).not.toContain('gradientUnits');
+    }
+  });
+
+  it('сянката на пода е размазана, както на екрана', () => {
+    // Дотук износът я рисуваше с остър ръб и обещанието „едно към едно
+    // с екрана" не се спазваше точно тук.
+    const { k, cam, boxes } = kadar();
+    const svg = renderScene(boxes, cam, k, { room: kitchenRoom(k) }).svg;
+    expect(svg).toContain('feGaussianBlur');
+    expect(svg).toContain('filter="url(#f-shadow)"');
   });
 
   it('камерата решава кадъра — друг ъгъл, друга картинка', () => {
