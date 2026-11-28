@@ -46,6 +46,9 @@ export function WallSurface({
   top,
   bottom,
   light,
+  stroke,
+  moduleId,
+  className,
 }: {
   face: Face;
   surface: Surface;
@@ -56,6 +59,11 @@ export function WallSurface({
   bottom: string;
   /** Осветява цвят на шарката със светлината на това лице. */
   light: (hex: string) => string;
+  /** Ръбът на лицето. Зидът е без; мебелта има ръбове и те се виждат. */
+  stroke?: string;
+  /** За щракане и влачене — лицето на шкаф е и мишена. */
+  moduleId?: string;
+  className?: string;
 }) {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const at = ([u, v]: Pt) => {
@@ -75,7 +83,13 @@ export function WallSurface({
   return (
     <g
       data-role={face.role}
-      {...(face.role === 'wall' ? { 'data-wall': surface.key } : { 'data-floor': finish.id })}
+      data-module={moduleId}
+      className={className}
+      {...(face.role === 'wall'
+        ? { 'data-wall': surface.key }
+        : face.role === 'floor'
+          ? { 'data-floor': finish.id }
+          : {})}
     >
       <defs>
         <linearGradient id={`${uid}-g`} x1="0" y1="0" x2="0" y2="1">
@@ -86,7 +100,16 @@ export function WallSurface({
           <polygon points={points} />
         </clipPath>
       </defs>
-      <polygon points={points} data-role={face.role} fill={`url(#${uid}-g)`} stroke="none" />
+      <polygon
+        points={points}
+        data-role={face.role}
+        data-module={moduleId}
+        fill={`url(#${uid}-g)`}
+        stroke={stroke ?? 'none'}
+        strokeWidth={stroke ? 0.75 : undefined}
+        strokeLinejoin="round"
+        vectorEffect={stroke ? 'non-scaling-stroke' : undefined}
+      />
       {(marks.fills.length > 0 || marks.lines.length > 0) && (
         <g clipPath={`url(#${uid}-c)`} pointerEvents="none">
           {marks.fills.map((layer, i) => (

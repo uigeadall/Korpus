@@ -74,14 +74,40 @@ export type PatternSpec =
     }
   /** Ромбова решетка — тапет в стил дамаска, без да се рисува истинска дамаска. */
   | { kind: 'lattice'; step: number; color: string; dot?: string }
-  /** Мрамор: жилки по повърхността. */
-  | { kind: 'marble'; vein: string; density: number; slab: number; joint: string }
+  /** Мрамор: жилки по повърхността. `joints` рисува фугите между плочите. */
+  | { kind: 'marble'; vein: string; density: number; slab: number; joint: string; joints?: boolean }
   /** Ламперия долу, боя горе, лайсна помежду. */
   | { kind: 'wainscot'; height: number; panel: number; lower: string; rail: string }
   /** Обемни панели — квадрати със светла и тъмна страна. */
   | { kind: 'panels3d'; size: number; light: string; dark: string }
   /** Ребрест панел — вертикални ребра със светлина отстрани. */
-  | { kind: 'fluted'; w: number; light: string; dark: string };
+  | { kind: 'fluted'; w: number; light: string; dark: string }
+  /**
+   * Фладер — шарката на самото дърво, без дъски и без фуги.
+   *
+   * Това е повърхност на едно парче: врата от декор, плот от масив.
+   * `planks` би сложил фуги, каквито на една врата няма. Линиите се
+   * извиват и се събират на възли, защото точно това отличава дървото
+   * от ивичест тапет: правите успоредни черти не приличат на нищо.
+   */
+  | {
+      kind: 'grain';
+      /** По коя посока върви влакното. */
+      dir: 'h' | 'v';
+      color: string;
+      /** Разстояние между едрите влакна, мм. */
+      step: number;
+      /** Колко се извиват, мм. */
+      wave: number;
+      /**
+       * Разстояние между порите — ситните влакна между едрите. Дървото
+       * се познава по двата мащаба заедно: само едрите изглеждат като
+       * нарисувани линии, само ситните — като сресана четка.
+       */
+      pore?: number;
+      /** Колко често има възел: 0 никога, 1 на всяко едро влакно. */
+      knots?: number;
+    };
 
 /** Парчета с еднакъв цвят — един `<path>` при рисуването. */
 export interface FillLayer {
@@ -470,8 +496,11 @@ export function wallMarks(spec: PatternSpec, area: UvRect, seed = 0): WallMarks 
       const s = spec.slab;
       const [i0, i1] = span(u0, u1, s);
       const [j0, j1] = span(v0, v1, s * 2);
-      for (let i = i0; i <= i1; i++) out.line(spec.joint, 0.8, [i * s, v0], [i * s, v1], 0.7);
-      for (let j = j0; j <= j1; j++) out.line(spec.joint, 0.8, [u0, j * s * 2], [u1, j * s * 2], 0.7);
+      // Плот е от едно парче — фуга през него няма. Стената е облицована.
+      if (spec.joints !== false) {
+        for (let i = i0; i <= i1; i++) out.line(spec.joint, 0.8, [i * s, v0], [i * s, v1], 0.7);
+        for (let j = j0; j <= j1; j++) out.line(spec.joint, 0.8, [u0, j * s * 2], [u1, j * s * 2], 0.7);
+      }
       for (let i = i0; i < i1; i++) {
         for (let j = j0; j < j1; j++) {
           const veins = Math.max(1, Math.round(spec.density * 4));
@@ -537,6 +566,95 @@ export function wallMarks(spec: PatternSpec, area: UvRect, seed = 0): WallMarks 
         const a = i * spec.w;
         out.fill(spec.light, rect(a, v0, a + spec.w * 0.35, v1), 0.7);
         out.fill(spec.dark, rect(a + spec.w * 0.7, v0, a + spec.w, v1), 0.7);
+      }
+      break;
+    }
+
+    case 'grain': {
+      /*
+       * Дървото се чете на два мащаба наведнъж: пори и влакна.
+       *
+       * Порите са ситни черти, гъсти и едва видими — те правят
+       * повърхността дървесна. Влакната са едрите извивки, които
+       * окото следва. Само едрите приличат на нарисувани линии; само
+       * ситните — на сресана четка. Заедно приличат на дърво.
+       *
+       * Извивката е сбор от две вълни с различна дължина. Една дава
+       * синусоида, а синусоидата също не прилича на дърво.
+       */
+      const along = spec.dir === 'h';
+      const [a0, a1] = along ? [u0, u1] : [v0, v1];
+      const [b0, b1] = along ? [v0, v1] : [u0, u1];
+      const P = (a: number, b: number): Pt => (along ? [a, b] : [b, a]);
+
+      const length = Math.max(1, a1 - a0);
+      const knots = spec.knots ?? 0.2;
+
+      /** Къде минава влакното `b` на разстояние `a` по дъската. */
+      const curve = (b: number, k: number, knot: { at: number; r: number } | null) => {
+        const phase = hash(k, 0, seed + 91) * 6.28;
+        const phase2 = hash(k, 1, seed + 92) * 6.28;
+        const amp = spec.wave * (0.6 + hash(k, 6, seed + 97) * 0.8);
+        return (a: number): number => {
+          const t = (a - a0) / length;
+          let off = Math.sin(t * 2.4 + phase) * amp + Math.sin(t * 7.3 + phase2) * amp * 0.3;
+          // Около възела влакното се разтваря и го заобикаля — това е
+          // характерният овал, по който се познава дървото.
+          if (knot) {
+            const d = Math.abs(a - knot.at) / knot.r;
+            if (d < 1) off += (b >= knot.at ? 1 : -1) * (1 - d * d) * knot.r * 0.5;
+          }
+          return b + off;
+        };
+      };
+
+      const draw = (b: number, k: number, width: number, opacity: number, steps: number) => {
+        const hasKnot = hash(k, 2, seed + 93) < knots;
+        const knot = hasKnot
+          ? { at: a0 + hash(k, 3, seed + 94) * length, r: spec.step * (1 + hash(k, 4, seed + 95)) }
+          : null;
+        const at = curve(b, k, knot);
+        for (let i = 0; i < steps; i++) {
+          const a = a0 + (length * i) / steps;
+          const next = a0 + (length * (i + 1)) / steps;
+          out.line(spec.color, width, P(a, at(a)), P(next, at(next)), opacity);
+        }
+        return knot;
+      };
+
+      // Порите: гъсто, тънко, едва видимо. Следват едрото влакно до тях.
+      const pore = spec.pore ?? spec.step / 7;
+      const poreSteps = Math.min(16, Math.max(5, Math.round(length / 160)));
+      const [p0, p1] = span(b0, b1, pore);
+      for (let k = p0; k <= p1; k++) {
+        if (hash(k, 9, seed + 98) < 0.25) continue; // не всяка пора я има
+        draw(k * pore, Math.floor((k * pore) / spec.step), 0.5, 0.1, poreSteps);
+      }
+
+      // Влакната: рядко, по-плътно, с възлите.
+      const steps = Math.min(44, Math.max(10, Math.round(length / 45)));
+      const [k0, k1] = span(b0, b1, spec.step);
+      for (let k = k0; k <= k1; k++) {
+        const knot = draw(k * spec.step, k, 0.9, 0.3, steps);
+        if (!knot) continue;
+        /*
+         * Сърцевината: овал, издължен ПО влакното, с по-тъмен пръстен.
+         * Кръгло петно изглежда като дупка, не като възел.
+         */
+        const rings: [number, number][] = [
+          [0.34, 0.3],
+          [0.18, 0.5],
+        ];
+        for (const [scale, opacity] of rings) {
+          const ra = knot.r * scale;
+          const rb = ra * 0.55;
+          const poly: Pt[] = [];
+          for (let n = 0; n < 12; n++) {
+            const ang = (n / 12) * Math.PI * 2;
+            poly.push(P(knot.at + Math.cos(ang) * ra, k * spec.step + Math.sin(ang) * rb));
+          }
+          out.fill(spec.color, poly, opacity);
+        }
       }
       break;
     }

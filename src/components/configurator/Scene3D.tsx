@@ -66,7 +66,8 @@ import { isOperable, moduleSpeech } from '@/lib/speech';
 import { useEzik, useT } from '@/i18n/client';
 import { kod, prevedi } from '@/i18n/rechnik';
 import { INSTRUMENTI } from '@/i18n/tekstove/instrumenti';
-import { SHADE_STEPS, gradientsFor, litColor, paletteFor } from '@/lib/render';
+import { SHADE_STEPS, glossSpread, gradientsFor, litColor, paletteFor } from '@/lib/render';
+import { dressFace, faceSurface, glossByRole, povarhnostFor } from '@/lib/povarhnost';
 
 export { litColor, paletteFor } from '@/lib/render';
 
@@ -329,7 +330,7 @@ export function Scene3D({
   const boxes = floor ? scene.filter((b) => b.role !== 'seam') : scene;
   const faces = visibleFaces(boxes, cam);
   const palette = paletteFor(kitchen);
-  const gradients = gradientsFor(faces, palette);
+  const gradients = gradientsFor(faces, palette, glossByRole(kitchen.materials, palette));
 
   /* --- Пускане на модул от палитрата -------------------------------- */
 
@@ -1068,21 +1069,58 @@ export function Scene3D({
             );
           }
           const m = face.moduleId ? moduleById.get(face.moduleId) : undefined;
+          const lit = Boolean(
+            face.moduleId &&
+              (face.moduleId === hover ||
+                face.moduleId === pointed ||
+                face.moduleId === pickedItem?.id ||
+                face.moduleId === carriedId ||
+                face.moduleId === chosen?.id),
+          );
+
+          /*
+           * Мебелта има материал: фладер по декора, зърно по гранита,
+           * жилка по синтерования плот. Рисува се само там, където окото
+           * го чете — иначе шестте лица на всеки шкаф правят стотици
+           * отсечки, от които се виждат пет на сто.
+           *
+           * Посоченият шкаф остава плосък: светването е сигнал, а шарка
+           * под него го размива.
+           */
+          if (!lit && dressFace(face)) {
+            const p = povarhnostFor(face.role, kitchen.materials, palette);
+            const surface = p && p.pattern.kind !== 'plain' ? faceSurface(face) : null;
+            if (p && surface) {
+              const amount = Math.round(shade(face.normal) * SHADE_STEPS) / SHADE_STEPS;
+              const warmth = tint(face.normal);
+              const { hi, lo } = glossSpread(p.gloss);
+              const hex = palette[face.role] ?? palette.carcass;
+              return (
+                <WallSurface
+                  key={face.key}
+                  face={face}
+                  surface={surface}
+                  finish={p}
+                  cam={cam}
+                  top={litColor(hex, Math.min(1.25, amount * hi), warmth)}
+                  bottom={litColor(hex, amount * lo, warmth)}
+                  light={(c) => litColor(c, amount, warmth)}
+                  stroke="rgba(0,0,0,0.13)"
+                  moduleId={face.moduleId}
+                  className={m && canOpen(m.kind) ? 'cursor-pointer' : undefined}
+                />
+              );
+            }
+          }
+
           return (
             <Polygon
               key={face.key}
               face={face}
               cam={cam}
               palette={palette}
-              highlight={Boolean(
-                face.moduleId &&
-                  (face.moduleId === hover ||
-                    // Посоченият светва — над него колелцето приближава.
-                    face.moduleId === pointed ||
-                    face.moduleId === pickedItem?.id ||
-                    face.moduleId === carriedId ||
-                    face.moduleId === chosen?.id),
-              )}
+              // Посоченият светва — над него колелцето приближава.
+              highlight={lit}
               module={m}
               gradientId={gradients.idOf(face)}
             />

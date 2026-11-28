@@ -34,6 +34,7 @@ import {
 } from './wall-finish';
 import { type Pt, wallMarks } from './wall-pattern';
 import type { Room } from './furniture/room';
+import { dressFace, faceSurface, glossByRole, povarhnostFor } from './povarhnost';
 import {
   type Box,
   type BoxRole,
@@ -117,9 +118,25 @@ export interface Shaded {
   bottom: string;
 }
 
+/**
+ * Колко се разтяга преливката по едно лице според блясъка.
+ *
+ * Матовото разсейва светлината равномерно и почти няма разлика между
+ * горния и долния си край. Гланцовото отразява: горе — тавана, долу —
+ * пода, затова горният му край е светъл, а долният пада. Това е цялата
+ * разлика, която окото търси, и се прави с две числа вместо с
+ * отражение, което при един кадър и без това би лъгало.
+ */
+export function glossSpread(gloss: number): { hi: number; lo: number } {
+  const g = Math.max(0, Math.min(1, gloss));
+  return { hi: 1 + 0.22 * g, lo: 1 - 0.3 * g };
+}
+
 export function gradientsFor(
   faces: Face[],
   palette: Record<string, string>,
+  /** Колко лъщи ролята: 0 мат, 1 огледало. Без това — както преди. */
+  glossOf?: (role: BoxRole) => number,
 ): { defs: Shaded[]; idOf: (face: Face) => string } {
   const defs = new Map<string, Shaded>();
 
@@ -134,10 +151,12 @@ export function gradientsFor(
     const base = palette[face.role] ?? palette.carcass;
     const amount = Math.round(shade(face.normal) * STEPS) / STEPS;
     const warmth = tint(face.normal);
+    // 0.33 възпроизвежда разтягането отпреди блясъка: ×1.07 / ×0.90.
+    const { hi, lo } = glossSpread(glossOf?.(face.role) ?? 0.33);
     defs.set(id, {
       id,
-      top: litColor(base, Math.min(1.2, amount * 1.07), warmth),
-      bottom: litColor(base, amount * 0.9, warmth),
+      top: litColor(base, Math.min(1.25, amount * hi), warmth),
+      bottom: litColor(base, amount * lo, warmth),
     });
   }
 
@@ -227,6 +246,7 @@ function surfaceMarkup(
   finish: { id: string; hex: string; pattern: Parameters<typeof wallMarks>[0] },
   cam: Camera,
   id: string,
+  gloss = 0.33,
 ): string {
   const amount = Math.round(shade(face.normal) * STEPS) / STEPS;
   const warmth = tint(face.normal);
@@ -260,8 +280,9 @@ function surfaceMarkup(
     )
     .join('');
 
-  const top = litColor(finish.hex, Math.min(1.2, amount * 1.07), warmth);
-  const bottom = litColor(finish.hex, amount * 0.9, warmth);
+  const { hi, lo } = glossSpread(gloss);
+  const top = litColor(finish.hex, Math.min(1.25, amount * hi), warmth);
+  const bottom = litColor(finish.hex, amount * lo, warmth);
 
   return (
     `<defs><linearGradient id="${id}-g" x1="0" y1="0" x2="0" y2="1">` +
@@ -344,7 +365,13 @@ export function renderScene(
   const height = Math.round((width * vh) / Math.max(1, vw));
 
   const palette = paletteFor(kitchen);
-  const gradients = gradientsFor(faces, palette);
+  /*
+   * Блясъкът на всяка роля се пита веднъж: той зависи от избраните
+   * материали, не от лицето, и не бива да се смята при всяко от
+   * стотиците лица.
+   */
+  const glossOf = glossByRole(kitchen.materials, palette);
+  const gradients = gradientsFor(faces, palette, glossOf);
   const range = pass === 'depth' ? depthRange(faces, cam) : { near: 0, far: 1 };
 
   const points = (face: Face) =>
@@ -388,6 +415,28 @@ export function renderScene(
       if (plane) {
         const finish = finishById(finishIdFor(kitchen.wallFinish, plane.side));
         return surfaceMarkup(face, wallSurface(plane, face.corners), finish, cam, `s${i}`);
+      }
+
+      /*
+       * Мебелта също има материал: фладер по декора, зърно по гранита.
+       * Същата сметка като на екрана — иначе изнесената картинка показва
+       * плосък цвят там, където човек вижда дърво.
+       */
+      if (dressFace(face)) {
+        const p = povarhnostFor(face.role, kitchen.materials, palette);
+        if (p && p.pattern.kind !== 'plain') {
+          const surface = faceSurface(face);
+          if (surface) {
+            return surfaceMarkup(
+              face,
+              surface,
+              { id: p.id, hex: palette[face.role] ?? palette.carcass, pattern: p.pattern },
+              cam,
+              `s${i}`,
+              glossOf(face.role),
+            );
+          }
+        }
       }
 
       const fill =

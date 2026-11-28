@@ -177,6 +177,11 @@ function colorWords(name: string): { bg: string; en: string } {
     бял: 'white',
     'светъл дъб': 'light oak',
     'светло сив': 'light grey',
+    // Декорите: моделът трябва да чуе ДЪРВО, не име на цвят.
+    'дъб сонома': 'light sonoma oak woodgrain',
+    'дъб натурал': 'natural oak woodgrain',
+    орех: 'walnut woodgrain',
+    'ясен сив': 'grey ash woodgrain',
   };
   return { bg, en: EN[bg.toLowerCase()] ?? bg };
 }

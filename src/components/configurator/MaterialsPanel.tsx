@@ -4,8 +4,9 @@ import type { Materials } from '@/lib/cabinet-rules';
 import {
   CARCASS_COLORS,
   DRAWER_SYSTEMS,
-  FACADE_COLORS,
   FACADE_TYPES,
+  colorAfterType,
+  colorsFor,
   OPENINGS,
   WORKTOPS,
 } from '@/config/materials';
@@ -48,7 +49,16 @@ export function MaterialsPanel({
               <Chip
                 key={t.id}
                 active={materials.facade.type === t.id}
-                onClick={() => set({ facade: { ...materials.facade, type: t.id } })}
+                onClick={() =>
+                  set({
+                    facade: {
+                      type: t.id,
+                      // Дървесният декор го има само на ПДЧ; смяната на
+                      // вида не бива да остави невъзможен цвят.
+                      color: colorAfterType(t.id, materials.facade.color),
+                    },
+                  })
+                }
                 title={t.note}
               >
                 {t.name}
@@ -56,7 +66,7 @@ export function MaterialsPanel({
             ))}
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
-            {FACADE_COLORS.map((c) => (
+            {colorsFor(materials.facade.type).map((c) => (
               <Chip
                 key={c.id}
                 active={materials.facade.color === c.name}

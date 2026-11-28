@@ -8,6 +8,7 @@
 
 import {
   DEFAULT_MATERIALS,
+  type FacadeType,
   type Kitchen,
   type KitchenModule,
   RULES_VERSION,
@@ -29,7 +30,7 @@ import {
 } from '@/lib/cabinet-rules';
 import { gapKindFor } from '@/lib/slide';
 import { type RoomNeeds, DEFAULT_ROOM_NEEDS, layoutFor } from '@/lib/autolayout';
-import { CARCASS_COLORS } from '@/config/materials';
+import { CARCASS_COLORS, DECOR_ONLY, FACADE_COLORS } from '@/config/materials';
 import { type Furnishing, FURNISHINGS } from '@/lib/furnishings';
 import type { WallFinishChoice } from '@/lib/wall-finish';
 import { sideLength } from '@/lib/furniture/room';
@@ -268,11 +269,23 @@ export function furnitureFrom(a: Answers): Kitchen {
     materials: {
       ...DEFAULT_MATERIALS,
       carcassColor: a.carcassColor,
-      facade: { ...DEFAULT_MATERIALS.facade, color: a.facadeColor },
+      /*
+       * Видът следва цвета. Дървесният декор съществува само на ПДЧ —
+       * „боядисан МДФ, орех" е поръчка, която цехът не може да
+       * изпълни. Водещият поток не пита за вид фасада; тук той се
+       * избира сам, вместо да се остави невъзможен.
+       */
+      facade: { type: facadeTypeFor(a.facadeColor), color: a.facadeColor },
       worktop: a.worktop,
     },
     rulesVersion: RULES_VERSION,
   };
+}
+
+/** Кой вид фасада носи този цвят: декорът е ПДЧ, боята — МДФ. */
+export function facadeTypeFor(color: string): FacadeType {
+  const swatch = FACADE_COLORS.find((c) => c.name === color);
+  return swatch && DECOR_ONLY.has(swatch.id) ? 'pdch-decor' : DEFAULT_MATERIALS.facade.type;
 }
 
 /**
